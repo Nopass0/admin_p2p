@@ -1,26 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@heroui/react/button";
-import { Input } from "@heroui/react/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@heroui/react/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@heroui/react/select";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@heroui/react/card";
-import { toast } from "sonner";
-import { api } from "@/trpc/react";
+import { useState, useEffect } from "react";
+import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
+import { Table, TableBody, TableCell, TableHeader, TableColumn, TableRow } from "@heroui/table";
+import { Card, CardBody, CardHeader, CardFooter } from "@heroui/card";
+import { Alert } from "@heroui/alert";
+import { CheckCircle, AlertCircle, RefreshCw, Calendar, Filter } from "lucide-react";
 
 // Типы данных
 type TimeFilterPreset = "last12h" | "last24h" | "today" | "yesterday" | "thisWeek" | "last2days" | "thisMonth";
+type TransactionStatus = { value: string; label: string; };
 
-type TimeFilter = 
-  | { preset: TimeFilterPreset }
-  | { startDate?: string; endDate?: string };
-
-type TransactionStatus = {
-  value: string;
-  label: string;
-};
+interface AlertState {
+  isVisible: boolean;
+  title: string;
+  description: string;
+  color: "success" | "danger" | "primary" | "warning" | "default" | "secondary";
+}
 
 const TRANSACTION_STATUSES: TransactionStatus[] = [
   { value: "", label: "Все" },
@@ -41,222 +38,328 @@ const TIME_FILTER_PRESETS: { value: TimeFilterPreset; label: string }[] = [
 ];
 
 export default function IdexTransactionsPage() {
-  const router = useRouter();
-  
-  // Параметры для фильтрации и пагинации
+  // State
   const [cabinetId, setCabinetId] = useState<number | null>(null);
+  const [cabinets, setCabinets] = useState<any[]>([]);
+  const [isLoadingCabinets, setIsLoadingCabinets] = useState(true);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
-  const [status, setStatus] = useState<string>("");
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>({ preset: "last24h" });
-  const [customStartDate, setCustomStartDate] = useState<string>("");
-  const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [perPage] = useState(10);
+  const [selectedPreset, setSelectedPreset] = useState<TimeFilterPreset>("last24h");
   const [timeFilterType, setTimeFilterType] = useState<"preset" | "custom">("preset");
-  
-  // Для сопоставления транзакций
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
-  const [systemTransactionId, setSystemTransactionId] = useState<string>("");
-  
-  // Получение списка кабинетов IDEX
-  const cabinetsQuery = api.idex.getAllCabinets.useQuery(
-    { page: 1, perPage: 100 },
-    { enabled: true }
-  );
-  
-  // Получение транзакций выбранного кабинета
-  const transactionsQuery = api.idex.getCabinetTransactions.useQuery(
-    { 
-      cabinetId: cabinetId || 0,
-      page,
-      perPage,
-      status,
-      timeFilter: timeFilterType === "preset" 
-        ? { preset: (timeFilter as { preset: TimeFilterPreset }).preset } 
-        : { startDate: customStartDate, endDate: customEndDate }
-    },
-    { 
-      enabled: !!cabinetId,
-      staleTime: 1000 * 60, // 1 минута
-      refetchInterval: 1000 * 60 * 5 // 5 минут
-    }
-  );
-  
-  // Мутация для сопоставления транзакций
-  const matchMutation = api.idex.matchTransaction.useMutation({
-    onSuccess: () => {
-      toast.success("Транзакция успешно сопоставлена");
-      setSelectedTransactionId(null);
-      setSystemTransactionId("");
-      transactionsQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error(`Ошибка при сопоставлении: ${error.message}`);
-    }
+  const [systemTransactionId, setSystemTransactionId] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({
+    isVisible: false,
+    title: "",
+    description: "",
+    color: "default"
   });
   
-  // Мутация для отмены сопоставления
-  const unmatchMutation = api.idex.unmatchTransaction.useMutation({
-    onSuccess: () => {
-      toast.success("Сопоставление транзакции отменено");
-      transactionsQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error(`Ошибка при отмене сопоставления: ${error.message}`);
+  // Pagination links
+  const pageNumbers = [];
+  for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) {
+    pageNumbers.push(i);
+  }
+
+  // Load cabinets on mount using fetch
+  useEffect(() => {
+    const fetchCabinets = async () => {
+      try {
+        setIsLoadingCabinets(true);
+        const response = await fetch('/api/trpc/idex.getAllCabinets?batch=1&input={"0":{"json":{"page":1,"perPage":100}}}');
+        const data = await response.json();
+        
+        if (data.result.data[0].json?.cabinets) {
+          setCabinets(data.result.data[0].json.cabinets);
+        }
+      } catch (error) {
+        console.error('Error fetching cabinets:', error);
+        showAlert("Ошибка", "Не удалось загрузить список кабинетов", "danger");
+      } finally {
+        setIsLoadingCabinets(false);
+      }
+    };
+    
+    fetchCabinets();
+  }, []);
+
+  // Load transactions when cabinet changes
+  useEffect(() => {
+    if (cabinetId) {
+      loadTransactions();
     }
-  });
-  
-  // Мутация для синхронизации кабинета
-  const syncMutation = api.idex.syncCabinetById.useMutation({
-    onSuccess: () => {
-      toast.success("Кабинет успешно синхронизирован");
-      transactionsQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error(`Ошибка при синхронизации: ${error.message}`);
+  }, [cabinetId, page, statusFilter, timeFilterType, selectedPreset, customStartDate, customEndDate]);
+
+  // Function to load transactions
+  const loadTransactions = async () => {
+    if (!cabinetId) return;
+    
+    try {
+      setIsLoadingTransactions(true);
+      
+      // Create timeFilter object
+      const timeFilter = timeFilterType === "preset" 
+        ? { preset: selectedPreset }
+        : { startDate: customStartDate, endDate: customEndDate };
+      
+      const input = {
+        cabinetId,
+        page,
+        perPage,
+        status: statusFilter,
+        timeFilter
+      };
+      
+      // Use fetch instead of React Query
+      const response = await fetch(`/api/trpc/idex.getCabinetTransactions?batch=1&input={"0":{"json":${JSON.stringify(input)}}}`);
+      const data = await response.json();
+      
+      if (data.result.data[0].json) {
+        const result = data.result.data[0].json;
+        setTransactions(result.transactions || []);
+        setTotalCount(result.totalCount || 0);
+        setTotalPages(result.totalPages || 1);
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      showAlert("Ошибка", "Не удалось загрузить транзакции", "danger");
+    } finally {
+      setIsLoadingTransactions(false);
     }
-  });
-  
-  // Обработчики
-  const handleCabinetChange = (value: string) => {
-    setCabinetId(Number(value));
-    setPage(1);
   };
-  
-  const handleStatusChange = (value: string) => {
-    setStatus(value);
-    setPage(1);
-  };
-  
-  const handleTimePresetChange = (value: TimeFilterPreset) => {
-    setTimeFilter({ preset: value });
-    setPage(1);
-  };
-  
-  const handleTimeFilterTypeChange = (type: "preset" | "custom") => {
-    setTimeFilterType(type);
-    if (type === "preset") {
-      setTimeFilter({ preset: "last24h" });
-    } else {
-      setTimeFilter({});
+
+  // Function to sync cabinet
+  const syncCabinet = async () => {
+    if (!cabinetId) {
+      showAlert("Ошибка", "Выберите кабинет для синхронизации", "danger");
+      return;
     }
-    setPage(1);
+    
+    try {
+      setIsSyncing(true);
+      
+      const input = {
+        cabinetId,
+        pages: 10
+      };
+      
+      const response = await fetch('/api/trpc/idex.syncCabinetById', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batch: 1,
+          input: { "0": { json: input } }
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.result.data[0].json?.success) {
+        showAlert("Успешно", "Кабинет успешно синхронизирован", "success");
+        loadTransactions();
+      }
+    } catch (error) {
+      console.error('Error syncing cabinet:', error);
+      showAlert("Ошибка", "Не удалось синхронизировать кабинет", "danger");
+    } finally {
+      setIsSyncing(false);
+    }
   };
-  
-  const handleCustomDateChange = () => {
-    setTimeFilter({ startDate: customStartDate, endDate: customEndDate });
-    setPage(1);
-  };
-  
-  const handleMatchTransaction = () => {
+
+  // Function to match transaction
+  const matchTransaction = async () => {
     if (!selectedTransactionId || !systemTransactionId) {
-      toast.error("Выберите IDEX транзакцию и введите ID системной транзакции");
+      showAlert("Ошибка", "Выберите IDEX транзакцию и введите ID системной транзакции", "danger");
       return;
     }
     
     const systemTransactionIdNumber = Number(systemTransactionId);
     if (isNaN(systemTransactionIdNumber) || systemTransactionIdNumber <= 0) {
-      toast.error("ID системной транзакции должен быть положительным числом");
+      showAlert("Ошибка", "ID системной транзакции должен быть положительным числом", "danger");
       return;
     }
     
-    matchMutation.mutate({
-      idexTransactionId: selectedTransactionId,
-      systemTransactionId: systemTransactionIdNumber
+    try {
+      const input = {
+        idexTransactionId: selectedTransactionId,
+        systemTransactionId: systemTransactionIdNumber
+      };
+      
+      const response = await fetch('/api/trpc/idex.matchTransaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batch: 1,
+          input: { "0": { json: input } }
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.result.data[0].json?.success) {
+        showAlert("Успешно", "Транзакция успешно сопоставлена", "success");
+        setSelectedTransactionId(null);
+        setSystemTransactionId("");
+        loadTransactions();
+      }
+    } catch (error) {
+      console.error('Error matching transaction:', error);
+      showAlert("Ошибка", "Не удалось сопоставить транзакцию", "danger");
+    }
+  };
+
+  // Function to unmatch transaction
+  const unmatchTransaction = async (id: number) => {
+    try {
+      const input = { idexTransactionId: id };
+      
+      const response = await fetch('/api/trpc/idex.unmatchTransaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batch: 1,
+          input: { "0": { json: input } }
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.result.data[0].json?.success) {
+        showAlert("Успешно", "Сопоставление транзакции отменено", "success");
+        loadTransactions();
+      }
+    } catch (error) {
+      console.error('Error unmatching transaction:', error);
+      showAlert("Ошибка", "Не удалось отменить сопоставление", "danger");
+    }
+  };
+
+  // Alert function
+  const showAlert = (title: string, description: string, color: AlertState['color']) => {
+    setAlert({
+      isVisible: true,
+      title,
+      description,
+      color
     });
-  };
-  
-  const handleUnmatchTransaction = (id: number) => {
-    unmatchMutation.mutate({ idexTransactionId: id });
-  };
-  
-  const handleSyncCabinet = () => {
-    if (!cabinetId) {
-      toast.error("Выберите кабинет для синхронизации");
-      return;
-    }
     
-    syncMutation.mutate({ cabinetId, pages: 10 });
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, isVisible: false }));
+    }, 5000);
   };
-  
-  // Форматтеры
-  const formatDate = (date: Date | string | null) => {
+
+  // Utility functions
+  const formatDate = (date: any) => {
     if (!date) return "—";
     return new Date(date).toLocaleString("ru-RU");
   };
-  
+
   const getStatusLabel = (status: number) => {
     const statusItem = TRANSACTION_STATUSES.find(s => s.value === status.toString());
     return statusItem ? statusItem.label : "Неизвестно";
   };
-  
-  // Формирование пагинации
-  const totalPages = transactionsQuery.data?.totalPages || 1;
-  const pageNumbers = [];
-  for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) {
-    pageNumbers.push(i);
-  }
-  
+
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto p-6">
+      {/* Alert */}
+      {alert.isVisible && (
+        <div className="fixed top-4 right-4 z-50 w-96">
+          <Alert
+            color={alert.color}
+            variant="solid"
+            title={alert.title}
+            description={alert.description}
+            isVisible={alert.isVisible}
+            isClosable={true}
+            onVisibleChange={(isVisible) => setAlert(prev => ({ ...prev, isVisible }))}
+            icon={alert.color === "success" ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          />
+        </div>
+      )}
+      
       <h1 className="text-2xl font-bold mb-6">Транзакции IDEX</h1>
       
-      {/* Фильтры */}
+      {/* Filters */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Фильтры</CardTitle>
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <h3 className="text-lg font-medium">Фильтры</h3>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Cabinet Select */}
             <div>
               <label className="block text-sm font-medium mb-1">Кабинет IDEX</label>
-              <Select onValueChange={handleCabinetChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите кабинет" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cabinetsQuery.data?.cabinets.map((cabinet) => (
-                    <SelectItem key={cabinet.id} value={cabinet.id.toString()}>
-                      {cabinet.login} (IDEX ID: {cabinet.idexId})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                onChange={e => setCabinetId(e.target.value ? Number(e.target.value) : null)}
+                value={cabinetId || ""}
+                aria-label="Выберите кабинет"
+              >
+                <option value="">Выберите кабинет</option>
+                {cabinets.map(cabinet => (
+                  <option key={cabinet.id} value={cabinet.id}>
+                    {cabinet.login} (ID: {cabinet.idexId})
+                  </option>
+                ))}
+              </select>
             </div>
             
+            {/* Status Select */}
             <div>
               <label className="block text-sm font-medium mb-1">Статус</label>
-              <Select onValueChange={handleStatusChange} defaultValue="">
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите статус" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TRANSACTION_STATUSES.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                onChange={e => setStatusFilter(e.target.value)}
+                value={statusFilter}
+                aria-label="Выберите статус"
+              >
+                {TRANSACTION_STATUSES.map(status => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
             </div>
             
+            {/* Time Filter Type */}
             <div>
               <label className="block text-sm font-medium mb-1">Тип временного фильтра</label>
               <div className="flex space-x-2">
                 <Button
-                  variant={timeFilterType === "preset" ? "default" : "outline"}
-                  onClick={() => handleTimeFilterTypeChange("preset")}
+                  variant={timeFilterType === "preset" ? "solid" : "flat"}
+                  onClick={() => setTimeFilterType("preset")}
+                  aria-label="Использовать пресеты времени"
                 >
                   Пресет
                 </Button>
                 <Button
-                  variant={timeFilterType === "custom" ? "default" : "outline"}
-                  onClick={() => handleTimeFilterTypeChange("custom")}
+                  variant={timeFilterType === "custom" ? "solid" : "flat"}
+                  onClick={() => setTimeFilterType("custom")}
+                  aria-label="Использовать произвольные даты"
                 >
                   Произвольные даты
                 </Button>
               </div>
             </div>
             
+            {/* Time Filter Options */}
             {timeFilterType === "preset" ? (
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium mb-1">Временной период</label>
@@ -264,9 +367,10 @@ export default function IdexTransactionsPage() {
                   {TIME_FILTER_PRESETS.map((preset) => (
                     <Button
                       key={preset.value}
-                      variant={(timeFilter as any).preset === preset.value ? "default" : "outline"}
-                      onClick={() => handleTimePresetChange(preset.value)}
+                      variant={selectedPreset === preset.value ? "solid" : "flat"}
+                      onClick={() => setSelectedPreset(preset.value)}
                       size="sm"
+                      aria-label={`Выбрать период ${preset.label}`}
                     >
                       {preset.label}
                     </Button>
@@ -281,6 +385,8 @@ export default function IdexTransactionsPage() {
                     type="datetime-local"
                     value={customStartDate}
                     onChange={(e) => setCustomStartDate(e.target.value)}
+                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    aria-label="Дата начала"
                   />
                 </div>
                 <div>
@@ -289,58 +395,70 @@ export default function IdexTransactionsPage() {
                     type="datetime-local"
                     value={customEndDate}
                     onChange={(e) => setCustomEndDate(e.target.value)}
+                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    aria-label="Дата окончания"
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button onClick={handleCustomDateChange}>Применить</Button>
+                  <Button 
+                    onClick={loadTransactions}
+                    aria-label="Применить фильтр по датам"
+                  >
+                    Применить
+                  </Button>
                 </div>
               </div>
             )}
           </div>
-        </CardContent>
+        </CardBody>
         <CardFooter>
-          <Button onClick={handleSyncCabinet} disabled={!cabinetId || syncMutation.isPending}>
-            {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать кабинет"}
+          <Button
+            color="primary"
+            startIcon={<RefreshCw className="w-4 h-4" />}
+            onClick={syncCabinet}
+            isLoading={isSyncing}
+            disabled={!cabinetId || isSyncing}
+            aria-label="Синхронизировать кабинет"
+          >
+            {isSyncing ? "Синхронизация..." : "Синхронизировать кабинет"}
           </Button>
         </CardFooter>
       </Card>
       
-      {/* Таблица транзакций */}
+      {/* Transactions Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardBody className="p-0 overflow-hidden">
           <div className="overflow-x-auto">
-            <Table>
+            <Table aria-label="Таблица транзакций IDEX">
               <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Сумма</TableHead>
-                  <TableHead>Валюта</TableHead>
-                  <TableHead>TxID</TableHead>
-                  <TableHead>Создана</TableHead>
-                  <TableHead>Подтверждена</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Сопоставлено с</TableHead>
-                  <TableHead>Действия</TableHead>
-                </TableRow>
+                <TableColumn>ID</TableColumn>
+                <TableColumn>Сумма</TableColumn>
+                <TableColumn>Валюта</TableColumn>
+                <TableColumn>TxID</TableColumn>
+                <TableColumn>Создана</TableColumn>
+                <TableColumn>Подтверждена</TableColumn>
+                <TableColumn>Статус</TableColumn>
+                <TableColumn>Сопоставлено с</TableColumn>
+                <TableColumn>Действия</TableColumn>
               </TableHeader>
               <TableBody>
-                {transactionsQuery.isLoading ? (
+                {isLoadingTransactions ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-4">
                       Загрузка...
                     </TableCell>
                   </TableRow>
-                ) : transactionsQuery.data?.transactions.length === 0 ? (
+                ) : transactions.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-4">
                       Нет транзакций
                     </TableCell>
                   </TableRow>
                 ) : (
-                  transactionsQuery.data?.transactions.map((tx) => (
+                  transactions.map((tx) => (
                     <TableRow 
                       key={tx.id}
-                      className={selectedTransactionId === tx.id ? "bg-muted" : ""}
+                      className={selectedTransactionId === tx.id ? "bg-gray-100" : ""}
                       onClick={() => !tx.matchedTransactionId && setSelectedTransactionId(tx.id)}
                     >
                       <TableCell>{tx.id}</TableCell>
@@ -362,24 +480,25 @@ export default function IdexTransactionsPage() {
                       <TableCell>
                         {tx.matchedTransactionId ? (
                           <Button 
-                            variant="destructive" 
+                            color="danger" 
                             size="sm" 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleUnmatchTransaction(tx.id);
+                              unmatchTransaction(tx.id);
                             }}
-                            disabled={unmatchMutation.isPending}
+                            aria-label="Отменить сопоставление"
                           >
                             Отменить
                           </Button>
                         ) : (
                           <Button 
-                            variant="outline" 
+                            variant="flat" 
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedTransactionId(tx.id);
                             }}
+                            aria-label="Выбрать транзакцию"
                           >
                             Выбрать
                           </Button>
@@ -391,20 +510,21 @@ export default function IdexTransactionsPage() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
+        </CardBody>
         
         <CardFooter className="flex justify-between items-center pt-4">
-          <div className="text-sm text-muted-foreground">
-            Всего: {transactionsQuery.data?.totalCount || 0} транзакций
+          <div className="text-sm text-gray-500">
+            Всего: {totalCount} транзакций
           </div>
           
-          {transactionsQuery.data && transactionsQuery.data.totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex items-center space-x-2">
               <Button
-                variant="outline"
+                variant="flat"
                 size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page === 1}
+                aria-label="Предыдущая страница"
               >
                 Назад
               </Button>
@@ -412,19 +532,21 @@ export default function IdexTransactionsPage() {
               {pageNumbers.map((p) => (
                 <Button
                   key={p}
-                  variant={p === page ? "default" : "outline"}
+                  variant={p === page ? "solid" : "flat"}
                   size="sm"
                   onClick={() => setPage(p)}
+                  aria-label={`Страница ${p}`}
                 >
                   {p}
                 </Button>
               ))}
               
               <Button
-                variant="outline"
+                variant="flat"
                 size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page === totalPages}
+                aria-label="Следующая страница"
               >
                 Вперёд
               </Button>
@@ -433,16 +555,18 @@ export default function IdexTransactionsPage() {
         </CardFooter>
       </Card>
       
-      {/* Форма сопоставления транзакции */}
+      {/* Match Form */}
       {selectedTransactionId && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Сопоставить транзакцию</CardTitle>
-            <CardDescription>
-              Выбрана транзакция IDEX #{selectedTransactionId}
-            </CardDescription>
+            <div className="flex flex-col">
+              <h3 className="text-lg font-medium">Сопоставить транзакцию</h3>
+              <p className="text-sm text-gray-500">
+                Выбрана транзакция IDEX #{selectedTransactionId}
+              </p>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -452,22 +576,26 @@ export default function IdexTransactionsPage() {
                   value={systemTransactionId}
                   onChange={(e) => setSystemTransactionId(e.target.value)}
                   placeholder="Введите ID транзакции из системы"
+                  aria-label="ID транзакции в системе"
                 />
               </div>
             </div>
-          </CardContent>
+          </CardBody>
           <CardFooter className="flex justify-between">
             <Button
-              variant="outline"
+              variant="flat"
               onClick={() => setSelectedTransactionId(null)}
+              aria-label="Отменить сопоставление"
             >
               Отмена
             </Button>
             <Button
-              onClick={handleMatchTransaction}
-              disabled={matchMutation.isPending || !systemTransactionId}
+              color="primary"
+              onClick={matchTransaction}
+              disabled={!systemTransactionId}
+              aria-label="Сопоставить транзакцию"
             >
-              {matchMutation.isPending ? "Сопоставление..." : "Сопоставить"}
+              Сопоставить
             </Button>
           </CardFooter>
         </Card>

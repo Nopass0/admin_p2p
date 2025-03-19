@@ -10,7 +10,9 @@ import {
   ArrowDownUp, 
   BarChart3, 
   Settings, 
-  ChevronRight
+  ChevronRight,
+  Globe,
+  ArrowRightLeft
 } from "lucide-react";
 
 // Элементы навигации
@@ -29,6 +31,21 @@ const navigationItems = [
     title: "Транзакции",
     href: "/transactions",
     icon: ArrowDownUp,
+  },
+  {
+    title: "IDEX Кабинеты",
+    href: "/idex-cabinets",
+    icon: Globe,
+  },
+  {
+    title: "IDEX Транзакции",
+    href: "/idex-transactions",
+    icon: ArrowDownUp,
+  },
+  {
+    title: "Сопоставления",
+    href: "/matches",
+    icon: ArrowRightLeft,
   },
   {
     title: "Статистика",

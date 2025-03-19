@@ -225,6 +225,406 @@ export const transactionsRouter = createTRPCRouter({
       }
     }),
 
+    getUnmatchedIdexTransactions: publicProcedure
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    page: z.number().int().positive().default(1),
+    pageSize: z.number().int().positive().default(10),
+    searchQuery: z.string().optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, page, pageSize, searchQuery } = input;
+      const startDateTime = dayjs(startDate).toDate();
+      const endDateTime = dayjs(endDate).toDate();
+      
+      // Filter for IDEX transactions with approvedAt in the date range
+      // and not already matched
+      const where = {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        matches: {
+          none: {}
+        }
+      };
+      
+      // Add search filter if provided
+      if (searchQuery) {
+        where.OR = [
+          { externalId: { contains: searchQuery } },
+          { wallet: { contains: searchQuery } }
+        ];
+      }
+      
+      // Get unmatched IDEX transactions
+      const transactions = await ctx.db.idexTransaction.findMany({
+        where,
+        orderBy: {
+          approvedAt: 'desc'
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      });
+      
+      // Count total for pagination
+      const totalTransactions = await ctx.db.idexTransaction.count({
+        where
+      });
+      
+      return {
+        success: true,
+        transactions,
+        pagination: {
+          totalTransactions,
+          totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } catch (error) {
+      console.error("Error getting unmatched IDEX transactions:", error);
+      return {
+        success: false,
+        message: "Failed to get unmatched IDEX transactions",
+        transactions: [],
+        pagination: {
+          totalTransactions: 0,
+          totalPages: 0,
+          currentPage: input.page,
+          pageSize: input.pageSize
+        }
+      };
+    }
+  }),
+
+// Get unmatched user wallet transactions
+getUnmatchedUserTransactions: publicProcedure
+  .input(z.object({
+    userId: z.number().int().positive().nullable(),
+    startDate: z.string(),
+    endDate: z.string(),
+    page: z.number().int().positive().default(1),
+    pageSize: z.number().int().positive().default(10),
+    searchQuery: z.string().optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { userId, startDate, endDate, page, pageSize, searchQuery } = input;
+      const startDateTime = dayjs(startDate).toDate();
+      const endDateTime = dayjs(endDate).toDate();
+      
+      // Base filter for date range and no matches
+      let where = {
+        dateTime: {
+          gte: startDateTime,
+          lte: endDateTime
+        },
+        matches: {
+          none: {}
+        }
+      };
+      
+      // Add user filter if provided
+      if (userId) {
+        where.userId = userId;
+      }
+      
+      // Add search filter if provided
+      if (searchQuery) {
+        where.OR = [
+          { externalId: { contains: searchQuery } },
+          { orderNo: { contains: searchQuery } },
+          { counterparty: { contains: searchQuery } },
+          { totalPrice: { equals: parseFloat(searchQuery) || undefined } }
+        ];
+      }
+      
+      // Get unmatched user transactions
+      const transactions = await ctx.db.transaction.findMany({
+        where,
+        include: {
+          user: true
+        },
+        orderBy: {
+          dateTime: 'desc'
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      });
+      
+      // Count total for pagination
+      const totalTransactions = await ctx.db.transaction.count({
+        where
+      });
+      
+      return {
+        success: true,
+        transactions,
+        pagination: {
+          totalTransactions,
+          totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } catch (error) {
+      console.error("Error getting unmatched user transactions:", error);
+      return {
+        success: false,
+        message: "Failed to get unmatched user transactions",
+        transactions: [],
+        pagination: {
+          totalTransactions: 0,
+          totalPages: 0,
+          currentPage: input.page,
+          pageSize: input.pageSize
+        }
+      };
+    }
+  }),
+
+// Create a manual match between IDEX and user transactions
+createManualMatch: publicProcedure
+  .input(z.object({
+    idexTransactionId: z.number().int().positive(),
+    transactionId: z.number().int().positive()
+  }))
+  .mutation(async ({ ctx, input }) => {
+    try {
+      const { idexTransactionId, transactionId } = input;
+      
+      // Check if either transaction is already matched
+      const existingIdexMatch = await ctx.db.match.findFirst({
+        where: { idexTransactionId }
+      });
+      
+      if (existingIdexMatch) {
+        return {
+          success: false,
+          message: "IDEX транзакция уже сопоставлена с другой транзакцией"
+        };
+      }
+      
+      const existingTransactionMatch = await ctx.db.match.findFirst({
+        where: { transactionId }
+      });
+      
+      if (existingTransactionMatch) {
+        return {
+          success: false,
+          message: "Транзакция кошелька уже сопоставлена с другой IDEX транзакцией"
+        };
+      }
+      
+      // Get both transactions for match metrics calculation
+      const idexTransaction = await ctx.db.idexTransaction.findUnique({
+        where: { id: idexTransactionId }
+      });
+      
+      const transaction = await ctx.db.transaction.findUnique({
+        where: { id: transactionId }
+      });
+      
+      if (!idexTransaction || !transaction) {
+        return {
+          success: false,
+          message: "Одна или обе транзакции не найдены"
+        };
+      }
+      
+      // Calculate time difference
+      let timeDifference = 0;
+      if (idexTransaction.approvedAt && transaction.dateTime) {
+        const timeDiffMinutes = getTimeDifferenceInMinutes(
+          idexTransaction.approvedAt,
+          transaction.dateTime.toISOString()
+        );
+        timeDifference = Math.round(timeDiffMinutes * 60); // Convert to seconds
+      }
+      
+      // Calculate match metrics
+      const metrics = calculateMatchMetrics(transaction, idexTransaction);
+      
+      // Create the match
+      const match = await ctx.db.match.create({
+        data: {
+          idexTransactionId,
+          transactionId,
+          timeDifference,
+          grossExpense: metrics.grossExpense,
+          grossIncome: metrics.grossIncome,
+          grossProfit: metrics.grossProfit,
+          profitPercentage: metrics.profitPercentage
+        }
+      });
+      
+      return {
+        success: true,
+        message: "Транзакции успешно сопоставлены",
+        match
+      };
+    } catch (error) {
+      console.error("Error creating manual match:", error);
+      return {
+        success: false,
+        message: "Произошла ошибка при создании ручного сопоставления"
+      };
+    }
+  }),
+
+// Delete a match
+deleteMatch: publicProcedure
+  .input(z.object({
+    matchId: z.number().int().positive()
+  }))
+  .mutation(async ({ ctx, input }) => {
+    try {
+      const { matchId } = input;
+      
+      // Check if match exists
+      const match = await ctx.db.match.findUnique({
+        where: { id: matchId }
+      });
+      
+      if (!match) {
+        return {
+          success: false,
+          message: "Сопоставление не найдено"
+        };
+      }
+      
+      // Delete the match
+      await ctx.db.match.delete({
+        where: { id: matchId }
+      });
+      
+      return {
+        success: true,
+        message: "Сопоставление успешно удалено"
+      };
+    } catch (error) {
+      console.error("Error deleting match:", error);
+      return {
+        success: false,
+        message: "Произошла ошибка при удалении сопоставления"
+      };
+    }
+  }),
+
+// Enhanced getAllMatches to support search
+getAllMatches: publicProcedure
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    page: z.number().int().positive().default(1),
+    pageSize: z.number().int().positive().default(10),
+    searchQuery: z.string().optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, page, pageSize, searchQuery } = input;
+      const startDateTime = dayjs(startDate).toDate();
+      const endDateTime = dayjs(endDate).toDate();
+      
+      // Base filter for date range
+      let where = {
+        OR: [
+          {
+            transaction: {
+              dateTime: {
+                gte: startDateTime,
+                lte: endDateTime
+              }
+            }
+          },
+          {
+            idexTransaction: {
+              approvedAt: {
+                gte: startDateTime.toISOString(),
+                lte: endDateTime.toISOString()
+              }
+            }
+          }
+        ]
+      };
+      
+      // Add search filter if provided
+      if (searchQuery) {
+        where = {
+          AND: [
+            where,
+            {
+              OR: [
+                { transaction: { user: { name: { contains: searchQuery, mode: 'insensitive' } } } },
+                { idexTransaction: { externalId: { equals: BigInt(searchQuery) || undefined } } },
+                { transaction: { totalPrice: { equals: parseFloat(searchQuery) || undefined } } }
+              ]
+            }
+          ]
+        };
+      }
+      
+      // Get matches with filters
+      const matches = await ctx.db.match.findMany({
+        where,
+        include: {
+          idexTransaction: true,
+          transaction: {
+            include: {
+              user: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      });
+      
+      // Count total for pagination
+      const totalMatches = await ctx.db.match.count({
+        where
+      });
+      
+      // Calculate total statistics
+      const allMatches = await ctx.db.match.findMany({
+        where
+      });
+      
+      const stats = calculateTotalStats(allMatches);
+      
+      return {
+        success: true,
+        matches,
+        stats,
+        pagination: {
+          totalMatches,
+          totalPages: Math.ceil(totalMatches / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } catch (error) {
+      console.error("Error getting all matches:", error);
+      return {
+        success: false,
+        message: "Failed to get all matches",
+        matches: [],
+        stats: null,
+        pagination: {
+          totalMatches: 0,
+          totalPages: 0,
+          currentPage: input.page,
+          pageSize: input.pageSize
+        }
+      };
+    }
+  }),
+
   // Получение всех матчей для пользователя
   getUserMatches: publicProcedure
     .input(z.object({ 
