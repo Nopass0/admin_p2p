@@ -145,6 +145,31 @@ export default function IdexCabinetTransactionsPage() {
       return String(field);
     }
   };
+
+
+  const formatTotal = (total: any): string => {
+    if (!total) return "-";
+    
+    try {
+      const parsedTotal = typeof total === 'string' ? JSON.parse(total) : total;
+      
+      if (parsedTotal.trader) {
+        // Ищем ключи и значения
+        const keys = Object.keys(parsedTotal.trader);
+        if (keys.length > 0) {
+          const firstKey = keys[0];
+          const value = parsedTotal.trader["000001"];
+          
+          return `${value} USDT`;
+        }
+      }
+      
+      return JSON.stringify(parsedTotal);
+    } catch (e) {
+      console.error("Error parsing JSON field:", e);
+      return String(total);
+    }
+  };
   
   return (
     <div className="p-6">
@@ -279,10 +304,11 @@ export default function IdexCabinetTransactionsPage() {
                     <TableColumn>Кошелек</TableColumn>
                     <TableColumn>Сумма</TableColumn>
                     <TableColumn>Итого</TableColumn>
+                    <TableColumn>USDT</TableColumn>
                     <TableColumn>Статус</TableColumn>
                   </TableHeader>
                   <TableBody>
-                    {data.transactions.map((transaction) => (
+                    {data.transactions.map((transaction: any) => (
                       <TableRow key={transaction.id}>
                         <TableCell>{transaction.id}</TableCell>
                         <TableCell>{String(transaction.externalId)}</TableCell>
@@ -292,6 +318,7 @@ export default function IdexCabinetTransactionsPage() {
                         <TableCell>{transaction.wallet || "-"}</TableCell>
                         <TableCell>{formatJsonField(transaction.amount)}</TableCell>
                         <TableCell>{formatJsonField(transaction.total)}</TableCell>
+                        <TableCell>{formatTotal(transaction.total)}</TableCell>
                         <TableCell>{renderStatus(transaction.status)}</TableCell>
                       </TableRow>
                     ))}

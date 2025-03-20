@@ -325,12 +325,12 @@ export default function EnhancedMatchingPage() {
       if (activeTab === "all" && allMatchesData?.matches) {
         data = allMatchesData.matches;
         filename = `all-matches-${dayjs().format("YYYY-MM-DD")}.csv`;
-        headers = ["ID", "Пользователь", "Дата транзакции", "Сумма (₽)", "IDEX ID", "Дата IDEX", "Расход (USDT)", "Доход (USDT)", "Спред (USDT)", "Рентабельность (%)"];
+        headers = ["ID", "Пользователь", "Дата транзакции", "Сумма (₽)", "IDEX ID", "ID IDEX кабинета", "Дата IDEX", "Расход (USDT)", "Доход (USDT)", "Спред (USDT)", "Рентабельность (%)"];
       } else if (activeTab === "byUser" && userMatchesData?.matches) {
         data = userMatchesData.matches;
         const userName = data.length > 0 ? data[0].transaction.user.name : "пользователя";
         filename = `matches-${userName}-${dayjs().format("YYYY-MM-DD")}.csv`;
-        headers = ["ID", "Дата транзакции", "Сумма (₽)", "IDEX ID", "Дата IDEX", "Расход (USDT)", "Доход (USDT)", "Спред (USDT)", "Рентабельность (%)"];
+        headers = ["ID", "Дата транзакции", "Сумма (₽)", "IDEX ID", "ID IDEX кабинета", "Дата IDEX", "Расход (USDT)", "Доход (USDT)", "Спред (USDT)", "Рентабельность (%)"];
       } else if (activeTab === "unmatchedIdex" && unmatchedIdexData?.transactions) {
         data = unmatchedIdexData.transactions;
         filename = `unmatched-idex-${dayjs().format("YYYY-MM-DD")}.csv`;
@@ -361,6 +361,7 @@ export default function EnhancedMatchingPage() {
             dayjs(item.transaction.dateTime).format(DATE_FORMAT),
             item.transaction.totalPrice.toFixed(2),
             item.idexTransaction.externalId.toString(),
+            item.idexTransaction.cabinet.idexId.toString(),
             item.idexTransaction.approvedAt ? dayjs(item.idexTransaction.approvedAt).format(DATE_FORMAT) : "-",
             item.grossExpense.toFixed(2),
             item.grossIncome.toFixed(2),
@@ -376,6 +377,7 @@ export default function EnhancedMatchingPage() {
             dayjs(item.transaction.dateTime).format(DATE_FORMAT),
             item.transaction.totalPrice.toFixed(2),
             item.idexTransaction.externalId.toString(),
+            item.idexTransaction.cabinet.idexId.toString(),
             item.idexTransaction.approvedAt ? dayjs(item.idexTransaction.approvedAt).format(DATE_FORMAT) : "-",
             item.grossExpense.toFixed(2),
             item.grossIncome.toFixed(2),
@@ -1172,6 +1174,7 @@ export default function EnhancedMatchingPage() {
                       <TableColumn>{renderSortableHeader("transaction.dateTime", "Дата транзакции")}</TableColumn>
                       <TableColumn>{renderSortableHeader("transaction.totalPrice", "Сумма транзакции")}</TableColumn>
                       <TableColumn>{renderSortableHeader("idexTransaction.externalId", "IDEX ID")}</TableColumn>
+                      <TableColumn>{renderSortableHeader("idexTransaction.cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
                       <TableColumn>{renderSortableHeader("idexTransaction.approvedAt", "Дата IDEX")}</TableColumn>
                       <TableColumn>{renderSortableHeader("grossExpense", "Расход")}</TableColumn>
                       <TableColumn>{renderSortableHeader("grossIncome", "Доход")}</TableColumn>
@@ -1187,6 +1190,7 @@ export default function EnhancedMatchingPage() {
                           <TableCell>{dayjs(match.transaction.dateTime).format(DATE_FORMAT)}</TableCell>
                           <TableCell>{formatNumber(match.transaction.totalPrice)} ₽</TableCell>
                           <TableCell>{match.idexTransaction.externalId.toString()}</TableCell>
+                          <TableCell>{match.idexTransaction.cabinet.idexId.toString()}</TableCell>
                           <TableCell>{match.idexTransaction.approvedAt ? dayjs(match.idexTransaction.approvedAt).format(DATE_FORMAT) : '-'}</TableCell>
                           <TableCell>{formatNumber(match.grossExpense)} USDT</TableCell>
                           <TableCell>{formatNumber(match.grossIncome)} USDT</TableCell>
@@ -1263,6 +1267,7 @@ export default function EnhancedMatchingPage() {
                       <TableColumn>{renderSortableHeader("transaction.dateTime", "Дата транзакции")}</TableColumn>
                       <TableColumn>{renderSortableHeader("transaction.totalPrice", "Сумма транзакции")}</TableColumn>
                       <TableColumn>{renderSortableHeader("idexTransaction.externalId", "IDEX ID")}</TableColumn>
+                      <TableColumn>{renderSortableHeader("idexTransaction.cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
                       <TableColumn>{renderSortableHeader("idexTransaction.approvedAt", "Дата IDEX")}</TableColumn>
                       <TableColumn>{renderSortableHeader("grossExpense", "Расход")}</TableColumn>
                       <TableColumn>{renderSortableHeader("grossIncome", "Доход")}</TableColumn>
@@ -1277,6 +1282,7 @@ export default function EnhancedMatchingPage() {
                           <TableCell>{dayjs(match.transaction.dateTime).format(DATE_FORMAT)}</TableCell>
                           <TableCell>{formatNumber(match.transaction.totalPrice)} ₽</TableCell>
                           <TableCell>{match.idexTransaction.externalId.toString()}</TableCell>
+                          <TableCell>{match.idexTransaction.cabinet.idexId.toString()}</TableCell>
                           <TableCell>{match.idexTransaction.approvedAt ? dayjs(match.idexTransaction.approvedAt).format(DATE_FORMAT) : '-'}</TableCell>
                           <TableCell>{formatNumber(match.grossExpense)} USDT</TableCell>
                           <TableCell>{formatNumber(match.grossIncome)} USDT</TableCell>
@@ -1464,6 +1470,8 @@ export default function EnhancedMatchingPage() {
                     <TableHeader>
                       <TableColumn>{renderSortableHeader("name", "Пользователь")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.totalTelegramTransactions", "Всего ТГ-транзакций")}</TableColumn>
+                      <TableColumn>{renderSortableHeader("stats.totalIdexTransactions", "Всего Bybit-транзакций")}</TableColumn>
+                      <TableColumn>{renderSortableHeader("stats.totalBybitTransactions", "Всего Bybit-транзакций")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.matchedTelegramTransactions", "Сопоставлено ТГ")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.matchedIdexTransactions", "Сопоставлено IDEX")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.grossExpense", "Расход")}</TableColumn>
@@ -1492,6 +1500,8 @@ export default function EnhancedMatchingPage() {
                             </div>
                           </TableCell>
                           <TableCell>{user.stats.totalTelegramTransactions}</TableCell>
+                          <TableCell>0</TableCell>
+                          <TableCell>0</TableCell>
                           <TableCell>
                             <span className="text-green-600">{user.stats.matchedTelegramTransactions}</span>
                             <span className="text-xs text-gray-500 ml-1">

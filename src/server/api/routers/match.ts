@@ -552,7 +552,11 @@ export const matchRouter = createTRPCRouter({
                 user: true
               }
             },
-            idexTransaction: true
+            idexTransaction: {
+              include: {
+                cabinet: true
+              }
+            }
           },
           orderBy,
           take: pageSize,

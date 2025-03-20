@@ -37,26 +37,13 @@ const navigationItems = [
     href: "/idex-cabinets",
     icon: Globe,
   },
-  {
-    title: "IDEX Транзакции",
-    href: "/idex-transactions",
-    icon: ArrowDownUp,
-  },
+
   {
     title: "Сопоставления",
     href: "/matches",
     icon: ArrowRightLeft,
   },
-  {
-    title: "Статистика",
-    href: "/stats",
-    icon: BarChart3,
-  },
-  {
-    title: "Настройки",
-    href: "/settings",
-    icon: Settings,
-  },
+
 ];
 
 export function AppSidebar() {
