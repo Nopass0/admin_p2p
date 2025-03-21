@@ -31,10 +31,12 @@ export const matchRouter = createTRPCRouter({
       endDate: z.string(),
       approvedOnly: z.boolean().optional().default(true),
       userId: z.number().int().positive().nullable().optional(),
+      cabinetIds: z.array(z.number().int().positive()).optional(),
+      userIds: z.array(z.number().int().positive()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { startDate, endDate, approvedOnly, userId } = input;
+        const { startDate, endDate, approvedOnly, userId, cabinetIds, userIds } = input;
         
         console.log(`Начинаем сопоставление транзакций с ${startDate} по ${endDate}`);
         
@@ -53,6 +55,13 @@ export const matchRouter = createTRPCRouter({
         
         if (approvedOnly) {
           idexTransactionsWhere.status = 2; // Статус "Одобрено"
+        }
+        
+        // Добавляем фильтр по кабинетам, если указаны
+        if (cabinetIds && cabinetIds.length > 0) {
+          idexTransactionsWhere.cabinetId = {
+            in: cabinetIds
+          };
         }
         
         const idexTransactions = await ctx.db.idexTransaction.findMany({
@@ -80,6 +89,13 @@ export const matchRouter = createTRPCRouter({
         // Добавляем фильтр по пользователю, если указан
         if (userId) {
           transactionsWhere.userId = userId;
+        }
+        
+        // Добавляем фильтр по массиву пользователей, если указан
+        if (userIds && userIds.length > 0) {
+          transactionsWhere.userId = {
+            in: userIds
+          };
         }
         
         const transactions = await ctx.db.transaction.findMany({
@@ -299,9 +315,19 @@ export const matchRouter = createTRPCRouter({
             }
           },
           include: {
-            idexTransaction: true,
-            transaction: true
+
+            transaction: {
+              include: {
+                user: true
+              }
+            },
+            idexTransaction: {
+              include: {
+                cabinet: true
+              }
+            }
           },
+
           orderBy,
           skip,
           take: pageSize
@@ -315,7 +341,8 @@ export const matchRouter = createTRPCRouter({
               dateTime: {
                 gte: startDateTime,
                 lte: endDateTime
-              }
+              },
+
             }
           }
         });
@@ -398,7 +425,8 @@ export const matchRouter = createTRPCRouter({
               ...match.idexTransaction,
               approvedAt: match.idexTransaction.approvedAt ? 
                 dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
-            }
+            },
+            cabinet: match.transaction.user.cabinet
           })),
           stats: {
             ...stats,
@@ -434,6 +462,143 @@ export const matchRouter = createTRPCRouter({
         };
       }
     }),
+
+    getCabinetMatchStats: publicProcedure
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    userId: z.number().int().positive().nullable().optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, userId } = input;
+      
+      // Преобразуем даты с учетом таймзоны
+      const startDateTime = dayjs(startDate).utc().toDate();
+      const endDateTime = dayjs(endDate).utc().toDate();
+      
+      // Получаем все кабинеты
+      const cabinets = await ctx.db.idexCabinet.findMany();
+      
+      // Получаем статистику по сопоставленным транзакциям для каждого кабинета
+      const cabinetStats: Record<number, { 
+        matchCount: number; 
+        totalCount: number;
+        hasUserMatches: boolean;
+        userMatchCount?: number;
+      }> = {};
+      
+      // Инициализируем объект статистики для всех кабинетов
+      for (const cabinet of cabinets) {
+        cabinetStats[cabinet.id] = {
+          matchCount: 0,
+          totalCount: 0,
+          hasUserMatches: false
+        };
+      }
+      
+      // Получаем сопоставления для всех кабинетов
+      const matchesQuery = {
+        where: {
+          OR: [
+            {
+              transaction: {
+                dateTime: {
+                  gte: startDateTime,
+                  lte: endDateTime
+                }
+              }
+            },
+            {
+              idexTransaction: {
+                approvedAt: {
+                  gte: startDateTime.toISOString(),
+                  lte: endDateTime.toISOString()
+                }
+              }
+            }
+          ]
+        },
+        include: {
+          idexTransaction: {
+            select: {
+              cabinetId: true
+            }
+          },
+          transaction: {
+            select: {
+              userId: true
+            }
+          }
+        }
+      };
+      
+      const matches = await ctx.db.match.findMany(matchesQuery);
+      
+      // Получаем все IDEX транзакции для выбранного периода
+      const idexTransactions = await ctx.db.idexTransaction.findMany({
+        where: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
+          }
+        },
+        select: {
+          id: true,
+          cabinetId: true
+        }
+      });
+      
+      // Считаем общее количество транзакций для каждого кабинета
+      for (const tx of idexTransactions) {
+        if (cabinetStats[tx.cabinetId]) {
+          cabinetStats[tx.cabinetId].totalCount++;
+        }
+      }
+      
+      // Подсчитываем количество сопоставлений для каждого кабинета
+      for (const match of matches) {
+        const cabinetId = match.idexTransaction.cabinetId;
+        
+        if (cabinetStats[cabinetId]) {
+          cabinetStats[cabinetId].matchCount++;
+          
+          // Проверяем, связан ли кабинет с выбранным пользователем
+          if (userId && match.transaction.userId === userId) {
+            cabinetStats[cabinetId].hasUserMatches = true;
+            cabinetStats[cabinetId].userMatchCount = (cabinetStats[cabinetId].userMatchCount || 0) + 1;
+          }
+        }
+      }
+      
+      // Считаем количество кабинетов с сопоставлениями
+      const totalCabinets = cabinets.length;
+      const matchedCabinets = Object.values(cabinetStats).filter(stats => stats.matchCount > 0).length;
+      
+      // Считаем количество кабинетов с сопоставлениями у выбранного пользователя
+      const userMatchedCabinets = userId 
+        ? Object.values(cabinetStats).filter(stats => stats.hasUserMatches).length 
+        : 0;
+      
+      return {
+        success: true,
+        cabinetStats,
+        totalCabinets,
+        matchedCabinets,
+        userMatchedCabinets
+      };
+    } catch (error) {
+      console.error("Ошибка при получении статистики по кабинетам:", error);
+      return {
+        success: false,
+        message: "Произошла ошибка при получении статистики по кабинетам",
+        cabinetStats: {},
+        totalCabinets: 0,
+        matchedCabinets: 0,
+        userMatchedCabinets: 0
+      };
+    }
+  }),
 
   // Получение всех сопоставлений
   getAllMatches: publicProcedure
