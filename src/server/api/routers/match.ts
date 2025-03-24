@@ -233,6 +233,57 @@ export const matchRouter = createTRPCRouter({
       }
     }),
 
+  deleteByFilter: publicProcedure
+    .input(z.object({
+      userIds: z.array(z.number().int().positive()),
+      startDate: z.string(),
+      endDate: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { userIds, startDate, endDate } = input;
+        
+        // Преобразуем даты с учетом таймзоны
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
+
+        console.log(`Получены данные:`, { userIds, startDate, endDate });
+        
+        // Удаляем сопоставления
+        // Находим транзакции пользователей в указанном диапазоне дат
+        const userTransactions = await ctx.db.transaction.findMany({
+          where: {
+            userId: { in: userIds },
+            dateTime: {
+              gte: startDateTime,
+              lte: endDateTime
+            }
+          },
+          select: { id: true }
+        });
+      
+
+        // Получаем ID транзакций
+        const transactionIds = userTransactions.map(t => t.id);
+
+        console.log(`Найдено ${transactionIds.length} транзакций`);
+
+        // Удаляем все совпадения для найденных транзакций
+        const deleteResult = await ctx.db.match.deleteMany({
+          where: {
+            transactionId: { in: transactionIds }
+          }
+        });
+        
+        console.log(`Удалено ${deleteResult.count} сопоставлений`);
+        
+        return { success: true };
+      } catch (error) {
+        console.error("Ошибка при удалении сопоставлений:", error);
+        return { success: false, message: "Произошла ошибка при удалении сопоставлений" };
+      }
+    }),
+
   // Получение сопоставлений для пользователя
   getUserMatches: publicProcedure
     .input(z.object({

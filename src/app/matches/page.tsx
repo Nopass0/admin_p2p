@@ -182,6 +182,7 @@ export default function EnhancedMatchingPage() {
 
   // Состояния для модального окна сопоставления
   const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
+  const [isDeleteByFilterOpen, setIsDeleteByFilterOpen] = useState(false);
   const [matchModalStartDate, setMatchModalStartDate] = useState(
 startDate
   );
@@ -197,6 +198,8 @@ startDate
   // State for selected cabinets in the main view
   const [selectedViewCabinetIds, setSelectedViewCabinetIds] = useState<SelectedCabinets>({});
   const [isCabinetSelectorOpen, setIsCabinetSelectorOpen] = useState(false);
+
+  const [selectedUsersForDeleteMatchIds, setSelectedUsersForDeleteMatchIds] = useState<number[]>([]);
 
 
   // Загрузка дат из localStorage
@@ -465,6 +468,23 @@ startDate
     onError: (error) => {
       setIsRunningMatch(false);
       showAlert("Ошибка", `Ошибка при сопоставлении транзакций: ${error.message}`, "danger");
+    }
+  });
+
+  // Delete by filter mutation
+  const deleteMatchesMutation = api.match.deleteByFilter.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Сопоставления успешно удалены", "success");
+      // Refresh data in all tabs
+      void refetchAllMatches();
+      if (selectedUserId) void refetchUserMatches();
+      void refetchUsersWithStats();
+      void refetchUnmatchedIdex();
+      void refetchUnmatchedUser();
+      void refetchUnmatchedStats();
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при удалении сопоставлений: ${error.message}`, "danger");
     }
   });
 
@@ -1060,6 +1080,9 @@ startDate
     );
   };
 
+  const [deleteStartDate, setDeleteStartDate] = useState(startDate);
+  const [deleteEndDate, setDeleteEndDate] = useState(endDate);
+
   // Function to handle opening the match modal
   const handleOpenMatchModal = () => {
     setMatchModalStartDate(startDate);
@@ -1068,6 +1091,16 @@ startDate
     setSelectedUserIds({});
     setSelectedCabinetIds({});
     setIsMatchModalOpen(true);
+  };
+
+  const handleOpenDeleteByFilterModal = () => {
+    setDeleteStartDate(startDate);
+    setDeleteEndDate(endDate);
+    setIsDeleteByFilterOpen(true);
+  };
+
+  const handleCloseDeleteByFilterModal = () => {
+    setIsDeleteByFilterOpen(false);
   };
 
   // Handle modal close
@@ -1119,6 +1152,23 @@ startDate
     });
   };
 
+  const [isDeletingMatches, setIsDeletingMatches] = useState(false);
+
+  function handleDeleteMatches(): void {
+    setIsDeletingMatches(true);
+    
+    // Call the mutation with selected parameters
+    deleteMatchesMutation.mutate({
+      startDate: deleteStartDate,
+      endDate: deleteEndDate,
+
+      userIds: selectedUsersForDeleteMatchIds,
+
+    });
+
+    setIsDeletingMatches(false);
+  }
+
   return (
     <div className="p-6">
       {/* Alert notification */}
@@ -1152,7 +1202,7 @@ startDate
           {(activeTab === "unmatchedIdex" || activeTab === "unmatchedUser") && (
             <Button
               color="primary"
-              startIcon={<Link className="w-4 h-4" />}
+
               onClick={createManualMatch}
               disabled={!selectedIdexTransaction || !selectedUserTransaction}
             >
@@ -1160,12 +1210,12 @@ startDate
             </Button>
           )}
           <Button
-            color="primary"
-            startIcon={<RefreshCw className="w-4 h-4" />}
+            color="danger"
+            onClick={handleOpenDeleteByFilterModal}
             isLoading={isRunningMatch}
-            onClick={runMatchProcess}
+            
           >
-            {isRunningMatch ? "Сопоставление..." : "Запустить сопоставление"}
+            Удалить по фильтрам
           </Button>
           <Button
             color="primary"
@@ -2033,6 +2083,80 @@ startDate
           )}
         </CardBody>
       </Card>
+
+      {/* Modal for deleting matches by filter */}
+      <Modal
+        isOpen={isDeleteByFilterOpen}
+        onClose={() => setIsDeleteByFilterOpen(false)}
+        aria-label="Модальное окно удаления сопоставлений"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <h3 className="text-lg font-medium">Удаление сопоставлений</h3>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Дата и время начала</label>
+                  <Input
+                    type="datetime-local"
+                    value={deleteStartDate}
+                    onChange={(e) => setDeleteStartDate(e.target.value)}
+                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    aria-label="Дата и время начала"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Дата и время окончания</label>
+                  <Input
+                    type="datetime-local"
+                    value={deleteEndDate}
+                    onChange={(e) => setDeleteEndDate(e.target.value)}
+                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    aria-label="Дата и время окончания"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Выберите пользователей</label>
+                <div className="max-h-60 overflow-y-auto border rounded-md p-2">
+                  {usersData?.users.map(user => (
+                    <div key={user.id} className="flex items-center py-1">
+                      <Checkbox
+                        id={`user-${user.id}`}
+                        checked={selectedUsersForDeleteMatchIds.includes(user.id)}
+                        onChange={() => {
+                          setSelectedUsersForDeleteMatchIds(prev => 
+                            prev.includes(user.id) 
+                                ? prev.filter(id => id !== user.id)
+                              : [...prev, user.id]
+                          );
+                        }}
+                        aria-label={`Выбрать пользователя ${user.id}`}
+                      />
+                      <label htmlFor={`user-${user.id}`} className="ml-2">
+                        {user.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color="danger"
+              onClick={handleDeleteMatches}
+              isLoading={isDeletingMatches}
+              aria-label="Удалить сопоставления"
+            >
+              Удалить
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
       
       {/* Modal for matching with filters */}
       <Modal
