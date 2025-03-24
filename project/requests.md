@@ -71,6 +71,43 @@ Module not found: Can't resolve '@heroui/react/table'
 - Изменены свойства для работы с TRPC (isLoading → status === "pending")
 - Обновлена документация проекта (история и структура)
 
+## 24.03.2025
+### Запрос
+```
+@[prisma/schema.prisma] @[src/server/api/routers/idex.ts] prisma:query INSERT INTO "public"."IdexTransaction" ("externalId","paymentMethodId","wallet","amount","total","status","approvedAt","expiredAt","createdAtExternal","updatedAtExternal","extraData","cabinetId","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING "public"."IdexTransaction"."id", "public"."IdexTransaction"."externalId", "public"."IdexTransaction"."paymentMethodId", "public"."IdexTransaction"."wallet", "public"."IdexTransaction"."amount", "public"."IdexTransaction"."total", "public"."IdexTransaction"."status", "public"."IdexTransaction"."approvedAt", "public"."IdexTransaction"."expiredAt", "public"."IdexTransaction"."createdAtExternal", "public"."IdexTransaction"."updatedAtExternal", "public"."IdexTransaction"."extraData", "public"."IdexTransaction"."cabinetId", "public"."IdexTransaction"."createdAt", "public"."IdexTransaction"."updatedAt"
+prisma:query INSERT INTO "public"."IdexTransaction" ("externalId","paymentMethodId","wallet","amount","total","status","approvedAt","expiredAt","createdAtExternal","updatedAtExternal","extraData","cabinetId","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING "public"."IdexTransaction"."id", "public"."IdexTransaction"."externalId", "public"."IdexTransaction"."paymentMethodId", "public"."IdexTransaction"."wallet", "public"."IdexTransaction"."amount", "public"."IdexTransaction"."total", "public"."IdexTransaction"."status", "public"."IdexTransaction"."approvedAt", "public"."IdexTransaction"."expiredAt", "public"."IdexTransaction"."createdAtExternal", "public"."IdexTransaction"."updatedAtExternal", "public"."IdexTransaction"."extraData", "public"."IdexTransaction"."cabinetId", "public"."IdexTransaction"."createdAt", "public"."IdexTransaction"."updatedAt"
+...
+Unique constraint failed on the fields: (`externalId`,`cabinetId`)
+prisma:error 
+Invalid `db.idexTransaction.create()` invocation in
+C:\Projects\admin_p2p\.next\server\chunks\[root of the server]__09595f19._.js:2340:35
+
+  2337 // Сохраняем новые транзакции
+  2338 const savedTransactions = await Promise.all(newTransactions.map(async (transaction)=>{
+  2339     const { id, payment_method_id, wallet, amount, total, status, approved_at, expired_at, created_at, updated_at, ...extraData } = transaction;
+→ 2340     return db.idexTransaction.create(
+Can't reach database server at `ep-red-bird-a67kfedb-pooler.us-west-2.aws.neon.tech:5432`
+
+Please make sure your database server is running at `ep-red-bird-a67kfedb-pooler.us-west-2.aws.neon.tech:5432`.
+```
+
+### Ответ
+Решены две проблемы при синхронизации транзакций из IDEX:
+
+1. Исправлена ошибка уникального ограничения:
+   - Улучшен механизм фильтрации существующих транзакций перед сохранением новых
+   - Добавлено логирование количества существующих транзакций для каждого кабинета
+   - Реализовано корректное сравнение составного ключа (externalId, cabinetId) для предотвращения дубликатов
+
+2. Решена проблема подключения к базе данных Neon:
+   - Реализована функция `withRetry` для выполнения операций с автоматическими повторными попытками
+   - Добавлен механизм экспоненциального увеличения задержки между попытками (от 2 до 4.5 секунд)
+   - Применен механизм повторных попыток ко всем операциям с базой данных в функции `saveTransactions`
+   - Улучшена обработка ошибок в процессе синхронизации для предотвращения остановки всего процесса
+   - Добавлена проверка кода ошибки Prisma (P1001) для идентификации проблем с подключением
+
+Теперь система работает стабильно: корректно идентифицирует существующие транзакции и автоматически повторяет попытки подключения к базе данных при временной недоступности сервера Neon.
+
 ## 25.03.2025
 ### Запрос
 ```

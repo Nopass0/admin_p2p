@@ -13,6 +13,7 @@ import { Spinner } from "@heroui/spinner";
 import { Badge } from "@heroui/badge";
 import { Calendar, ArrowLeft, Filter, RefreshCw, Globe } from "lucide-react";
 import Link from "next/link";
+import dayjs from "dayjs";
 
 export default function IdexCabinetTransactionsPage() {
   const params = useParams();
@@ -25,6 +26,7 @@ export default function IdexCabinetTransactionsPage() {
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState<string>("");
   const [timeFilter, setTimeFilter] = useState<string>("last24h");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   
   // Получение информации о кабинете
   const {
@@ -48,7 +50,8 @@ export default function IdexCabinetTransactionsPage() {
       startDate: startDate || undefined,
       endDate: endDate || undefined
     },
-    status: status || undefined
+    status: status || undefined,
+    searchQuery: searchQuery || undefined
   }, {
     enabled: !isNaN(cabinetId),
     refetchOnWindowFocus: false
@@ -146,6 +149,31 @@ export default function IdexCabinetTransactionsPage() {
     }
   };
 
+  //Only return number
+  const formatJsonFieldRow = (field: any): string => {
+    if (!field) return "-";
+    
+    try {
+      const parsedField = typeof field === 'string' ? JSON.parse(field) : field;
+      
+      if (parsedField.trader) {
+        // Ищем ключи и значения
+        const keys = Object.keys(parsedField.trader);
+        if (keys.length > 0) {
+          const firstKey = keys[0];
+          const value = parsedField.trader[firstKey];
+          
+          return `${value}`;
+        }
+      }
+      
+      return JSON.stringify(parsedField);
+    } catch (e) {
+      console.error("Error parsing JSON field:", e);
+      return String(field);
+    }
+  };
+
 
   const formatTotal = (total: any): string => {
     if (!total) return "-";
@@ -170,7 +198,36 @@ export default function IdexCabinetTransactionsPage() {
       return String(total);
     }
   };
-  
+
+  // Only number
+  const formatTotalRow = (total: any): string => {
+    if (!total) return "-";
+    
+    try {
+      const parsedTotal = typeof total === 'string' ? JSON.parse(total) : total;
+      
+      if (parsedTotal.trader) {
+        // Ищем ключи и значения
+        const keys = Object.keys(parsedTotal.trader);
+        if (keys.length > 0) {
+          const firstKey = keys[0];
+          const value = parsedTotal.trader["000001"];
+          
+          return `${value}`;
+        }
+      }
+      
+      return JSON.stringify(parsedTotal);
+    } catch (e) {
+      console.error("Error parsing JSON field:", e);
+      return String(total);
+    }
+  };
+    
+  function shiftTimeBy3Hours(approvedAt: any): string | number | Date {
+    return dayjs(approvedAt).subtract(3, 'hour').toDate();
+  }
+
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -205,7 +262,7 @@ export default function IdexCabinetTransactionsPage() {
           </div>
         </CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
             <div>
               <label className="block text-sm font-medium mb-1">Временной период</label>
               <Select
@@ -222,6 +279,7 @@ export default function IdexCabinetTransactionsPage() {
                 <SelectItem key="thisMonth">Этот месяц</SelectItem>
                 <SelectItem key="custom">Произвольный период</SelectItem>
               </Select>
+
             </div>
             
             {timeFilter === "custom" && (
@@ -229,7 +287,7 @@ export default function IdexCabinetTransactionsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Начальная дата</label>
                   <Input
-                    type="date"
+                    type="datetime-local"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     startContent={<Calendar className="w-4 h-4 text-gray-400" />}
@@ -238,7 +296,7 @@ export default function IdexCabinetTransactionsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Конечная дата</label>
                   <Input
-                    type="date"
+                    type="datetime-local"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     startContent={<Calendar className="w-4 h-4 text-gray-400" />}
@@ -246,22 +304,15 @@ export default function IdexCabinetTransactionsPage() {
                 </div>
               </>
             )}
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Статус</label>
-              <Select
-                placeholder="Все статусы"
-                selectedKeys={status ? [status] : []}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <SelectItem key="">Все статусы</SelectItem>
-                <SelectItem key="2">Завершено</SelectItem>
-                <SelectItem key="3">В обработке</SelectItem>
-                <SelectItem key="7">Отменено</SelectItem>
-                <SelectItem key="8">Ошибка</SelectItem>
-                <SelectItem key="9">Отказано</SelectItem>
-              </Select>
-            </div>
+
+            <Input
+              type="text"
+              placeholder="Поиск"
+              className="mt-6"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+
           </div>
           
           <div className="flex justify-end gap-2 mt-4">
@@ -302,10 +353,10 @@ export default function IdexCabinetTransactionsPage() {
                     <TableColumn>Внешний ID</TableColumn>
                     <TableColumn>Дата</TableColumn>
                     <TableColumn>Кошелек</TableColumn>
-                    <TableColumn>Сумма</TableColumn>
-                    <TableColumn>Итого</TableColumn>
-                    <TableColumn>USDT</TableColumn>
-                    <TableColumn>Статус</TableColumn>
+                    <TableColumn>₽ <div className="text-primary-500 text-xl">{data.totalAmountRub.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</div></TableColumn>
+
+                    <TableColumn>USDT <div className="text-primary-500 text-xl">{data.totalTotalUsdt.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</div></TableColumn>
+
                   </TableHeader>
                   <TableBody>
                     {data.transactions.map((transaction: any) => (
@@ -313,13 +364,21 @@ export default function IdexCabinetTransactionsPage() {
                         <TableCell>{transaction.id}</TableCell>
                         <TableCell>{String(transaction.externalId)}</TableCell>
                         <TableCell>
-                          {transaction.approvedAt ? new Date(transaction.approvedAt).toLocaleString() : "-"}
+                          {transaction.approvedAt 
+                            ? new Date(shiftTimeBy3Hours(transaction.approvedAt)).toLocaleDateString('ru-RU', { 
+                                day: 'numeric', 
+                                month: 'long', 
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }).replace(' г.', ' года') 
+                            : "-"}
                         </TableCell>
                         <TableCell>{transaction.wallet || "-"}</TableCell>
                         <TableCell>{formatJsonField(transaction.amount)}</TableCell>
-                        <TableCell>{formatJsonField(transaction.total)}</TableCell>
+
                         <TableCell>{formatTotal(transaction.total)}</TableCell>
-                        <TableCell>{renderStatus(transaction.status)}</TableCell>
+
                       </TableRow>
                     ))}
                   </TableBody>

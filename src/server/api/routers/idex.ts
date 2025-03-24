@@ -67,9 +67,11 @@ export const idexRouter = createTRPCRouter({
           }
         }
       });
+
       
       return {
         cabinets,
+
         totalCount,
         totalPages,
         currentPage: page
@@ -213,7 +215,8 @@ export const idexRouter = createTRPCRouter({
           endDate: z.string().optional()
         })
       ]).optional(),
-      status: z.string().optional()
+      status: z.string().optional(),
+      searchQuery: z.string().optional()
     }))
     .query(async ({ input, ctx }: { 
       input: { 
@@ -226,10 +229,11 @@ export const idexRouter = createTRPCRouter({
           endDate?: string; 
         }; 
         status?: string; 
+        searchQuery?: string; 
       }; 
       ctx: Context 
     }) => {
-      const { cabinetId, page, perPage, timeFilter, status } = input;
+      const { cabinetId, page, perPage, timeFilter, status, searchQuery } = input;
       const skip = (page - 1) * perPage;
       
       // Строим условие where с учетом фильтров
@@ -238,6 +242,15 @@ export const idexRouter = createTRPCRouter({
       // Обрабатываем фильтр статуса
       if (status && status !== "") {
         whereCondition.status = parseInt(status);
+      }
+      
+      // Обрабатываем фильтр поиска
+      if (searchQuery && searchQuery !== "") {
+        whereCondition.OR = [
+          { id: { equals: Number(searchQuery) || undefined } },
+          { externalId: { equals: searchQuery } },
+          { paymentMethodId: { equals: searchQuery } },
+        ];
       }
       
       // Обрабатываем фильтр времени
@@ -305,6 +318,44 @@ export const idexRouter = createTRPCRouter({
       
       // Вычисляем общее количество страниц
       const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+
+      const transactions_ = await ctx.db.idexTransaction.findMany({
+        where: whereCondition,
+        select: {
+          amount: true,
+          total: true
+        }
+      });
+      
+      const result = transactions_.reduce((acc: any, transaction: any) => {
+        try {
+          // Parse amount field
+          const amount = typeof transaction.amount === 'string' 
+            ? JSON.parse(transaction.amount) 
+            : transaction.amount;
+            
+          // Parse total field
+          const total = typeof transaction.total === 'string'
+            ? JSON.parse(transaction.total)
+            : transaction.total;
+            
+          // Extract values
+          const amountRub = amount?.trader?.["643"] || 0;
+          const amountUsdt = amount?.trader?.["000001"] || 0;
+          const totalRub = total?.trader?.["643"] || 0;
+          const totalUsdt = total?.trader?.["000001"] || 0;
+          
+          return {
+            amountRub: acc.amountRub + parseFloat(amountRub),
+            amountUsdt: acc.amountUsdt + parseFloat(amountUsdt),
+            totalRub: acc.totalRub + parseFloat(totalRub),
+            totalUsdt: acc.totalUsdt + parseFloat(totalUsdt)
+          };
+        } catch (e) {
+          console.error("Error parsing transaction fields:", e);
+          return acc;
+        }
+      }, { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 });
       
       // Получаем транзакции с пагинацией
       const transactions = await ctx.db.idexTransaction.findMany({
@@ -320,7 +371,11 @@ export const idexRouter = createTRPCRouter({
         transactions,
         totalCount,
         totalPages,
-        currentPage: page
+        currentPage: page,
+        totalAmountRub: result.amountRub,
+        totalAmountUsdt: result.amountUsdt,
+        totalTotalRub: result.totalRub,
+        totalTotalUsdt: result.totalUsdt
       };
     }),
   
@@ -790,7 +845,7 @@ async function fetchTransactionsPage(cookies: Cookie[], page: number): Promise<T
  * @param pages Количество страниц для получения
  * @returns Массив транзакций
  */
-async function fetchTransactions(cookies: Cookie[], pages: number = DEFAULT_PAGES_TO_FETCH): Promise<Transaction[]> {
+async function fetchTransactions(cookies: Cookie[], pages: number = DEFAULT_PAGES_TO_FETCH, db: any): Promise<Transaction[]> {
   const allTransactions: Transaction[] = [];
   
   for (let page = 1; page <= pages; page++) {
@@ -804,7 +859,30 @@ async function fetchTransactions(cookies: Cookie[], pages: number = DEFAULT_PAGE
     try {
       const transactions = await fetchTransactionsPage(cookies, page);
       console.info(`Найдено ${transactions.length} транзакций на странице ${page}`);
-      allTransactions.push(...transactions);
+      
+      // Проверяем, есть ли транзакции уже в базе данных
+      if (transactions.length > 0) {
+        const externalIds = transactions.map(t => t.id);
+        const existingTransactions = await withRetry(() => db.idexTransaction.findMany({
+          where: {
+            externalId: { in: externalIds }
+          },
+          select: { externalId: true }
+        }));
+        
+        const existingIds = new Set(existingTransactions.map(t => t.externalId));
+        const newTransactions = transactions.filter(t => !existingIds.has(t.id));
+        
+        console.info(`Найдено ${newTransactions.length} новых транзакций на странице ${page}`);
+        allTransactions.push(...newTransactions);
+        
+        // Если все транзакции на странице уже есть в базе данных, прекращаем получение
+        if (newTransactions.length === 0) {
+          console.info(`Все транзакции на странице ${page} уже существуют в базе данных. Прекращаем получение.`);
+          break;
+        }
+      }
+      
     } catch (error) {
       console.warn(`Ошибка получения страницы ${page}: ${error}`);
       // Продолжаем со следующей страницей вместо полного прерывания
@@ -821,16 +899,21 @@ async function fetchTransactions(cookies: Cookie[], pages: number = DEFAULT_PAGE
  * @param db Экземпляр Prisma клиента
  */
 async function saveTransactions(transactions: Transaction[], cabinetId: number, db: any): Promise<any[]> {
-  // Получаем существующие ID транзакций для этого кабинета
-  const existingTransactions = await db.idexTransaction.findMany({
+  // Получаем существующие транзакции для этого кабинета
+  const existingTransactions = await withRetry(() => db.idexTransaction.findMany({
     where: { cabinetId },
-    select: { externalId: true }
-  });
+    select: { externalId: true, cabinetId: true }
+  }));
+
+  console.info(`Найдено ${existingTransactions.length} существующих транзакций для кабинета ${cabinetId}`);
   
-  const existingIds = new Set(existingTransactions.map((t: any) => t.externalId.toString()));
-  
-  // Фильтруем только новые транзакции
-  const newTransactions = transactions.filter(t => !existingIds.has(t.id));
+  // Создаем набор уникальных идентификаторов [externalId, cabinetId]
+  const existingPairs = new Set(
+    existingTransactions.map(t => `${t.externalId.toString()}_${t.cabinetId}`)
+  );
+
+  // Фильтруем транзакции, которые уже существуют в БД
+  const newTransactions = transactions.filter(t => !existingPairs.has(`${t.id}_${cabinetId}`));
   
   if (newTransactions.length === 0) {
     console.info(`Нет новых транзакций для сохранения для кабинета ${cabinetId}`);
@@ -842,7 +925,7 @@ async function saveTransactions(transactions: Transaction[], cabinetId: number, 
     newTransactions.map(async transaction => {
       const { id, payment_method_id, wallet, amount, total, status, approved_at, expired_at, created_at, updated_at, ...extraData } = transaction;
       
-      return db.idexTransaction.create({
+      return withRetry(() => db.idexTransaction.create({
         data: {
           externalId: BigInt(id),
           paymentMethodId: BigInt(payment_method_id),
@@ -857,12 +940,36 @@ async function saveTransactions(transactions: Transaction[], cabinetId: number, 
           extraData: extraData as any,
           cabinetId
         }
-      });
+      }));
     })
   );
   
   console.info(`Сохранено ${savedTransactions.length} новых транзакций для кабинета ${cabinetId} (всего: ${existingTransactions.length + savedTransactions.length})`);
   return savedTransactions;
+}
+
+/**
+ * Выполняет функцию с автоматическим повтором при ошибках подключения к базе данных
+ * @param fn Функция для выполнения
+ * @param retries Количество повторных попыток
+ * @param delay Задержка между попытками в мс
+ * @returns Результат выполнения функции
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    if (
+      retries > 0 && 
+      error?.code === 'P1001' && // Код ошибки соединения с базой данных Prisma
+      error?.message?.includes("Can't reach database server")
+    ) {
+      console.info(`Проблема с подключением к базе данных. Повторная попытка через ${delay}мс. Осталось попыток: ${retries}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 1.5); // Увеличиваем задержку при каждой новой попытке
+    }
+    throw error;
+  }
 }
 
 /**
@@ -884,10 +991,10 @@ async function syncCabinetTransactions(cabinet: any, pages: number = DEFAULT_PAG
   // Добавляем задержку перед запросом транзакций
   await new Promise(resolve => setTimeout(resolve, BASE_DELAY));
   
-  const transactions = await fetchTransactions(cookies, pages);
+  const transactions = await fetchTransactions(cookies, pages, db);
   const savedTransactions = await saveTransactions(transactions, cabinet.id, db);
   
   console.info(`Обработаны транзакции для кабинета ${cabinet.login}`);
   
-  return savedTransactions;
+  return transactions;
 }

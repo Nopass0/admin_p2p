@@ -41,22 +41,19 @@ export const matchRouter = createTRPCRouter({
         console.log(`Начинаем сопоставление транзакций с ${startDate} по ${endDate}`);
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         console.log(`UTC даты: с ${startDateTime.toISOString()} по ${endDateTime.toISOString()}`);
         
         // Получаем IdexTransactions в указанном диапазоне дат
         let idexTransactionsWhere: any = {
           approvedAt: {
-            not: null,
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
           }
         };
-        
-        if (approvedOnly) {
-          idexTransactionsWhere.status = 2; // Статус "Одобрено"
-        }
-        
+   
         // Добавляем фильтр по кабинетам, если указаны
         if (cabinetIds && cabinetIds.length > 0) {
           idexTransactionsWhere.cabinetId = {
@@ -81,8 +78,8 @@ export const matchRouter = createTRPCRouter({
         // Получаем Transactions в указанном диапазоне дат
         let transactionsWhere: any = {
           dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
           }
         };
         
@@ -245,15 +242,16 @@ export const matchRouter = createTRPCRouter({
       page: z.number().int().positive().default(1),
       pageSize: z.number().int().positive().default(10),
       sortColumn: z.string().optional(),
-      sortDirection: z.enum(["asc", "desc", "null"]).optional()
+      sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+      cabinetIds: z.array(z.number().int().positive()).optional()
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { userId, startDate, endDate, page, pageSize, sortColumn, sortDirection } = input;
+        const { userId, startDate, endDate, page, pageSize, sortColumn, sortDirection, cabinetIds } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         // Расчет пагинации
         const skip = (page - 1) * pageSize;
@@ -311,7 +309,8 @@ export const matchRouter = createTRPCRouter({
               dateTime: {
                 gte: startDateTime,
                 lte: endDateTime
-              }
+              },
+              
             }
           },
           include: {
@@ -474,8 +473,8 @@ export const matchRouter = createTRPCRouter({
       const { startDate, endDate, userId } = input;
       
       // Преобразуем даты с учетом таймзоны
-      const startDateTime = dayjs(startDate).utc().toDate();
-      const endDateTime = dayjs(endDate).utc().toDate();
+      const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+      const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
       
       // Получаем все кабинеты
       const cabinets = await ctx.db.idexCabinet.findMany();
@@ -609,15 +608,18 @@ export const matchRouter = createTRPCRouter({
       pageSize: z.number().int().positive().default(10),
       searchQuery: z.string().optional(),
       sortColumn: z.string().optional(),
-      sortDirection: z.enum(["asc", "desc", "null"]).optional()
+      sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+      cabinetIds: z.array(z.number().int().positive()).optional()
+
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
+        const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, cabinetIds } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        // Преобразуем даты с учетом таймзоны (добавляем +3 часа к каждой дате)
+        const startDateTime = dayjs(startDate).add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).add(3, 'hour').toDate();
         
         // Строим базовый фильтр по диапазону дат
         let where: any = {
@@ -640,6 +642,23 @@ export const matchRouter = createTRPCRouter({
             }
           ]
         };
+
+        // Если указаны идентификаторы кабинетов, добавляем фильтр
+        if (cabinetIds && cabinetIds.length > 0) {
+          where = {
+            ...where,
+            AND: [
+              {
+                idexTransaction: {
+                  cabinetId: {
+                    in: cabinetIds
+                  }
+                }
+              }
+            ]
+          };
+        }
+      
         
         // Если есть поисковый запрос, добавляем фильтры
         if (searchQuery) {
@@ -884,8 +903,8 @@ export const matchRouter = createTRPCRouter({
         const { startDate, endDate, page, pageSize, sortColumn, sortDirection } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         // Получаем всех пользователей с транзакциями в указанном диапазоне дат
         const users = await ctx.db.user.findMany({
@@ -1114,8 +1133,8 @@ export const matchRouter = createTRPCRouter({
         const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         // Базовый фильтр для IDEX транзакций с approvedAt в заданном диапазоне
         // и еще не сопоставленных
@@ -1154,7 +1173,10 @@ export const matchRouter = createTRPCRouter({
           where,
           orderBy,
           skip: (page - 1) * pageSize,
-          take: pageSize
+          take: pageSize,
+          include: {
+            cabinet: true
+          }
         });
         
         // Считаем общее количество для пагинации
@@ -1209,8 +1231,8 @@ export const matchRouter = createTRPCRouter({
         const { userId, startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         // Базовый фильтр по диапазону дат и отсутствию сопоставлений
         let where: any = {
@@ -1443,8 +1465,8 @@ export const matchRouter = createTRPCRouter({
         const { startDate, endDate, userId } = input;
         
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
+        const startDateTime = dayjs(startDate).utc().add(3, 'hour').toDate();
+        const endDateTime = dayjs(endDate).utc().add(3, 'hour').toDate();
         
         // Базовый фильтр для транзакций пользователя
         let userTransactionsWhere: any = {

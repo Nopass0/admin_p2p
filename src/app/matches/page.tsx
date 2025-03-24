@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect } from "react";
 import { api } from "@/trpc/react";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
@@ -23,6 +23,7 @@ import "dayjs/locale/ru"; // Импортируем русскую локаль
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { Badge } from "@heroui/react";
+import { useDraft } from "@/hooks/useDraft";
 
 // Подключаем плагины для работы с таймзонами
 dayjs.extend(utc);
@@ -34,6 +35,12 @@ dayjs.tz.setDefault("Europe/Moscow"); // Устанавливаем москов
 const shiftTimeBy3Hours = (date: string | Date) => {
   return dayjs(date).subtract(3, 'hour').toDate();
 };
+
+// Создаем функцию для сдвига времени на +3 часа
+const shiftTimeBy3HoursForward = (date: string | Date) => {
+  return dayjs(date).add(3, 'hour').toDate();
+};
+
 
 // Alert notification state interface
 interface AlertState {
@@ -175,15 +182,75 @@ export default function EnhancedMatchingPage() {
 
   // Состояния для модального окна сопоставления
   const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
-  const [matchModalStartDate, setMatchModalStartDate] = useState(startDate);
-  const [matchModalEndDate, setMatchModalEndDate] = useState(endDate);
+  const [matchModalStartDate, setMatchModalStartDate] = useState(
+startDate
+  );
+  const [matchModalEndDate, setMatchModalEndDate] = useState(
+ endDate
+  );
+
   const [matchForAll, setMatchForAll] = useState(true);
+
   const [selectedUserIds, setSelectedUserIds] = useState<SelectedUsers>({});
   const [selectedCabinetIds, setSelectedCabinetIds] = useState<SelectedCabinets>({});
 
   // State for selected cabinets in the main view
   const [selectedViewCabinetIds, setSelectedViewCabinetIds] = useState<SelectedCabinets>({});
   const [isCabinetSelectorOpen, setIsCabinetSelectorOpen] = useState(false);
+
+
+  // Загрузка дат из localStorage
+  useLayoutEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      const savedStartDate = localStorage.getItem('matchStartDate');
+      const savedEndDate = localStorage.getItem('matchEndDate');
+      const savedModalStartDate = localStorage.getItem('matchModalStartDate');
+      const savedModalEndDate = localStorage.getItem('matchModalEndDate');
+      
+      if (savedStartDate) {
+        setStartDate(savedStartDate);
+      }
+      
+      if (savedEndDate) {
+        setEndDate(savedEndDate);
+      }
+      
+      if (savedModalStartDate) {
+        setMatchModalStartDate(savedModalStartDate);
+      }
+      
+      if (savedModalEndDate) {
+        setMatchModalEndDate(savedModalEndDate);
+      }
+    }
+  }, []);
+
+  // Сохранение дат в localStorage при изменении
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('matchStartDate', startDate);
+    }
+  }, [startDate]);
+  
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('matchEndDate', endDate);
+    }
+  }, [endDate]);
+  
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('matchModalStartDate', matchModalStartDate);
+    }
+  }, [matchModalStartDate]);
+  
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('matchModalEndDate', matchModalEndDate);
+    }
+  }, [matchModalEndDate]);
+
+
 
   // Toggle cabinet selection in the main view
   const toggleViewCabinetSelection = (cabinetId: number) => {
@@ -938,7 +1005,7 @@ export default function EnhancedMatchingPage() {
                               key={cabinet.id}
                               className={`flex items-center justify-between rounded-md p-1.5 cursor-pointer ${
                                 isSelected ? 'bg-blue-100' : 
-                                cabinetStats.hasUserMatches ? 'bg-green-50' : 
+                                cabinetStats.matchCount > 0 ? 'bg-green-200' : 
                                 'bg-white'
                               }`}
                               onClick={() => toggleViewCabinetSelection(cabinet.id)}
@@ -1294,7 +1361,7 @@ export default function EnhancedMatchingPage() {
                           <p>
                             {(() => {
                               const tx = unmatchedUserData.transactions.find(t => t.id === selectedUserTransaction);
-                              return tx ? `Дата: ${dayjs(tx.dateTime).format(DATE_FORMAT)}` : '';
+                              return tx ? `Дата: ${dayjs(shiftTimeBy3Hours(tx.dateTime)).format(DATE_FORMAT)}` : '';
                             })()}
                           </p>
                         </>
@@ -1341,7 +1408,7 @@ export default function EnhancedMatchingPage() {
                           <p>
                             {(() => {
                               const tx = unmatchedIdexData.transactions.find(t => t.id === selectedIdexTransaction);
-                              return tx?.approvedAt ? `Дата: ${dayjs(tx.approvedAt).format(DATE_FORMAT)}` : '';
+                              return tx?.approvedAt ? `Дата: ${dayjs(shiftTimeBy3Hours(tx.approvedAt)).format(DATE_FORMAT)}` : '';
                             })()}
                           </p>
                         </>
@@ -1410,7 +1477,7 @@ export default function EnhancedMatchingPage() {
                             >
                               <TableCell>{transaction.id}</TableCell>
                               {!selectedUnmatchedUserId && <TableCell>{transaction.user?.name || '-'}</TableCell>}
-                              <TableCell>{dayjs(transaction.dateTime).format(DATE_FORMAT)}</TableCell>
+                              <TableCell>{dayjs(shiftTimeBy3Hours(transaction.dateTime)).format(DATE_FORMAT)}</TableCell>
                               <TableCell>{formatNumber(transaction.totalPrice)} ₽</TableCell>
                               <TableCell>{transaction.type}</TableCell>
                               <TableCell>
@@ -1471,6 +1538,7 @@ export default function EnhancedMatchingPage() {
                         <TableHeader>
                           <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
                           <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
+                          <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
                           <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
                           <TableColumn>Сумма</TableColumn>
                           <TableColumn>Действия</TableColumn>
@@ -1497,7 +1565,8 @@ export default function EnhancedMatchingPage() {
                               >
                                 <TableCell>{transaction.id}</TableCell>
                                 <TableCell>{transaction.externalId.toString()}</TableCell>
-                                <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).format(DATE_FORMAT) : '-'}</TableCell>
+                                <TableCell>{transaction.cabinet.idexId}</TableCell>
+                                <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
                                 <TableCell>{formatNumber(amountValue)} ₽</TableCell>
                                 <TableCell>
                                   <Button 
