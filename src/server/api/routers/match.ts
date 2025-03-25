@@ -1169,100 +1169,121 @@ export const matchRouter = createTRPCRouter({
     
   // Получение несопоставленных IDEX транзакций
   getUnmatchedIdexTransactions: publicProcedure
-    .input(z.object({
-      startDate: z.string(),
-      endDate: z.string(),
-      page: z.number().int().positive().default(1),
-      pageSize: z.number().int().positive().default(10),
-      searchQuery: z.string().optional(),
-      sortColumn: z.string().optional(),
-      sortDirection: z.enum(["asc", "desc", "null"]).optional()
-    }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
-        
-        // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
-        
-        // Базовый фильтр для IDEX транзакций с approvedAt в заданном диапазоне
-        // и еще не сопоставленных
-        let where: any = {
-          approvedAt: {
-            gte: startDateTime.toISOString(),
-            lte: endDateTime.toISOString()
-          },
-          matches: {
-            none: {}
-          }
-        };
-        
-        // Добавляем поиск по запросу, если указан
-        if (searchQuery) {
-          where = {
-            ...where,
-            OR: [
-              { externalId: { equals: /^\d+$/.test(searchQuery) ? BigInt(searchQuery) : undefined } },
-              { wallet: { contains: searchQuery } }
-            ]
-          };
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    page: z.number().int().positive().default(1),
+    pageSize: z.number().int().positive().default(10),
+    searchQuery: z.string().optional(),
+    sortColumn: z.string().optional(),
+    sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+    cabinetIds: z.array(z.number().int().positive()).optional() // Добавляем массив ID кабинетов
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { 
+        startDate, 
+        endDate, 
+        page, 
+        pageSize, 
+        searchQuery, 
+        sortColumn, 
+        sortDirection,
+        cabinetIds
+      } = input;
+      
+      // Преобразуем даты с учетом таймзоны
+      const startDateTime = dayjs(startDate).utc().toDate();
+      const endDateTime = dayjs(endDate).utc().toDate();
+      
+      // Базовый фильтр для IDEX транзакций с approvedAt в заданном диапазоне
+      // и еще не сопоставленных
+      let where: any = {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        matches: {
+          none: {}
         }
-        
-        // Формируем объект сортировки
-        let orderBy: any = { approvedAt: 'desc' };
-        
-        if (sortColumn && sortDirection && sortDirection !== "null") {
-          orderBy = {
-            [sortColumn]: sortDirection
-          };
-        }
-        
-        // Получаем несопоставленные IDEX транзакции
-        const transactions = await ctx.db.idexTransaction.findMany({
-          where,
-          orderBy,
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-          include: {
-            cabinet: true
-          }
-        });
-        
-        // Считаем общее количество для пагинации
-        const totalTransactions = await ctx.db.idexTransaction.count({
-          where
-        });
-        
-        return {
-          success: true,
-          transactions: transactions.map(tx => ({
-            ...tx,
-            approvedAt: tx.approvedAt ? 
-              dayjs(tx.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
-          })),
-          pagination: {
-            totalTransactions,
-            totalPages: Math.ceil(totalTransactions / pageSize) || 1,
-            currentPage: page,
-            pageSize
-          }
-        };
-      } catch (error) {
-        console.error("Ошибка при получении несопоставленных IDEX транзакций:", error);
-        return {
-          success: false,
-          message: "Ошибка при получении несопоставленных IDEX транзакций",
-          transactions: [],
-          pagination: {
-            totalTransactions: 0,
-            totalPages: 0,
-            currentPage: input.page,
-            pageSize: input.pageSize
-          }
+      };
+      
+      // Добавляем фильтр по кабинетам, если указан
+      if (cabinetIds && cabinetIds.length > 0) {
+        where.cabinetId = {
+          in: cabinetIds
         };
       }
-    }),
+      
+      // Добавляем поиск по запросу, если указан
+      if (searchQuery) {
+        const numericSearch = !isNaN(Number(searchQuery)) ? Number(searchQuery) : undefined;
+        
+        where = {
+          ...where,
+          OR: [
+            numericSearch 
+              ? { externalId: { equals: BigInt(numericSearch) } } 
+              : {},
+            { wallet: { contains: searchQuery, mode: 'insensitive' } }
+          ].filter(condition => Object.keys(condition).length > 0)
+        };
+      }
+      
+      // Формируем объект сортировки
+      let orderBy: any = { approvedAt: 'desc' };
+      
+      if (sortColumn && sortDirection && sortDirection !== "null") {
+        orderBy = {
+          [sortColumn]: sortDirection
+        };
+      }
+      
+      // Получаем несопоставленные IDEX транзакции
+      const transactions = await ctx.db.idexTransaction.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          cabinet: true
+        }
+      });
+      
+      // Считаем общее количество для пагинации
+      const totalTransactions = await ctx.db.idexTransaction.count({
+        where
+      });
+      
+      return {
+        success: true,
+        transactions: transactions.map(tx => ({
+          ...tx,
+          approvedAt: tx.approvedAt ?
+            dayjs(tx.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+        })),
+        pagination: {
+          totalTransactions,
+          totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } catch (error) {
+      console.error("Ошибка при получении несопоставленных IDEX транзакций:", error);
+      return {
+        success: false,
+        message: "Ошибка при получении несопоставленных IDEX транзакций",
+        transactions: [],
+        pagination: {
+          totalTransactions: 0,
+          totalPages: 0,
+          currentPage: input.page,
+          pageSize: input.pageSize
+        }
+      };
+    }
+  }),
 
   // Получение несопоставленных транзакций пользователя
   getUnmatchedUserTransactions: publicProcedure
@@ -1505,111 +1526,166 @@ export const matchRouter = createTRPCRouter({
 
   // Получение статистики несопоставленных транзакций
   getUnmatchedTransactionsStats: publicProcedure
-    .input(z.object({
-      startDate: z.string(),
-      endDate: z.string(),
-      userId: z.number().int().positive().nullable().optional()
-    }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { startDate, endDate, userId } = input;
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    userId: z.number().int().positive().nullable().optional(),
+    cabinetIds: z.array(z.number().int().positive()).optional(), // Array of cabinet IDs
+    searchQuery: z.string().optional() // Search query for IDEX transactions
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, userId, cabinetIds, searchQuery } = input;
+      
+      // Convert dates with timezone handling
+      const startDateTime = dayjs(startDate).utc().toDate();
+      const endDateTime = dayjs(endDate).utc().toDate();
+      
+      // Base filter for user transactions
+      let userTransactionsWhere: any = {
+        dateTime: {
+          gte: startDateTime,
+          lte: endDateTime
+        },
+        matches: {
+          none: {}
+        }
+      };
+      
+      // Add user filter if specified
+      if (userId) {
+        userTransactionsWhere.userId = userId;
+      }
+      
+      // Base filter for IDEX transactions
+      let idexTransactionsWhere: any = {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        matches: {
+          none: {}
+        }
+      };
+      
+      // Add cabinet filter if specified
+      if (cabinetIds && cabinetIds.length > 0) {
+        idexTransactionsWhere.cabinetId = {
+          in: cabinetIds
+        };
+      }
+      
+      // Add search if specified
+      if (searchQuery && searchQuery.trim() !== '') {
+        // Search by externalId as string or number
+        const numericSearch = !isNaN(Number(searchQuery)) ? Number(searchQuery) : undefined;
         
-        // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
-        
-        // Базовый фильтр для транзакций пользователя
-        let userTransactionsWhere: any = {
+        idexTransactionsWhere.OR = [
+          numericSearch ? { externalId: { equals: BigInt(numericSearch) } } : {},
+          { wallet: { contains: searchQuery, mode: 'insensitive' } },
+        ].filter(condition => Object.keys(condition).length > 0);
+      }
+      
+      // Get transaction statistics
+      const totalTransactions = await ctx.db.transaction.count({
+        where: {
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          }
+        }
+      });
+      
+      const matchedTransactions = await ctx.db.transaction.count({
+        where: {
           dateTime: {
             gte: startDateTime,
             lte: endDateTime
           },
           matches: {
-            none: {}
+            some: {}
           }
-        };
-        
-        // Добавляем фильтр по пользователю, если указан
-        if (userId) {
-          userTransactionsWhere.userId = userId;
         }
-        
-        // Получаем общую статистику по транзакциям
-        const totalTransactions = await ctx.db.transaction.count({
-          where: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
+      });
+      
+      // Get unmatched user transactions count
+      const unmatchedUserTransactions = await ctx.db.transaction.count({
+        where: userTransactionsWhere
+      });
+      
+      // Get unmatched IDEX transactions count
+      const unmatchedIdexTransactions = await ctx.db.idexTransaction.count({
+        where: idexTransactionsWhere
+      });
+      
+      // Get total IDEX transactions
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({
+        where: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
+          },
+          ...(cabinetIds && cabinetIds.length > 0 ? { cabinetId: { in: cabinetIds } } : {})
+        }
+      });
+      
+      // Get all IDEX cabinets with transaction counts
+      const cabinets = await ctx.db.idexCabinet.findMany({
+        select: {
+          id: true,
+          idexId: true,
+          login: true,
+          _count: {
+            select: {
+              transactions: {
+                where: {
+                  approvedAt: {
+                    gte: startDateTime.toISOString(),
+                    lte: endDateTime.toISOString()
+                  }
+                }
+              }
             }
           }
-        });
-        
-        const matchedTransactions = await ctx.db.transaction.count({
-          where: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
-            },
-            matches: {
-              some: {}
-            }
-          }
-        });
-        
-        // Получаем количество несопоставленных транзакций пользователя
-        const unmatchedUserTransactions = await ctx.db.transaction.count({
-          where: userTransactionsWhere
-        });
-        
-        // Получаем количество несопоставленных IDEX транзакций
-        const unmatchedIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            approvedAt: {
-              gte: startDateTime.toISOString(),
-              lte: endDateTime.toISOString()
-            },
-            matches: {
-              none: {}
-            }
-          }
-        });
-        
-        // Получаем общее количество IDEX транзакций
-        const totalIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            approvedAt: {
-              gte: startDateTime.toISOString(),
-              lte: endDateTime.toISOString()
-            }
-          }
-        });
-        
-        return {
-          success: true,
+        }
+      });
+      
+      // Transform cabinet data for frontend use
+      const cabinetsData = cabinets.map(cabinet => ({
+        id: cabinet.id,
+        idexId: cabinet.idexId,
+        login: cabinet.login,
+        transactionCount: cabinet._count.transactions
+      }));
+      
+      return {
+        success: true,
+        totalTransactions,
+        totalIdexTransactions,
+        totalMatchedTransactions: matchedTransactions,
+        totalUnmatchedTransactions: totalTransactions - matchedTransactions,
+        totalUnmatchedIdexTransactions: unmatchedIdexTransactions,
+        unmatchedUserTransactions,
+        cabinets: cabinetsData,
+        stats: {
+          unmatchedUserTransactions,
+          unmatchedIdexTransactions,
           totalTransactions,
           totalIdexTransactions,
-          totalMatchedTransactions: matchedTransactions,
-          totalUnmatchedTransactions: totalTransactions - matchedTransactions,
-          totalUnmatchedIdexTransactions: unmatchedIdexTransactions,
-          unmatchedUserTransactions,
-          stats: {
-            unmatchedUserTransactions,
-            unmatchedIdexTransactions,
-            totalTransactions,
-            totalIdexTransactions,
-            matchedTransactions,
-            matchedIdexTransactions: totalIdexTransactions - unmatchedIdexTransactions
-          }
-        };
-      } catch (error) {
-        console.error("Ошибка при получении статистики несопоставленных транзакций:", error);
-        return {
-          success: false,
-          message: "Произошла ошибка при получении статистики несопоставленных транзакций",
-          stats: null
-        };
-      }
-    })
+          matchedTransactions,
+          matchedIdexTransactions: totalIdexTransactions - unmatchedIdexTransactions
+        }
+      };
+    } catch (error) {
+      console.error("Ошибка при получении статистики несопоставленных транзакций:", error);
+      return {
+        success: false,
+        message: "Произошла ошибка при получении статистики несопоставленных транзакций",
+        stats: null,
+        cabinets: []
+      };
+    }
+  })
 });
 
 // Вспомогательные функции

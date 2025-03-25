@@ -201,6 +201,9 @@ startDate
 
   const [selectedUsersForDeleteMatchIds, setSelectedUsersForDeleteMatchIds] = useState<number[]>([]);
 
+  // Add these new state variables at the beginning of your component
+  const [selectedIdexCabinetIds, setSelectedIdexCabinetIds] = useState<Record<number, boolean>>({});
+  const [idexSearchQuery, setIdexSearchQuery] = useState("");
 
   // Загрузка дат из localStorage
   useLayoutEffect(() => {
@@ -389,15 +392,30 @@ startDate
     endDate,
     page,
     pageSize,
-    searchQuery,
-    sortColumn: sortState.column || undefined,
-    sortDirection: sortState.direction || undefined,
-    cabinetIds: Object.keys(selectedViewCabinetIds).length > 0 ? 
-      Object.keys(selectedViewCabinetIds).map(id => parseInt(id)) : 
+    searchQuery: idexSearchQuery,
+    cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
+      Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
       undefined
   }, {
     refetchOnWindowFocus: false,
     enabled: activeTab === "unmatchedIdex" || activeTab === "unmatchedUser"
+  });
+
+  // Add this new query to get the cabinets with stats
+  const {
+    data: idexCabinetsData,
+    isLoading: isLoadingIdexCabinets
+  } = api.match.getUnmatchedTransactionsStats.useQuery({
+    startDate,
+    endDate,
+    userId: activeTab === "unmatchedUser" ? selectedUnmatchedUserId : null,
+    cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
+      Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
+      undefined,
+    searchQuery: idexSearchQuery
+  }, {
+    refetchOnWindowFocus: false,
+    enabled: activeTab === "unmatchedIdex" || activeTab === "unmatchedUser"  // Добавляем вкладку "unmatchedUser"
   });
 
   // Get unmatched User transactions
@@ -451,6 +469,46 @@ startDate
     refetchOnWindowFocus: false,
     enabled: activeTab === "unmatchedUser"
   });
+
+  // Add these helper functions for cabinet selection
+  const toggleIdexCabinetSelection = (cabinetId: number) => {
+    setSelectedIdexCabinetIds(prev => {
+      const newState = { ...prev };
+      if (newState[cabinetId]) {
+        delete newState[cabinetId];
+      } else {
+        newState[cabinetId] = true;
+      }
+      return newState;
+    });
+    
+    // Add timeout to update data after state change
+    setTimeout(() => {
+      refetchUnmatchedIdex();
+    }, 100);
+  };
+
+  const clearIdexCabinetSelection = () => {
+    setSelectedIdexCabinetIds({});
+    setTimeout(() => {
+      refetchUnmatchedIdex();
+    }, 100);
+  };
+  
+
+  const selectAllIdexCabinets = () => {
+    if (!idexCabinetsData?.cabinets) return;
+    
+    const allCabinets: Record<number, boolean> = {};
+    idexCabinetsData.cabinets.forEach(cabinet => {
+      allCabinets[cabinet.id] = true;
+    });
+    
+    setSelectedIdexCabinetIds(allCabinets);
+    setTimeout(() => {
+      refetchUnmatchedIdex();
+    }, 100);
+  };
 
   // Match transactions mutation
   const matchTransactionsMutation = api.match.matchTransactions.useMutation({
@@ -1513,7 +1571,7 @@ startDate
                       <Table aria-label="Таблица несопоставленных транзакций кошелька">
                         <TableHeader>
                           <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
-                          {!selectedUnmatchedUserId && <TableColumn>{renderSortableHeader("user.name", "Пользователь")}</TableColumn>}
+                          <TableColumn>{renderSortableHeader("user.name", "Пользователь")}</TableColumn>
                           <TableColumn>{renderSortableHeader("dateTime", "Дата")}</TableColumn>
                           <TableColumn>{renderSortableHeader("totalPrice", "Сумма")}</TableColumn>
                           <TableColumn>{renderSortableHeader("type", "Тип")}</TableColumn>
@@ -1526,7 +1584,7 @@ startDate
                               className={selectedUserTransaction === transaction.id ? "bg-blue-100" : ""}
                             >
                               <TableCell>{transaction.id}</TableCell>
-                              {!selectedUnmatchedUserId && <TableCell>{transaction.user?.name || '-'}</TableCell>}
+                              <TableCell>{transaction.user?.name || '-'}</TableCell>
                               <TableCell>{dayjs(shiftTimeBy3Hours(transaction.dateTime)).format(DATE_FORMAT)}</TableCell>
                               <TableCell>{formatNumber(transaction.totalPrice)} ₽</TableCell>
                               <TableCell>{transaction.type}</TableCell>
@@ -1568,99 +1626,198 @@ startDate
               </CardBody>
             </Card>
 
-            {/* IDEX transactions */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Database className="w-5 h-5 text-purple-500" />
-                  <h2 className="text-lg font-semibold">Несопоставленные IDEX транзакции</h2>
+{/* IDEX transactions */}
+<Card>
+  <CardHeader>
+    <div className="flex items-center gap-2">
+      <Database className="w-5 h-5 text-purple-500" />
+      <h2 className="text-lg font-semibold">Несопоставленные IDEX транзакции</h2>
+    </div>
+  </CardHeader>
+  <CardBody>
+    {/* Добавляем поиск и фильтры по кабинетам */}
+    <div className="mb-4 grid grid-cols-1 gap-4">
+      <div>
+        <label className="block text-sm font-medium mb-2">Поиск транзакций</label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Поиск по ID, кошельку..."
+            value={idexSearchQuery}
+            onChange={(e) => setIdexSearchQuery(e.target.value)}
+            startContent={<Search className="w-4 h-4 text-gray-500" />}
+            aria-label="Поиск по IDEX транзакциям"
+          />
+          <Button
+            color="primary"
+            variant="flat"
+            onClick={() => refetchUnmatchedIdex()}
+            aria-label="Применить фильтры"
+          >
+            <Filter className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium mb-2">Фильтр по кабинетам IDEX</label>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <Button 
+            size="sm" 
+            variant="flat" 
+            color="primary"
+            onClick={selectAllIdexCabinets}
+          >
+            Все кабинеты
+          </Button>
+          <Button 
+            size="sm" 
+            variant="flat" 
+            color="danger"
+            onClick={clearIdexCabinetSelection}
+          >
+            Сбросить
+          </Button>
+        </div>
+        
+        {isLoadingIdexCabinets ? (
+          <div className="text-center">
+            <Spinner size="sm" />
+          </div>
+        ) : (
+          <div className="max-h-32 overflow-y-auto border rounded p-2">
+            {idexCabinetsData?.cabinets && idexCabinetsData.cabinets.length > 0 ? (
+              idexCabinetsData.cabinets.map(cabinet => (
+                <div 
+                  key={cabinet.id}
+                  className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
+                  onClick={() => toggleIdexCabinetSelection(cabinet.id)}
+                >
+                  <div className="flex items-center">
+                    <Checkbox 
+                      isSelected={!!selectedIdexCabinetIds[cabinet.id]}
+                      onChange={() => toggleIdexCabinetSelection(cabinet.id)}
+                      aria-label={`Выбрать кабинет ${cabinet.idexId}`}
+                    />
+                    <span className="ml-2">
+                      ID: {cabinet.idexId} {cabinet.login && `(${cabinet.login})`}
+                    </span>
+                  </div>
+                  <Badge size="sm" variant="flat">
+                    {cabinet.transactionCount} транз.
+                  </Badge>
                 </div>
-              </CardHeader>
-              <CardBody>
-                {isLoadingUnmatchedIdex ? (
-                  <div className="flex justify-center py-10">
-                    <Spinner size="lg" color="primary" />
-                  </div>
-                ) : unmatchedIdexData?.transactions && unmatchedIdexData.transactions.length > 0 ? (
-                  <>
-                    <div className="overflow-x-auto">
-                      <Table aria-label="Таблица несопоставленных IDEX транзакций">
-                        <TableHeader>
-                          <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
-                          <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
-                          <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
-                          <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
-                          <TableColumn>Сумма</TableColumn>
-                          <TableColumn>Действия</TableColumn>
-                        </TableHeader>
-                        <TableBody>
-                          {unmatchedIdexData.transactions.map((transaction) => {
-                            // Parse amount from JSON
-                            let amountValue = 0;
-                            try {
-                              if (typeof transaction.amount === 'string') {
-                                const amountJson = JSON.parse(transaction.amount as string);
-                                amountValue = parseFloat(amountJson.trader?.[643] || 0);
-                              } else if (transaction.amount && typeof transaction.amount === 'object') {
-                                amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
-                              }
-                            } catch (error) {
-                              console.error('Ошибка при парсинге JSON поля amount:', error);
-                            }
-                            
-                            return (
-                              <TableRow 
-                                key={transaction.id}
-                                className={selectedIdexTransaction === transaction.id ? "bg-blue-100" : ""}
-                              >
-                                <TableCell>{transaction.id}</TableCell>
-                                <TableCell>{transaction.externalId.toString()}</TableCell>
-                                <TableCell>{transaction.cabinet.idexId}</TableCell>
-                                <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
-                                <TableCell>{formatNumber(amountValue)} ₽</TableCell>
-                                <TableCell>
-                                  <Button 
-                                    color={selectedIdexTransaction === transaction.id ? "secondary" : "primary"} 
-                                    variant="flat" 
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedIdexTransaction(
-                                        selectedIdexTransaction === transaction.id ? null : transaction.id
-                                      );
-                                      if (activeTab === "unmatchedIdex") {
-                                        setActiveTab("unmatchedUser");
-                                      }
-                                    }}
-                                  >
-                                    {selectedIdexTransaction === transaction.id ? "Отменить выбор" : "Выбрать для сопоставления"}
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    {unmatchedIdexData?.pagination.totalPages > 1 && (
-                      <div className="flex justify-center mt-4">
-                        <Pagination
-                          total={unmatchedIdexData.pagination.totalPages}
-                          initialPage={page}
-                          page={page}
-                          onChange={setPage}
-                          aria-label="Пагинация несопоставленных IDEX транзакций"
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-10 text-gray-500">
-                    <AlertCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
-                    <p>Нет несопоставленных IDEX транзакций в выбранном диапазоне дат</p>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
+              ))
+            ) : (
+              <div className="text-center text-gray-500 py-4">
+                Нет доступных кабинетов
+              </div>
+            )}
+          </div>
+        )}
+        
+        {Object.keys(selectedIdexCabinetIds).length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {Object.keys(selectedIdexCabinetIds).map(id => {
+              const cabinet = idexCabinetsData?.cabinets.find(c => c.id === parseInt(id));
+              return cabinet ? (
+                <Badge 
+                  key={id} 
+                  color="primary" 
+                  variant="flat"
+                  className="cursor-pointer"
+                  onClick={() => toggleIdexCabinetSelection(parseInt(id))}
+                >
+                  ID {cabinet.idexId}
+                  <span className="ml-1 text-xs">×</span>
+                </Badge>
+              ) : null;
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+
+    {isLoadingUnmatchedIdex ? (
+      <div className="flex justify-center py-10">
+        <Spinner size="lg" color="primary" />
+      </div>
+    ) : unmatchedIdexData?.transactions && unmatchedIdexData.transactions.length > 0 ? (
+      <>
+        <div className="overflow-x-auto">
+          <Table aria-label="Таблица несопоставленных IDEX транзакций">
+            <TableHeader>
+              <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+              <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
+              <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+              <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
+              <TableColumn>Сумма</TableColumn>
+              <TableColumn>Действия</TableColumn>
+            </TableHeader>
+            <TableBody>
+              {unmatchedIdexData.transactions.map((transaction) => {
+                // Parse amount from JSON
+                let amountValue = 0;
+                try {
+                  if (typeof transaction.amount === 'string') {
+                    const amountJson = JSON.parse(transaction.amount as string);
+                    amountValue = parseFloat(amountJson.trader?.[643] || 0);
+                  } else if (transaction.amount && typeof transaction.amount === 'object') {
+                    amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
+                  }
+                } catch (error) {
+                  console.error('Ошибка при парсинге JSON поля amount:', error);
+                }
+                
+                return (
+                  <TableRow 
+                    key={transaction.id}
+                    className={selectedIdexTransaction === transaction.id ? "bg-blue-100" : ""}
+                  >
+                    <TableCell>{transaction.id}</TableCell>
+                    <TableCell>{transaction.externalId.toString()}</TableCell>
+                    <TableCell>{transaction.cabinet.idexId}</TableCell>
+                    <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
+                    <TableCell>{formatNumber(amountValue)} ₽</TableCell>
+                    <TableCell>
+                      <Button 
+                        color={selectedIdexTransaction === transaction.id ? "secondary" : "primary"} 
+                        variant="flat" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedIdexTransaction(
+                            selectedIdexTransaction === transaction.id ? null : transaction.id
+                          );
+                        }}
+                      >
+                        {selectedIdexTransaction === transaction.id ? "Отменить выбор" : "Выбрать для сопоставления"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        {unmatchedIdexData?.pagination.totalPages > 1 && (
+          <div className="flex justify-center mt-4">
+            <Pagination
+              total={unmatchedIdexData.pagination.totalPages}
+              initialPage={page}
+              page={page}
+              onChange={setPage}
+              aria-label="Пагинация несопоставленных IDEX транзакций"
+            />
+          </div>
+        )}
+      </>
+    ) : (
+      <div className="text-center py-10 text-gray-500">
+        <AlertCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+        <p>Нет несопоставленных IDEX транзакций в выбранном диапазоне дат</p>
+      </div>
+    )}
+  </CardBody>
+</Card>
           </div>
         </>
       )}
@@ -1864,6 +2021,113 @@ startDate
               </div>
             )
           )}
+
+{activeTab === "unmatchedIdex" && (
+  <Card className="mb-6">
+    <CardBody>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Поиск транзакций</label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Поиск по ID, кошельку..."
+              value={idexSearchQuery}
+              onChange={(e) => setIdexSearchQuery(e.target.value)}
+              startContent={<Search className="w-4 h-4 text-gray-500" />}
+              aria-label="Поиск по IDEX транзакциям"
+            />
+            <Button
+              color="primary"
+              variant="flat"
+              onClick={() => refetchUnmatchedIdex()}
+              aria-label="Применить фильтры"
+            >
+              <Filter className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium mb-2">Фильтр по кабинетам IDEX</label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            <Button 
+              size="sm" 
+              variant="flat" 
+              color="primary"
+              onClick={selectAllIdexCabinets}
+            >
+              Все кабинеты
+            </Button>
+            <Button 
+              size="sm" 
+              variant="flat" 
+              color="danger"
+              onClick={clearIdexCabinetSelection}
+            >
+              Сбросить
+            </Button>
+          </div>
+          
+          {isLoadingIdexCabinets ? (
+            <div className="text-center">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <div className="max-h-48 overflow-y-auto border rounded p-2">
+              {idexCabinetsData?.cabinets && idexCabinetsData.cabinets.length > 0 ? (
+                idexCabinetsData.cabinets.map(cabinet => (
+                  <div 
+                    key={cabinet.id}
+                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
+                    onClick={() => toggleIdexCabinetSelection(cabinet.id)}
+                  >
+                    <div className="flex items-center">
+                      <Checkbox 
+                        isSelected={!!selectedIdexCabinetIds[cabinet.id]}
+                        onChange={() => toggleIdexCabinetSelection(cabinet.id)}
+                        aria-label={`Выбрать кабинет ${cabinet.idexId}`}
+                      />
+                      <span className="ml-2">
+                        ID: {cabinet.idexId} {cabinet.login && `(${cabinet.login})`}
+                      </span>
+                    </div>
+                    <Badge size="sm" variant="flat">
+                      {cabinet.transactionCount} транз.
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 py-4">
+                  Нет доступных кабинетов
+                </div>
+              )}
+            </div>
+          )}
+          
+          {Object.keys(selectedIdexCabinetIds).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {Object.keys(selectedIdexCabinetIds).map(id => {
+                const cabinet = idexCabinetsData?.cabinets.find(c => c.id === parseInt(id));
+                return cabinet ? (
+                  <Badge 
+                    key={id} 
+                    color="primary" 
+                    variant="flat"
+                    className="cursor-pointer"
+                    onClick={() => toggleIdexCabinetSelection(parseInt(id))}
+                  >
+                    ID {cabinet.idexId}
+                    <span className="ml-1 text-xs">×</span>
+                  </Badge>
+                ) : null;
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </CardBody>
+  </Card>
+)}
           
           {/* Unmatched IDEX transactions table */}
           {activeTab === "unmatchedIdex" && (

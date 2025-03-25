@@ -50,62 +50,75 @@ export const idexRouter = createTRPCRouter({
       endDate: z.string().optional()
     }))
     .query(async ({ input, ctx }: { input: { page: number; perPage: number; startDate?: string; endDate?: string }; ctx: Context }) => {
-      const { page, perPage, startDate, endDate } = input;
-      const skip = (page - 1) * perPage;
-      
-      const totalCount = await ctx.db.idexCabinet.count();
-      const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
-
-      // Преобразуем даты с учетом таймзоны
-      const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
-      const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
-      
-      let where = {};
-      
-      // Add date filter if both dates are provided
-      if (startDate && endDate) {
-        where = {
-          transactions: {
-            some: {
-              approvedAt: {
-                gte: startDateTime,
-                lte: endDateTime
+      try {
+        const { page, perPage, startDate, endDate } = input;
+        const skip = (page - 1) * perPage;
+        
+        // Преобразуем даты с учетом таймзоны
+        const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
+        const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
+        
+        let where = {};
+        
+        // Add date filter if both dates are provided
+        if (startDate && endDate) {
+          where = {
+            transactions: {
+              some: {
+                approvedAt: {
+                  gte: startDateTime,
+                  lte: endDateTime
+                }
               }
             }
-          }
+          };
+        }
+        
+        // Use withRetry for database operations to handle connection issues
+        const [cabinets, totalCount] = await Promise.all([
+          withRetry(() => ctx.db.idexCabinet.findMany({
+            where,
+            skip,
+            take: perPage,
+            orderBy: {
+              id: 'asc'
+            },
+            include: {
+              _count: {
+                select: {
+                  transactions: {
+                    where: startDate && endDate ? {
+                      approvedAt: {
+                        gte: startDateTime,
+                        lte: endDateTime
+                      }
+                    } : undefined
+                  }
+                }
+              }
+            }
+          })),
+          withRetry(() => ctx.db.idexCabinet.count({ where }))
+        ]);
+        
+        const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+        
+        return {
+          cabinets,
+          totalCount,
+          totalPages,
+          currentPage: page
+        };
+      } catch (error) {
+        console.error("Error fetching cabinets:", error);
+        return {
+          cabinets: [],
+          totalCount: 0,
+          totalPages: 1,
+          currentPage: 1,
+          error: "Failed to fetch cabinets. Database connection error."
         };
       }
-      
-      const cabinets = await ctx.db.idexCabinet.findMany({
-        where,
-        skip,
-        take: perPage,
-        orderBy: {
-          id: 'asc'
-        },
-        include: {
-          _count: {
-            select: {
-              transactions: {
-                where: startDate && endDate ? {
-                  approvedAt: {
-                    gte: startDateTime,
-                    lte: endDateTime
-                  }
-                } : undefined
-              }
-            }
-          }
-        }
-      });
-
-      
-      return {
-        cabinets,
-        totalCount,
-        totalPages,
-        currentPage: page
-      };
     }),
   
   // Получение конкретного кабинета по ID
