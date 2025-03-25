@@ -99,7 +99,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
           <div>
             <label className="block text-sm font-medium mb-1">Начальная дата</label>
             <Input
-              type="date"
+              type="datetime-local"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               startContent={<Calendar className="w-4 h-4 text-gray-400" />}
@@ -108,37 +108,13 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
           <div>
             <label className="block text-sm font-medium mb-1">Конечная дата</label>
             <Input
-              type="date"
+              type="datetime-local"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               startContent={<Calendar className="w-4 h-4 text-gray-400" />}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Тип</label>
-            <Select
-              placeholder="Все типы"
-              selectedKeys={type ? [type] : []}
-              onChange={(e) => setType(e.target.value)}
-            >
-              <SelectItem key="">Все типы</SelectItem>
-              <SelectItem key="buy">Покупка</SelectItem>
-              <SelectItem key="sell">Продажа</SelectItem>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Актив</label>
-            <Select
-              placeholder="Все активы"
-              selectedKeys={asset ? [asset] : []}
-              onChange={(e) => setAsset(e.target.value)}
-            >
-              <SelectItem key="">Все активы</SelectItem>
-              <SelectItem key="USDT">USDT</SelectItem>
-              <SelectItem key="BTC">BTC</SelectItem>
-              <SelectItem key="ETH">ETH</SelectItem>
-            </Select>
-          </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">Статус</label>
             <Select
@@ -192,25 +168,25 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
                 <TableColumn>Количество</TableColumn>
                 <TableColumn>Сумма</TableColumn>
                 <TableColumn>Статус</TableColumn>
-                <TableColumn>Действия</TableColumn>
+                {/* <TableColumn>Действия</TableColumn> */}
               </TableHeader>
               <TableBody>
                 {data.transactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell>{transaction.id}</TableCell>
-                    <TableCell>{new Date(transaction.dateTime).toLocaleString()}</TableCell>
+                    <TableCell>{new Date(new Date(transaction.dateTime).getTime() - 3 * 60 * 60 * 1000).toLocaleString()}</TableCell>
                     <TableCell>{transaction.type}</TableCell>
                     <TableCell>{transaction.asset}</TableCell>
                     <TableCell>{renderType(transaction.type, transaction.amount)}</TableCell>
                     <TableCell>{transaction.totalPrice.toFixed(2)} RUB</TableCell>
                     <TableCell>{renderStatus(transaction.status)}</TableCell>
-                    <TableCell>
+                    {/* <TableCell>
                       <Link href={`/transactions/${transaction.id}`}>
                         <Button size="sm" variant="bordered">
                           Детали
                         </Button>
                       </Link>
-                    </TableCell>
+                    </TableCell> */}
                   </TableRow>
                 ))}
               </TableBody>

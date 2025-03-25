@@ -1,4 +1,5 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import dayjs from "dayjs";
 import { z } from "zod";
 
 export const transactionsRouter = createTRPCRouter({
@@ -17,20 +18,24 @@ export const transactionsRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       try {
         const { userId, page, pageSize, startDate, endDate, type, status, asset } = input;
+
+        // Преобразуем даты с учетом таймзоны
+        const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
+        const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
         
         // Базовый фильтр по пользователю
         let where: any = { userId };
         
         // Добавляем фильтры по датам, если они указаны
-        if (startDate && endDate) {
+        if (startDateTime && endDateTime) {
           where.dateTime = {
-            gte: new Date(startDate),
-            lte: new Date(endDate),
+            gte: new Date(startDateTime),
+            lte: new Date(endDateTime),
           };
-        } else if (startDate) {
-          where.dateTime = { gte: new Date(startDate) };
-        } else if (endDate) {
-          where.dateTime = { lte: new Date(endDate) };
+        } else if (startDateTime) {
+          where.dateTime = { gte: new Date(startDateTime) };
+        } else if (endDateTime) {
+          where.dateTime = { lte: new Date(endDateTime) };
         }
         
         // Добавляем фильтр по типу транзакции, если указан
