@@ -192,13 +192,13 @@ export default function IdexCabinetsPage() {
         <h1 className="text-2xl font-bold">IDEX Кабинеты</h1>
         <div className="flex gap-2">
           <Input
-            type="date"
+            type="datetime-local"
             placeholder="Начальная дата"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
           />
           <Input
-            type="date"
+            type="datetime-local"
             placeholder="Конечная дата"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
