@@ -58,7 +58,7 @@ export const IdexCabinetsTable: React.FC<IdexCabinetsTableProps> = ({
             <TableColumn>IDEX ID</TableColumn>
             <TableColumn>Логин</TableColumn>
             <TableColumn>Пароль</TableColumn>
-            <TableColumn>Транзакции</TableColumn>
+            <TableColumn>Транзакции {cabinets.reduce((acc, cabinet) => acc + (cabinet._count?.transactions || 0), 0)}</TableColumn>
             <TableColumn>Действия</TableColumn>
           </TableHeader>
           <TableBody>
