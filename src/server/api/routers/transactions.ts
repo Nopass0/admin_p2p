@@ -20,8 +20,8 @@ export const transactionsRouter = createTRPCRouter({
         const { userId, page, pageSize, startDate, endDate, type, status, asset } = input;
 
         // Преобразуем даты с учетом таймзоны
-        const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
-        const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
+        const startDateTime = startDate ? dayjs(startDate).utc().toISOString() : undefined;
+        const endDateTime = endDate ? dayjs(endDate).utc().toISOString() : undefined;
         
         // Базовый фильтр по пользователю
         let where: any = { userId };
