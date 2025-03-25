@@ -106,13 +106,14 @@ model NotificationSettings {
 }
 
 model IdexCabinet {
-  id           Int               @id @default(autoincrement())
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  idexId       Int
-  login        String
-  password     String
-  transactions IdexTransaction[]
+  id            Int               @id @default(autoincrement())
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  idexId        Int
+  login         String
+  password      String
+  transactions  IdexTransaction[]
+  IdexSyncOrder IdexSyncOrder[]
 }
 
 model IdexTransaction {
@@ -155,10 +156,10 @@ model Match {
 }
 
 model Card {
-  id        Int      @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   externalId Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   provider    String
   cardNumber  String
@@ -168,9 +169,9 @@ model Card {
   terminalPin String
   balances    CardBalance[]
 
-  comment     String
-  status      String
-  picachu     String
+  comment String
+  status  String
+  picachu String
 }
 
 model CardBalance {
@@ -187,34 +188,57 @@ model CardBalance {
 }
 
 model Salary {
-  id             Int             @id @default(autoincrement())
-  fullName       String
-  position       String
-  startDate      DateTime
-  payday         Int             // День выплаты зарплаты в месяце
-  paydayMonth    Int?            // Месяц выплаты (null если ежемесячно)
-  fixedSalary    Float?          // Фиксированная зарплата (null если не фиксированная)
-  isActive       Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  payments       SalaryPayment[]
+  id          Int             @id @default(autoincrement())
+  fullName    String
+  position    String
+  startDate   DateTime
+  payday      Int // День выплаты зарплаты в месяце
+  paydayMonth Int? // Месяц выплаты (null если ежемесячно)
+  fixedSalary Float? // Фиксированная зарплата (null если не фиксированная)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  payments    SalaryPayment[]
 }
 
 model SalaryPayment {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   salaryId    Int
-  salary      Salary    @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
   amount      Float
   paymentDate DateTime
   comment     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // model SalaryDep {
 //   id  Int @id @default(autoincrement())
 //   date DateTime
 //   amount  Float
-  
+
 //   user  
 // }
+
+enum IdexSyncOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model IdexSyncOrder {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cabinetId Int?
+  cabinet   IdexCabinet? @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  processed Json? // [{cabinetId: 1, transactions: 200, newTransactions: 100}]
+
+  status IdexSyncOrderStatus
+  startSyncAt DateTime?
+  endSyncAt   DateTime?
+  pages Int[]
+}

@@ -409,8 +409,8 @@ export const idexRouter = createTRPCRouter({
       };
     }),
   
-  // Синхронизация всех кабинетов
-  syncAllCabinets: publicProcedure
+  // Создание запроса на синхронизацию всех кабинетов
+  createSyncAllCabinetsOrder: publicProcedure
     .input(z.object({
       pages: z.number().int().min(1).max(100).default(10)
     }))
@@ -431,50 +431,190 @@ export const idexRouter = createTRPCRouter({
           };
         }
         
-        console.log(`Начало синхронизации ${cabinets.length} кабинетов`);
+        // Создаем запись о синхронизации
+        const syncOrder = await ctx.db.idexSyncOrder.create({
+          data: {
+            cabinetId: null, // null означает все кабинеты
+            status: "PENDING",
+            pages: [input.pages], // Сохраняем количество страниц как массив
+            processed: {}, // Пустой объект для будущего заполнения результатами
+          }
+        });
         
-        // Обрабатываем кабинеты с ограничением параллельных запросов
-        const concurrentRequests = 3; // Максимальное количество параллельных запросов
-        const chunks = [];
-        for (let i = 0; i < cabinets.length; i += concurrentRequests) {
-          chunks.push(cabinets.slice(i, i + concurrentRequests));
+        return {
+          success: true,
+          orderId: syncOrder.id,
+          message: `Запрос на синхронизацию всех кабинетов добавлен в очередь. ID запроса: ${syncOrder.id}`
+        };
+      } catch (error: any) {
+        console.error("Ошибка создания запроса синхронизации:", error);
+        throw new Error(`Ошибка создания запроса: ${error.message}`);
+      }
+    }),
+
+  // Создание запроса на синхронизацию конкретного кабинета
+  createSyncCabinetOrder: publicProcedure
+    .input(z.object({
+      cabinetId: z.number().int().positive(),
+      pages: z.number().int().min(1).max(100).default(10)
+    }))
+    .mutation(async ({ input, ctx }: { 
+      input: { 
+        cabinetId: number; 
+        pages: number; 
+      }; 
+      ctx: Context 
+    }) => {
+      try {
+        const cabinet = await ctx.db.idexCabinet.findUnique({
+          where: { id: input.cabinetId }
+        });
+        
+        if (!cabinet) {
+          throw new Error("Кабинет не найден");
         }
         
-        let totalTransactions = 0;
-        
-        for (const chunk of chunks) {
-          const chunkResults = await Promise.all(
-            chunk.map(async (cabinet) => {
-              try {
-                console.log(`Синхронизация кабинета ${cabinet.login}`);
-                const result = await syncCabinetTransactions(cabinet, input.pages, ctx.db);
-                return { success: true, count: result.length, cabinet };
-              } catch (error) {
-                console.error(`Ошибка синхронизации кабинета ${cabinet.login}:`, error);
-                return { success: false, count: 0, cabinet, error };
-              }
-            })
-          );
-          
-          // Считаем общее количество транзакций
-          totalTransactions += chunkResults.reduce((sum, result) => sum + (result.success ? result.count : 0), 0);
-          
-          // Добавляем задержку между группами
-          if (chunks.indexOf(chunk) < chunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, BASE_DELAY * 2));
+        // Создаем запись о синхронизации
+        const syncOrder = await ctx.db.idexSyncOrder.create({
+          data: {
+            cabinetId: input.cabinetId,
+            status: "PENDING",
+            pages: [input.pages],
+            processed: {},
           }
+        });
+        
+        return {
+          success: true,
+          orderId: syncOrder.id,
+          message: `Запрос на синхронизацию кабинета #${cabinet.idexId} добавлен в очередь. ID запроса: ${syncOrder.id}`
+        };
+      } catch (error: any) {
+        console.error(`Ошибка создания запроса синхронизации кабинета ID ${input.cabinetId}:`, error);
+        throw new Error(`Ошибка создания запроса: ${error.message}`);
+      }
+    }),
+
+  // Получение истории синхронизаций с пагинацией
+  getSyncHistory: publicProcedure
+    .input(z.object({
+      page: z.number().int().positive().default(1),
+      perPage: z.number().int().positive().default(10),
+      status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"]).optional(),
+    }))
+    .query(async ({ input, ctx }: { 
+      input: { 
+        page: number; 
+        perPage: number; 
+        status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED"; 
+      }; 
+      ctx: Context 
+    }) => {
+      try {
+        const { page, perPage, status } = input;
+        const skip = (page - 1) * perPage;
+        
+        // Условия фильтрации
+        const where: any = {};
+        if (status) {
+          where.status = status;
+        }
+        
+        // Получение общего количества записей
+        const totalCount = await ctx.db.idexSyncOrder.count({ where });
+        const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+        
+        // Получение записей с пагинацией
+        const syncOrders = await ctx.db.idexSyncOrder.findMany({
+          where,
+          orderBy: {
+            createdAt: 'desc' // Сортировка от новых к старым
+          },
+          skip,
+          take: perPage,
+          include: {
+            cabinet: true // Включаем данные о кабинете
+          }
+        });
+        
+        return {
+          syncOrders,
+          totalCount,
+          totalPages,
+          currentPage: page
+        };
+      } catch (error: any) {
+        console.error("Ошибка получения истории синхронизаций:", error);
+        throw new Error(`Ошибка получения истории: ${error.message}`);
+      }
+    }),
+
+  // Получение детальной информации о конкретном запросе синхронизации
+  getSyncOrderDetails: publicProcedure
+    .input(z.object({
+      orderId: z.number().int().positive()
+    }))
+    .query(async ({ input, ctx }: { 
+      input: { 
+        orderId: number; 
+      }; 
+      ctx: Context 
+    }) => {
+      try {
+        const syncOrder = await ctx.db.idexSyncOrder.findUnique({
+          where: { id: input.orderId },
+          include: {
+            cabinet: true
+          }
+        });
+        
+        if (!syncOrder) {
+          throw new Error("Запрос на синхронизацию не найден");
         }
         
         return {
           success: true,
-          message: `Синхронизация всех кабинетов завершена. Получено ${totalTransactions} новых транзакций.`
+          order: syncOrder
         };
       } catch (error: any) {
-        console.error("Ошибка синхронизации всех кабинетов:", error);
-        throw new Error(`Ошибка синхронизации: ${error.message}`);
+        console.error(`Ошибка получения информации о запросе ID ${input.orderId}:`, error);
+        throw new Error(`Ошибка получения информации: ${error.message}`);
       }
     }),
-  
+
+  // Синхронизация всех кабинетов
+  syncAllCabinets: publicProcedure
+    .input(z.object({
+      pages: z.number().int().min(1).max(100).default(10)
+    }))
+    .mutation(async ({ input, ctx }: { 
+      input: { 
+        pages: number; 
+      }; 
+      ctx: Context 
+    }) => {
+      try {
+        // Создаем запись о синхронизации
+        const syncOrder = await ctx.db.idexSyncOrder.create({
+          data: {
+            cabinetId: null, // null означает все кабинеты
+            status: "PENDING",
+            pages: [input.pages],
+            processed: {},
+          }
+        });
+        
+        return {
+          success: true,
+          orderId: syncOrder.id,
+          message: `Запрос на синхронизацию всех кабинетов добавлен в очередь. ID запроса: ${syncOrder.id}`
+        };
+      } catch (error: any) {
+        console.error("Ошибка создания запроса синхронизации:", error);
+        throw new Error(`Ошибка создания запроса: ${error.message}`);
+      }
+    }),
+
   // Синхронизация конкретного кабинета
   syncCabinetById: publicProcedure
     .input(z.object({
@@ -497,17 +637,24 @@ export const idexRouter = createTRPCRouter({
           throw new Error("Кабинет не найден");
         }
         
-        console.log(`Синхронизация кабинета ${cabinet.login} (ID: ${cabinet.id}), страниц: ${input.pages}`);
-        
-        const transactions = await syncCabinetTransactions(cabinet, input.pages, ctx.db);
+        // Создаем запись о синхронизации
+        const syncOrder = await ctx.db.idexSyncOrder.create({
+          data: {
+            cabinetId: input.cabinetId,
+            status: "PENDING",
+            pages: [input.pages],
+            processed: {},
+          }
+        });
         
         return {
           success: true,
-          message: `Синхронизация кабинета ${cabinet.login} выполнена успешно. Получено ${transactions.length} новых транзакций.`
+          orderId: syncOrder.id,
+          message: `Запрос на синхронизацию кабинета #${cabinet.idexId} добавлен в очередь. ID запроса: ${syncOrder.id}`
         };
       } catch (error: any) {
-        console.error(`Ошибка синхронизации кабинета ID ${input.cabinetId}:`, error);
-        throw new Error(`Ошибка синхронизации: ${error.message}`);
+        console.error(`Ошибка создания запроса синхронизации кабинета ID ${input.cabinetId}:`, error);
+        throw new Error(`Ошибка создания запроса: ${error.message}`);
       }
     }),
     
@@ -769,8 +916,6 @@ async function login(credentials: { login: string; password: string }): Promise<
         
         retryCount++;
         delay *= 2; // Экспоненциальное увеличение задержки
-      } else if (response.status === 409) {
-        throw new Error('Авторизация не удалась со статусом: 409 Conflict. Вероятно, учетные данные неверны или аккаунт заблокирован.');
       } else {
         throw new Error(`Авторизация не удалась со статусом: ${response.status}`);
       }

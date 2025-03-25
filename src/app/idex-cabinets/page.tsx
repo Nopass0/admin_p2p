@@ -7,8 +7,9 @@ import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Spinner } from "@heroui/spinner";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
 import { Input } from "@heroui/input";
-import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle } from "lucide-react";
+import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle, Clock, History } from "lucide-react";
 import { IdexCabinetsTable } from "@/components/idex/IdexCabinetsTable";
+import { IdexSyncOrdersModal } from "@/components/idex/IdexSyncOrdersModal";
 import { Alert } from "@heroui/alert";
 import { useForm } from "react-hook-form";
 
@@ -28,6 +29,7 @@ interface AlertState {
 export default function IdexCabinetsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isSyncOrdersModalOpen, setIsSyncOrdersModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -89,9 +91,10 @@ export default function IdexCabinetsPage() {
       showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
+      setIsSyncOrdersModalOpen(true); // Открываем модальное окно с запросами
     },
     onError: (error) => {
-      showAlert("Ошибка", `Ошибка синхронизации: ${error.message}`, "danger");
+      showAlert("Ошибка", `Ошибка создания запроса на синхронизацию: ${error.message}`, "danger");
       setIsSyncing(false);
     }
   });
@@ -101,9 +104,10 @@ export default function IdexCabinetsPage() {
       showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
+      setIsSyncOrdersModalOpen(true); // Открываем модальное окно с запросами
     },
     onError: (error) => {
-      showAlert("Ошибка", `Ошибка синхронизации: ${error.message}`, "danger");
+      showAlert("Ошибка", `Ошибка создания запроса на синхронизацию: ${error.message}`, "danger");
       setIsSyncing(false);
     }
   });
@@ -170,22 +174,26 @@ export default function IdexCabinetsPage() {
     setIsAddModalOpen(false);
   };
   
+  const handleSyncHistory = () => {
+    setIsSyncOrdersModalOpen(true);
+  };
+  
   return (
     <div className="p-6">
       {/* Alert notification */}
       {alert.isVisible && (
         <div className="fixed top-4 right-4 z-50 w-96">
-          <Alert
-            color={alert.color}
-            variant="solid"
-            title={alert.title}
-            description={alert.description}
-            isVisible={alert.isVisible}
-            isClosable={true}
-            onVisibleChange={(isVisible) => setAlert(prev => ({ ...prev, isVisible }))}
-            icon={alert.color === "success" ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          />
-        </div>
+        <Alert
+          color={alert.color}
+          variant="solid"
+          title={alert.title}
+          description={alert.description}
+          isVisible={alert.isVisible}
+          isClosable={true}
+          onVisibleChange={(isVisible) => setAlert(prev => ({ ...prev, isVisible }))}
+          icon={alert.color === "success" ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+        />
+      </div>
       )}
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -205,6 +213,14 @@ export default function IdexCabinetsPage() {
           />
         </div>
         <div className="flex gap-2">
+          <Button
+            color="secondary"
+            variant="bordered"
+            startIcon={<History className="w-4 h-4" />}
+            onClick={handleSyncHistory}
+          >
+            История синхронизаций
+          </Button>
           <Button
             color="primary"
             variant="bordered"
@@ -380,6 +396,12 @@ export default function IdexCabinetsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+      
+      {/* Модальное окно для истории синхронизаций */}
+      <IdexSyncOrdersModal 
+        isOpen={isSyncOrdersModalOpen} 
+        onClose={() => setIsSyncOrdersModalOpen(false)} 
+      />
     </div>
   );
 }
