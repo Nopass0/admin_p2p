@@ -39,6 +39,8 @@ export default function IdexCabinetsPage() {
     description: "",
     color: "default"
   });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CabinetForm>();
   
@@ -63,7 +65,9 @@ export default function IdexCabinetsPage() {
     refetch: refetchCabinets,
   } = api.idex.getAllCabinets.useQuery({
     page,
-    perPage: pageSize
+    perPage: pageSize,
+    startDate,
+    endDate
   }, {
     refetchOnWindowFocus: false
   });
@@ -81,8 +85,8 @@ export default function IdexCabinetsPage() {
   });
   
   const syncCabinetsMutation = api.idex.syncAllCabinets.useMutation({
-    onSuccess: () => {
-      showAlert("Успешно", "Синхронизация всех кабинетов завершена", "success");
+    onSuccess: (data) => {
+      showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
     },
@@ -93,8 +97,8 @@ export default function IdexCabinetsPage() {
   });
   
   const syncCabinetMutation = api.idex.syncCabinetById.useMutation({
-    onSuccess: () => {
-      showAlert("Успешно", "Синхронизация кабинета завершена", "success");
+    onSuccess: (data) => {
+      showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
     },
@@ -186,6 +190,20 @@ export default function IdexCabinetsPage() {
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold">IDEX Кабинеты</h1>
+        <div className="flex gap-2">
+          <Input
+            type="date"
+            placeholder="Начальная дата"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+          <Input
+            type="date"
+            placeholder="Конечная дата"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </div>
         <div className="flex gap-2">
           <Button
             color="primary"

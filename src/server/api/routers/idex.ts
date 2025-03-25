@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import axios from 'axios';
+import dayjs from "dayjs";
 
 // Определение типа контекста для процедур
 type Context = { db: any };
@@ -45,15 +46,38 @@ export const idexRouter = createTRPCRouter({
     .input(z.object({
       page: z.number().int().positive().default(1),
       perPage: z.number().int().positive().default(10),
+      startDate: z.string().optional(),
+      endDate: z.string().optional()
     }))
-    .query(async ({ input, ctx }: { input: { page: number; perPage: number }; ctx: Context }) => {
-      const { page, perPage } = input;
+    .query(async ({ input, ctx }: { input: { page: number; perPage: number; startDate?: string; endDate?: string }; ctx: Context }) => {
+      const { page, perPage, startDate, endDate } = input;
       const skip = (page - 1) * perPage;
       
       const totalCount = await ctx.db.idexCabinet.count();
       const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+
+      // Преобразуем даты с учетом таймзоны
+      const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
+      const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
+      
+      let where = {};
+      
+      // Add date filter if both dates are provided
+      if (startDate && endDate) {
+        where = {
+          transactions: {
+            some: {
+              approvedAt: {
+                gte: startDateTime,
+                lte: endDateTime
+              }
+            }
+          }
+        };
+      }
       
       const cabinets = await ctx.db.idexCabinet.findMany({
+        where,
         skip,
         take: perPage,
         orderBy: {
@@ -62,7 +86,14 @@ export const idexRouter = createTRPCRouter({
         include: {
           _count: {
             select: {
-              transactions: true
+              transactions: {
+                where: startDate && endDate ? {
+                  approvedAt: {
+                    gte: startDateTime,
+                    lte: endDateTime
+                  }
+                } : undefined
+              }
             }
           }
         }
@@ -71,7 +102,6 @@ export const idexRouter = createTRPCRouter({
       
       return {
         cabinets,
-
         totalCount,
         totalPages,
         currentPage: page
