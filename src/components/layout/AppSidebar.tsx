@@ -12,8 +12,11 @@ import {
   Settings, 
   ChevronRight,
   Globe,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Banknote,
+  CreditCard
 } from "lucide-react";
+import { title } from "process";
 
 // Элементы навигации
 const navigationItems = [
@@ -37,7 +40,16 @@ const navigationItems = [
     href: "/idex-cabinets",
     icon: Globe,
   },
-
+  {
+    title: "Зарплаты",
+    href: "/salary",
+    icon: Banknote
+  },
+  {
+    title: "Карты",
+    href: "/cards",
+    icon: CreditCard
+  },
   {
     title: "Сопоставления",
     href: "/matches",

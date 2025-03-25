@@ -153,3 +153,54 @@ model Match {
 
   @@unique([idexTransactionId, transactionId])
 }
+
+model Card {
+  id        Int      @id @default(autoincrement())
+  externalId Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  provider    String
+  cardNumber  String
+  bank        String
+  phoneNumber String
+  appPin      Int
+  terminalPin String
+  balances    CardBalance[]
+
+  comment     String
+  status      String
+  picachu     String
+}
+
+model CardBalance {
+  id           Int      @id @default(autoincrement())
+  cardId       Int
+  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  date         DateTime
+  startBalance Float
+  endBalance   Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([cardId, date])
+}
+
+model Salary {
+  id           Int      @id @default(autoincrement())
+  fullName     String
+  position     String
+  amount       Float
+  startDate    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+
+// model SalaryDep {
+//   id  Int @id @default(autoincrement())
+//   date DateTime
+//   amount  Float
+  
+//   user  
+// }
