@@ -4,6 +4,7 @@ import { transactionsRouter } from "@/server/api/routers/transactions";
 import { idexRouter } from "@/server/api/routers/idex";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 import { matchRouter } from "@/server/api/routers/match";
+import { salaryRouter } from "@/server/api/routers/salary";
 
 /**
  * This is the primary router for your server.
@@ -16,6 +17,7 @@ export const appRouter = createTRPCRouter({
   transactions: transactionsRouter,
   idex: idexRouter,
   match: matchRouter,
+  salary: salaryRouter,
 });
 
 // export type definition of API

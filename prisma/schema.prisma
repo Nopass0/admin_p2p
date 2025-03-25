@@ -187,15 +187,29 @@ model CardBalance {
 }
 
 model Salary {
-  id           Int      @id @default(autoincrement())
-  fullName     String
-  position     String
-  amount       Float
-  startDate    DateTime
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             Int             @id @default(autoincrement())
+  fullName       String
+  position       String
+  startDate      DateTime
+  payday         Int             // День выплаты зарплаты в месяце
+  paydayMonth    Int?            // Месяц выплаты (null если ежемесячно)
+  fixedSalary    Float?          // Фиксированная зарплата (null если не фиксированная)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  payments       SalaryPayment[]
 }
 
+model SalaryPayment {
+  id          Int       @id @default(autoincrement())
+  salaryId    Int
+  salary      Salary    @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+  amount      Float
+  paymentDate DateTime
+  comment     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
 
 // model SalaryDep {
 //   id  Int @id @default(autoincrement())
