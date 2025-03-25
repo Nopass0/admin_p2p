@@ -205,6 +205,16 @@ startDate
   const [selectedIdexCabinetIds, setSelectedIdexCabinetIds] = useState<Record<number, boolean>>({});
   const [idexSearchQuery, setIdexSearchQuery] = useState("");
 
+  // Add these new interfaces at the top of your component
+  interface CabinetConfig {
+    cabinetId: number;
+    startDate: string;
+    endDate: string;
+  }
+
+  // Add these new state variables in your component
+  const [cabinetConfigs, setCabinetConfigs] = useState<CabinetConfig[]>([]);
+
   // Загрузка дат из localStorage
   useLayoutEffect(() => {
     if (typeof localStorage !== 'undefined') {
@@ -1185,20 +1195,41 @@ startDate
       const newState = { ...prev };
       if (newState[cabinetId]) {
         delete newState[cabinetId];
+        
+        // Also remove from cabinetConfigs
+        setCabinetConfigs(prev => prev.filter(config => config.cabinetId !== cabinetId));
       } else {
         newState[cabinetId] = true;
+        
+        // Add to cabinetConfigs with default dates from the global range
+        setCabinetConfigs(prev => [
+          ...prev,
+          {
+            cabinetId,
+            startDate: matchModalStartDate,
+            endDate: matchModalEndDate
+          }
+        ]);
       }
       return newState;
     });
   };
+  
 
   // Start matching process with selected parameters
   const handleStartMatching = () => {
     setIsRunningMatch(true);
     
-    // Convert selected users and cabinets objects to arrays of IDs
+    // Convert selected users objects to arrays of IDs
     const userIds = matchForAll ? [] : Object.keys(selectedUserIds).map(id => parseInt(id));
-    const cabinetIds = Object.keys(selectedCabinetIds).map(id => parseInt(id));
+    
+    // Get selected cabinet IDs
+    const selectedCabinetIdsArray = Object.keys(selectedCabinetIds).map(id => parseInt(id));
+    
+    // Extract cabinet configurations for selected cabinets
+    const filteredCabinetConfigs = cabinetConfigs.filter(
+      config => selectedCabinetIds[config.cabinetId]
+    );
     
     // Call the mutation with selected parameters
     matchTransactionsMutation.mutate({
@@ -1206,7 +1237,8 @@ startDate
       endDate: matchModalEndDate,
       approvedOnly: true,
       userIds: userIds.length > 0 ? userIds : undefined,
-      cabinetIds: cabinetIds.length > 0 ? cabinetIds : undefined
+      cabinetIds: selectedCabinetIdsArray,  // Include cabinetIds for backward compatibility
+      cabinetConfigs: filteredCabinetConfigs.length > 0 ? filteredCabinetConfigs : undefined
     });
   };
 
@@ -2423,105 +2455,263 @@ startDate
       </Modal>
       
       {/* Modal for matching with filters */}
-      <Modal
-        isOpen={isMatchModalOpen}
-        onClose={handleCloseMatchModal}
-        aria-label="Модальное окно сопоставления"
-      >
-        <ModalContent>
-          <ModalHeader>
-            <h3 className="text-lg font-medium">Сопоставление с фильтрами</h3>
-          </ModalHeader>
-          <ModalBody>
+{/* Modal for matching with filters */}
+<Modal
+  isOpen={isMatchModalOpen}
+  onClose={handleCloseMatchModal}
+  aria-label="Модальное окно сопоставления"
+  size="3xl"
+>
+  <ModalContent>
+    <ModalHeader>
+      <h3 className="text-lg font-medium">Сопоставление с фильтрами</h3>
+    </ModalHeader>
+    <ModalBody>
+      <div className="grid grid-cols-1 gap-4">
+        {/* Global date range & users */}
+        <Card>
+          <CardBody>
+            <h4 className="text-md font-medium mb-2">Общие настройки</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Дата и время начала</label>
+                <label className="block text-sm font-medium mb-1">Глобальная дата начала</label>
                 <Input
                   type="datetime-local"
                   value={matchModalStartDate}
-                  onChange={(e) => setMatchModalStartDate(e.target.value)}
+                  onChange={(e) => {
+                    setMatchModalStartDate(e.target.value);
+                    // Update any cabinet configs that use the global date
+                    setCabinetConfigs(prev => 
+                      prev.map(config => ({
+                        ...config,
+                        startDate: e.target.value
+                      }))
+                    );
+                  }}
                   startContent={<Calendar className="w-4 h-4 text-gray-500" />}
                   aria-label="Дата и время начала"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Дата и время окончания</label>
+                <label className="block text-sm font-medium mb-1">Глобальная дата окончания</label>
                 <Input
                   type="datetime-local"
                   value={matchModalEndDate}
-                  onChange={(e) => setMatchModalEndDate(e.target.value)}
+                  onChange={(e) => {
+                    setMatchModalEndDate(e.target.value);
+                    // Update any cabinet configs that use the global date
+                    setCabinetConfigs(prev => 
+                      prev.map(config => ({
+                        ...config,
+                        endDate: e.target.value
+                      }))
+                    );
+                  }}
                   startContent={<Calendar className="w-4 h-4 text-gray-500" />}
                   aria-label="Дата и время окончания"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Пользователи</label>
-                <div className="border rounded p-2 h-48 overflow-y-auto">
-                  <div className="mb-2">
-                    <Checkbox
-                      isSelected={matchForAll}
-                      onChange={() => setMatchForAll(!matchForAll)}
-                    >
-                      Все пользователи
-                    </Checkbox>
-                  </div>
-                  {!matchForAll && usersData?.users ? (
-                    <>
-                      {usersData.users.map((user) => (
-                        <div key={`user-${user.id}`} className="mb-1">
-                          <Checkbox
-                            isSelected={!!selectedUserIds[user.id]}
-                            onChange={() => toggleUserSelection(user.id)}
-                          >
-                            {user.name} ({user.telegramAccounts?.[0]?.username || 'Без username'})
-                          </Checkbox>
-                        </div>
-                      ))}
-                    </>
-                  ) : null}
+            </div>
+            
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-1">Пользователи</label>
+              <div className="border rounded p-2 max-h-44 overflow-y-auto">
+                <div className="mb-2">
+                  <Checkbox
+                    isSelected={matchForAll}
+                    onChange={() => setMatchForAll(!matchForAll)}
+                  >
+                    Все пользователи
+                  </Checkbox>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Кабинеты</label>
-                <div className="border rounded p-2 h-48 overflow-y-auto">
-                  {cabinetsData?.cabinets ? (
-                    <>
-                      {getSortedCabinets().map((cabinet) => (
-                        <div key={`cabinet-${cabinet.id}`} className="mb-1">
-                          <Checkbox
-                            isSelected={!!selectedCabinetIds[cabinet.id]}
-                            onChange={() => toggleCabinetSelection(cabinet.id)}
-                          >
-                            {cabinet.idexId}
-                          </Checkbox>
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="text-sm text-gray-500">Загрузка кабинетов...</div>
-                  )}
-                </div>
+                {!matchForAll && usersData?.users ? (
+                  <>
+                    {usersData.users.map((user) => (
+                      <div key={`user-${user.id}`} className="mb-1">
+                        <Checkbox
+                          isSelected={!!selectedUserIds[user.id]}
+                          onChange={() => toggleUserSelection(user.id)}
+                        >
+                          {user.name} ({user.telegramAccounts?.[0]?.username || 'Без username'})
+                        </Checkbox>
+                      </div>
+                    ))}
+                  </>
+                ) : null}
               </div>
             </div>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              color="primary"
-              isLoading={isRunningMatch}
-              onClick={handleStartMatching}
-            >
-              {isRunningMatch ? "Сопоставление..." : "Запустить сопоставление"}
-            </Button>
-            <Button
-              color="default"
-              variant="flat"
-              onClick={handleCloseMatchModal}
-            >
-              Отмена
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+          </CardBody>
+        </Card>
+        
+        {/* Cabinets with per-cabinet date ranges */}
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-md font-medium">Настройки по кабинетам IDEX</h4>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  color="primary" 
+                  variant="flat"
+                  onClick={() => {
+                    // Select all cabinets
+                    if (!cabinetsData?.cabinets) return;
+                    
+                    const allCabinets: SelectedCabinets = {};
+                    const newConfigs: CabinetConfig[] = [];
+                    
+                    cabinetsData.cabinets.forEach(cabinet => {
+                      allCabinets[cabinet.id] = true;
+                      
+                      // Check if we already have a config for this cabinet
+                      const existingConfig = cabinetConfigs.find(c => c.cabinetId === cabinet.id);
+                      if (!existingConfig) {
+                        newConfigs.push({
+                          cabinetId: cabinet.id,
+                          startDate: matchModalStartDate,
+                          endDate: matchModalEndDate
+                        });
+                      }
+                    });
+                    
+                    setSelectedCabinetIds(allCabinets);
+                    setCabinetConfigs([...cabinetConfigs, ...newConfigs]);
+                  }}
+                >
+                  Выбрать все
+                </Button>
+                <Button 
+                  size="sm" 
+                  color="danger" 
+                  variant="flat"
+                  onClick={() => {
+                    setSelectedCabinetIds({});
+                    setCabinetConfigs([]);
+                  }}
+                >
+                  Сбросить все
+                </Button>
+              </div>
+            </div>
+            
+            <div className="border rounded p-2 max-h-96 overflow-y-auto">
+              {cabinetsData?.cabinets ? (
+                <>
+                  {getSortedCabinets().map((cabinet) => {
+                    const isSelected = !!selectedCabinetIds[cabinet.id];
+                    const config = cabinetConfigs.find(c => c.cabinetId === cabinet.id);
+                    
+                    return (
+                      <div key={`cabinet-${cabinet.id}`} className="mb-3 pb-2 border-b last:border-b-0">
+                        <div className="flex items-center justify-between">
+                          <Checkbox
+                            isSelected={isSelected}
+                            onChange={() => toggleCabinetSelection(cabinet.id)}
+                          >
+                            <span className="font-medium">ID: {cabinet.idexId}</span>
+                            {cabinet.login && <span className="ml-2 text-gray-500">({cabinet.login})</span>}
+                          </Checkbox>
+                          
+                          {isSelected && (
+                            <Badge color="primary" variant="flat">
+                              Индивидуальные даты
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        {isSelected && (
+                          <div className="ml-6 mt-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-xs font-medium mb-1">Дата начала:</label>
+                                <Input
+                                  type="datetime-local"
+                                  size="sm"
+                                  value={config?.startDate || matchModalStartDate}
+                                  onChange={(e) => {
+                                    setCabinetConfigs(prev => prev.map(c => 
+                                      c.cabinetId === cabinet.id 
+                                        ? {...c, startDate: e.target.value} 
+                                        : c
+                                    ));
+                                  }}
+                                  aria-label={`Дата начала для кабинета ${cabinet.idexId}`}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium mb-1">Дата окончания:</label>
+                                <Input
+                                  type="datetime-local"
+                                  size="sm"
+                                  value={config?.endDate || matchModalEndDate}
+                                  onChange={(e) => {
+                                    setCabinetConfigs(prev => prev.map(c => 
+                                      c.cabinetId === cabinet.id 
+                                        ? {...c, endDate: e.target.value} 
+                                        : c
+                                    ));
+                                  }}
+                                  aria-label={`Дата окончания для кабинета ${cabinet.idexId}`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div className="text-sm text-gray-500 p-4 text-center">Загрузка кабинетов...</div>
+              )}
+            </div>
+            
+            {/* Selected cabinet summary */}
+            {Object.keys(selectedCabinetIds).length > 0 && (
+              <div className="mt-3">
+                <h5 className="text-sm font-medium mb-2">Выбрано кабинетов: {Object.keys(selectedCabinetIds).length}</h5>
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(selectedCabinetIds).map(id => {
+                    const cabinet = cabinetsData?.cabinets.find(c => c.id === parseInt(id));
+                    return cabinet ? (
+                      <Badge 
+                        key={id} 
+                        color="primary" 
+                        variant="flat"
+                        className="cursor-pointer"
+                        onClick={() => toggleCabinetSelection(parseInt(id))}
+                      >
+                        ID {cabinet.idexId}
+                        <span className="ml-1 text-xs">×</span>
+                      </Badge>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+    </ModalBody>
+    <ModalFooter>
+      <Button
+        color="primary"
+        isLoading={isRunningMatch}
+        onClick={handleStartMatching}
+        disabled={Object.keys(selectedCabinetIds).length === 0}
+      >
+        {isRunningMatch ? "Сопоставление..." : "Запустить сопоставление"}
+      </Button>
+      <Button
+        color="default"
+        variant="flat"
+        onClick={handleCloseMatchModal}
+      >
+        Отмена
+      </Button>
+    </ModalFooter>
+  </ModalContent>
+</Modal>
     </div>
   );
 }

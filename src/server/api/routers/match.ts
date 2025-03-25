@@ -26,212 +26,263 @@ const convertToMoscow = (date: string) => {
 export const matchRouter = createTRPCRouter({
   // Запуск процесса сопоставления транзакций
   matchTransactions: publicProcedure
-    .input(z.object({
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    approvedOnly: z.boolean().optional().default(true),
+    userId: z.number().int().positive().nullable().optional(),
+    userIds: z.array(z.number().int().positive()).optional(),
+    // Keep cabinetIds for backward compatibility
+    cabinetIds: z.array(z.number().int().positive()).optional(),
+    // New parameter for per-cabinet date configurations
+    cabinetConfigs: z.array(z.object({
+      cabinetId: z.number().int().positive(),
       startDate: z.string(),
       endDate: z.string(),
-      approvedOnly: z.boolean().optional().default(true),
-      userId: z.number().int().positive().nullable().optional(),
-      cabinetIds: z.array(z.number().int().positive()).optional(),
-      userIds: z.array(z.number().int().positive()).optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { startDate, endDate, approvedOnly, userId, cabinetIds, userIds } = input;
-        
-        console.log(`Начинаем сопоставление транзакций с ${startDate} по ${endDate}`);
-        
-        // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
-        
-        console.log(`UTC даты: с ${startDateTime.toISOString()} по ${endDateTime.toISOString()}`);
-        
-        // Получаем IdexTransactions в указанном диапазоне дат
-        let idexTransactionsWhere: any = {
-          approvedAt: {
-            gte: startDateTime.toISOString(),
-            lte: endDateTime.toISOString()
-          }
-        };
-   
-        // Добавляем фильтр по кабинетам, если указаны
-        if (cabinetIds && cabinetIds.length > 0) {
-          idexTransactionsWhere.cabinetId = {
-            in: cabinetIds
-          };
-        }
-        
-        const idexTransactions = await ctx.db.idexTransaction.findMany({
-          where: idexTransactionsWhere,
-        });
-        
-        // Фильтруем IdexTransactions по диапазону дат
-        const filteredIdexTransactions = idexTransactions.filter(tx => {
-          if (!tx.approvedAt) return false;
-          
-          const approvedDate = dayjs(tx.approvedAt).utc();
-          return approvedDate.isAfter(startDateTime) && approvedDate.isBefore(endDateTime);
-        });
-        
-        console.log(`Найдено ${filteredIdexTransactions.length} IdexTransactions в указанном диапазоне`);
-        
-        // Получаем Transactions в указанном диапазоне дат
-        let transactionsWhere: any = {
-          dateTime: {
-            gte: startDateTime.toISOString(),
-            lte: endDateTime.toISOString()
-          }
+    })).optional(),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, approvedOnly, userId, userIds, cabinetConfigs } = input;
+      
+      console.log(`Начинаем сопоставление транзакций с ${startDate} по ${endDate}`);
+      
+      // Преобразуем глобальные даты с учетом таймзоны
+      const globalStartDateTime = dayjs(startDate).utc().toDate();
+      const globalEndDateTime = dayjs(endDate).utc().toDate();
+      
+      console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
+      
+      // Получаем IdexTransactions в указанном диапазоне дат
+      let idexTransactionsWhere: any;
+      
+      if (cabinetConfigs && cabinetConfigs.length > 0) {
+        // Если есть конфигурации кабинетов, создаем условия OR для каждого кабинета
+        idexTransactionsWhere = {
+          OR: cabinetConfigs.map(config => ({
+            AND: [
+              { cabinetId: config.cabinetId },
+              {
+                approvedAt: {
+                  gte: dayjs(config.startDate).utc().toISOString(),
+                  lte: dayjs(config.endDate).utc().toISOString()
+                }
+              }
+            ]
+          }))
         };
         
-        // Добавляем фильтр по пользователю, если указан
-        if (userId) {
-          transactionsWhere.userId = userId;
-        }
-        
-        // Добавляем фильтр по массиву пользователей, если указан
-        if (userIds && userIds.length > 0) {
-          transactionsWhere.userId = {
-            in: userIds
-          };
-        }
-        
-        const transactions = await ctx.db.transaction.findMany({
-          where: transactionsWhere,
+        // Для логирования
+        cabinetConfigs.forEach(config => {
+          console.log(`Кабинет ID ${config.cabinetId}: с ${config.startDate} по ${config.endDate}`);
         });
-        
-        console.log(`Найдено ${transactions.length} Transactions в указанном диапазоне`);
-        
-        // Отслеживаем сопоставленные ID для обеспечения соответствия один к одному
-        const matchedIdexTransactions = new Set<number>();
-        const matchedTransactions = new Set<number>();
-        
-        // Сохраняем все найденные совпадения
-        const matches = [];
-        
-        // Пытаемся сопоставить каждую IdexTransaction
-        for (const idexTx of filteredIdexTransactions) {
-          if (matchedIdexTransactions.has(idexTx.id)) continue;
-          if (!idexTx.approvedAt) continue; // Пропускаем, если нет даты подтверждения
+      } else {
+        // Если кабинеты выбраны, но без конфигураций, используем глобальный диапазон
+        const cabinetIds = input.cabinetIds || 
+          (cabinetConfigs ? cabinetConfigs.map(config => config.cabinetId) : []);
           
-          // Парсим поле amount для получения значения
-          let amountValue = 0;
-          try {
-            // Проверяем, является ли amount строкой JSON
-            if (typeof idexTx.amount === 'string') {
-              const amountJson = JSON.parse(idexTx.amount as string);
-              amountValue = parseFloat(amountJson.trader?.[643] || 0);
-            } else {
-              // Если amount уже является объектом
-              const amountObj = idexTx.amount as any;
-              amountValue = parseFloat(amountObj.trader?.[643] || 0);
-            }
-          } catch (error) {
-            console.error('Ошибка при парсинге JSON поля amount:', error);
-            continue;
-          }
-          
-          // Находим потенциальные совпадения
-          const potentialMatches = transactions
-            .filter(tx => {
-              // Пропускаем уже сопоставленные транзакции
-              if (matchedTransactions.has(tx.id)) return false;
-              
-              // Проверяем, совпадает ли totalPrice
-              if (Math.abs(tx.totalPrice - amountValue) > 0.01) return false;
-              
-              // Проверяем, находится ли дата в пределах +/- 30 минут
-              const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString());
-              return timeDiff <= MINUTES_THRESHOLD;
-            })
-            .map(tx => ({
-              transaction: tx,
-              timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString())
-            }))
-            .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени (ближайшая первая)
-          
-          // Если у нас есть совпадение
-          if (potentialMatches.length > 0) {
-            const match = potentialMatches[0];
-            const tx = match.transaction;
-            
-            // Отмечаем обе транзакции как сопоставленные
-            matchedIdexTransactions.add(idexTx.id);
-            matchedTransactions.add(tx.id);
-            
-            // Рассчитываем метрики матча
-            const metrics = calculateMatchMetrics(tx, idexTx);
-            
-            // Создаем объект матча для пакетного создания
-            matches.push({
-              idexTransactionId: idexTx.id,
-              transactionId: tx.id,
-              timeDifference: Math.round(match.timeDiff * 60), // Конвертируем минуты в секунды
-              grossExpense: metrics.grossExpense,
-              grossIncome: metrics.grossIncome,
-              grossProfit: metrics.grossProfit,
-              profitPercentage: metrics.profitPercentage
-            });
-          }
-        }
-        
-        console.log(`Найдено ${matches.length} совпадений`);
-        
-        // Создаем все совпадения в базе данных
-        if (matches.length > 0) {
-          await ctx.db.match.createMany({
-            data: matches,
-            skipDuplicates: true
-          });
-          
-          console.log(`Сохранено ${matches.length} совпадений в базе данных`);
-        }
-        
-        // Рассчитываем совокупную статистику
-        const matchCount = matches.length;
-        const totalGrossExpense = matches.reduce((sum, match) => sum + match.grossExpense, 0);
-        const totalGrossIncome = matches.reduce((sum, match) => sum + match.grossIncome, 0);
-        const totalGrossProfit = matches.reduce((sum, match) => sum + match.grossProfit, 0);
-        const totalProfitPercentage = totalGrossExpense ? (totalGrossProfit / totalGrossExpense) * 100 : 0;
-        const profitPerOrder = matchCount ? totalGrossProfit / matchCount : 0;
-        const expensePerOrder = matchCount ? totalGrossExpense / matchCount : 0;
-        
-        // Получаем общую статистику для всех транзакций
-        const totalTransactions = await ctx.db.transaction.count({
-          where: transactionsWhere
-        });
-        
-        const totalIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
+        if (cabinetIds.length > 0) {
+          idexTransactionsWhere = {
+            cabinetId: {
+              in: cabinetIds
+            },
             approvedAt: {
-              not: null
+              gte: globalStartDateTime.toISOString(),
+              lte: globalEndDateTime.toISOString()
             }
-          }
-        });
+          };
+        } else {
+          // Если нет выбранных кабинетов, используем только глобальный диапазон
+          idexTransactionsWhere = {
+            approvedAt: {
+              gte: globalStartDateTime.toISOString(),
+              lte: globalEndDateTime.toISOString()
+            }
+          };
+        }
+      }
+      
+      const idexTransactions = await ctx.db.idexTransaction.findMany({
+        where: idexTransactionsWhere,
+      });
+      
+      // Фильтруем IdexTransactions по диапазону дат
+      const filteredIdexTransactions = idexTransactions.filter(tx => {
+        if (!tx.approvedAt) return false;
         
-        return {
-          success: true,
-          stats: {
-            grossExpense: totalGrossExpense,
-            grossIncome: totalGrossIncome,
-            grossProfit: totalGrossProfit,
-            profitPercentage: totalProfitPercentage,
-            matchedCount: matchCount,
-            profitPerOrder,
-            expensePerOrder,
-            totalTransactions,
-            totalIdexTransactions,
-            totalMatchedTransactions: matchCount,
-            totalMatchedIdexTransactions: matchCount
+        // Если для этого кабинета есть специальный диапазон дат, проверяем по нему
+        if (cabinetConfigs) {
+          const cabinetConfig = cabinetConfigs.find(config => config.cabinetId === tx.cabinetId);
+          if (cabinetConfig) {
+            const configStartDate = dayjs(cabinetConfig.startDate).utc();
+            const configEndDate = dayjs(cabinetConfig.endDate).utc();
+            const approvedDate = dayjs(tx.approvedAt).utc();
+            return approvedDate.isAfter(configStartDate) && approvedDate.isBefore(configEndDate);
           }
-        };
-      } catch (error) {
-        console.error("Ошибка при сопоставлении транзакций:", error);
-        return { 
-          success: false, 
-          message: "Произошла ошибка при сопоставлении транзакций" 
+        }
+        
+        // Иначе проверяем по глобальному диапазону
+        const approvedDate = dayjs(tx.approvedAt).utc();
+        return approvedDate.isAfter(globalStartDateTime) && approvedDate.isBefore(globalEndDateTime);
+      });
+      
+      console.log(`Найдено ${filteredIdexTransactions.length} IdexTransactions в указанном диапазоне`);
+      
+      // Получаем Transactions в указанном диапазоне дат
+      let transactionsWhere: any = {
+        dateTime: {
+          gte: globalStartDateTime.toISOString(),
+          lte: globalEndDateTime.toISOString()
+        }
+      };
+      
+      // Добавляем фильтр по пользователю, если указан
+      if (userId) {
+        transactionsWhere.userId = userId;
+      }
+      
+      // Добавляем фильтр по массиву пользователей, если указан
+      if (userIds && userIds.length > 0) {
+        transactionsWhere.userId = {
+          in: userIds
         };
       }
-    }),
+      
+      const transactions = await ctx.db.transaction.findMany({
+        where: transactionsWhere,
+      });
+      
+      console.log(`Найдено ${transactions.length} Transactions в указанном диапазоне`);
+      
+      // Остальная логика сопоставления остается без изменений
+      const matchedIdexTransactions = new Set<number>();
+      const matchedTransactions = new Set<number>();
+      const matches = [];
+      
+      // Пытаемся сопоставить каждую IdexTransaction
+      for (const idexTx of filteredIdexTransactions) {
+        if (matchedIdexTransactions.has(idexTx.id)) continue;
+        if (!idexTx.approvedAt) continue; // Пропускаем, если нет даты подтверждения
+        
+        // Парсим поле amount для получения значения
+        let amountValue = 0;
+        try {
+          // Проверяем, является ли amount строкой JSON
+          if (typeof idexTx.amount === 'string') {
+            const amountJson = JSON.parse(idexTx.amount as string);
+            amountValue = parseFloat(amountJson.trader?.[643] || 0);
+          } else {
+            // Если amount уже является объектом
+            const amountObj = idexTx.amount as any;
+            amountValue = parseFloat(amountObj.trader?.[643] || 0);
+          }
+        } catch (error) {
+          console.error('Ошибка при парсинге JSON поля amount:', error);
+          continue;
+        }
+        
+        // Находим потенциальные совпадения
+        const potentialMatches = transactions
+          .filter(tx => {
+            // Пропускаем уже сопоставленные транзакции
+            if (matchedTransactions.has(tx.id)) return false;
+            
+            // Проверяем, совпадает ли totalPrice
+            if (Math.abs(tx.totalPrice - amountValue) > 0.01) return false;
+            
+            // Проверяем, находится ли дата в пределах +/- 30 минут
+            const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString());
+            return timeDiff <= MINUTES_THRESHOLD;
+          })
+          .map(tx => ({
+            transaction: tx,
+            timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString())
+          }))
+          .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени (ближайшая первая)
+        
+        // Если у нас есть совпадение
+        if (potentialMatches.length > 0) {
+          const match = potentialMatches[0];
+          const tx = match.transaction;
+          
+          // Отмечаем обе транзакции как сопоставленные
+          matchedIdexTransactions.add(idexTx.id);
+          matchedTransactions.add(tx.id);
+          
+          // Рассчитываем метрики матча
+          const metrics = calculateMatchMetrics(tx, idexTx);
+          
+          // Создаем объект матча для пакетного создания
+          matches.push({
+            idexTransactionId: idexTx.id,
+            transactionId: tx.id,
+            timeDifference: Math.round(match.timeDiff * 60), // Конвертируем минуты в секунды
+            grossExpense: metrics.grossExpense,
+            grossIncome: metrics.grossIncome,
+            grossProfit: metrics.grossProfit,
+            profitPercentage: metrics.profitPercentage
+          });
+        }
+      }
+      
+      console.log(`Найдено ${matches.length} совпадений`);
+      
+      // Создаем все совпадения в базе данных
+      if (matches.length > 0) {
+        await ctx.db.match.createMany({
+          data: matches,
+          skipDuplicates: true
+        });
+        
+        console.log(`Сохранено ${matches.length} совпадений в базе данных`);
+      }
+      
+      // Рассчитываем совокупную статистику
+      const matchCount = matches.length;
+      const totalGrossExpense = matches.reduce((sum, match) => sum + match.grossExpense, 0);
+      const totalGrossIncome = matches.reduce((sum, match) => sum + match.grossIncome, 0);
+      const totalGrossProfit = matches.reduce((sum, match) => sum + match.grossProfit, 0);
+      const totalProfitPercentage = totalGrossExpense ? (totalGrossProfit / totalGrossExpense) * 100 : 0;
+      const profitPerOrder = matchCount ? totalGrossProfit / matchCount : 0;
+      const expensePerOrder = matchCount ? totalGrossExpense / matchCount : 0;
+      
+      // Статистика для всех транзакций остается без изменений
+      const totalTransactions = await ctx.db.transaction.count({
+        where: transactionsWhere
+      });
+      
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({
+        where: {
+          approvedAt: {
+            not: null
+          }
+        }
+      });
+      
+      return {
+        success: true,
+        stats: {
+          grossExpense: totalGrossExpense,
+          grossIncome: totalGrossIncome,
+          grossProfit: totalGrossProfit,
+          profitPercentage: totalProfitPercentage,
+          matchedCount: matchCount,
+          profitPerOrder,
+          expensePerOrder,
+          totalTransactions,
+          totalIdexTransactions,
+          totalMatchedTransactions: matchCount,
+          totalMatchedIdexTransactions: matchCount
+        }
+      };
+    } catch (error) {
+      console.error("Ошибка при сопоставлении транзакций:", error);
+      return { 
+        success: false, 
+        message: "Произошла ошибка при сопоставлении транзакций" 
+      };
+    }
+  }),
 
   deleteByFilter: publicProcedure
     .input(z.object({
