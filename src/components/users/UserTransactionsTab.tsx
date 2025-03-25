@@ -115,7 +115,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
             />
           </div>
 
-          <div>
+          {/* <div>
             <label className="block text-sm font-medium mb-1">Статус</label>
             <Select
               placeholder="Все статусы"
@@ -127,7 +127,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
               <SelectItem key="pending">В обработке</SelectItem>
               <SelectItem key="failed">Не удалось</SelectItem>
             </Select>
-          </div>
+          </div> */}
         </div>
         
         <div className="flex justify-end gap-2 mt-3">
@@ -167,7 +167,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
                 <TableColumn>Актив</TableColumn>
                 <TableColumn>Количество</TableColumn>
                 <TableColumn>Сумма</TableColumn>
-                <TableColumn>Статус</TableColumn>
+                {/* <TableColumn>Статус</TableColumn> */}
                 {/* <TableColumn>Действия</TableColumn> */}
               </TableHeader>
               <TableBody>
@@ -179,7 +179,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
                     <TableCell>{transaction.asset}</TableCell>
                     <TableCell>{renderType(transaction.type, transaction.amount)}</TableCell>
                     <TableCell>{transaction.totalPrice.toFixed(2)} RUB</TableCell>
-                    <TableCell>{renderStatus(transaction.status)}</TableCell>
+                    {/* <TableCell>{renderStatus(transaction.status)}</TableCell> */}
                     {/* <TableCell>
                       <Link href={`/transactions/${transaction.id}`}>
                         <Button size="sm" variant="bordered">
