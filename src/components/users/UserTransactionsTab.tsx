@@ -89,9 +89,9 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
   return (
     <div>
       {/* Фильтры */}
-      <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
         <div className="flex items-center gap-2 mb-2">
-          <Filter className="w-4 h-4 text-gray-500" />
+          <Filter className="w-4 h-4 text-zinc-500" />
           <h3 className="text-md font-medium">Фильтры</h3>
         </div>
         
@@ -102,7 +102,7 @@ export function UserTransactionsTab({ userId }: UserTransactionsTabProps) {
               type="datetime-local"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              startContent={<Calendar className="w-4 h-4 text-gray-400" />}
+              startContent={<Calendar className="w-4 h-4 text-zinc-400" />}
             />
           </div>
           <div>

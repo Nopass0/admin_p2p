@@ -5,6 +5,8 @@ import { idexRouter } from "@/server/api/routers/idex";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 import { matchRouter } from "@/server/api/routers/match";
 import { salaryRouter } from "@/server/api/routers/salary";
+import { workSessionsRouter } from "@/server/api/routers/workSessions";
+import { bybitTransactionsRouter } from "@/server/api/routers/bybitTransactionsRouter";
 
 /**
  * This is the primary router for your server.
@@ -18,6 +20,8 @@ export const appRouter = createTRPCRouter({
   idex: idexRouter,
   match: matchRouter,
   salary: salaryRouter,
+  workSessions: workSessionsRouter,
+  bybitTransactions: bybitTransactionsRouter,
 });
 
 // export type definition of API

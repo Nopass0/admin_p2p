@@ -33,7 +33,7 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
   return (
     <div>
       {/* Фильтры по датам */}
-      <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
         <h3 className="text-md font-medium mb-3">Фильтр по периоду</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -42,7 +42,7 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              startContent={<Calendar className="w-4 h-4 text-gray-400" />}
+              startContent={<Calendar className="w-4 h-4 text-zinc-400" />}
             />
           </div>
           <div>
@@ -51,7 +51,7 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              startContent={<Calendar className="w-4 h-4 text-gray-400" />}
+              startContent={<Calendar className="w-4 h-4 text-zinc-400" />}
             />
           </div>
         </div>
@@ -135,28 +135,28 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
           {/* Статистика по активам */}
           <div>
             <h3 className="text-lg font-semibold mb-3">Статистика по активам</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 dark:bg-gray-700">
+            <div className="overflow-x-auto rounded-md">
+              <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-700">
+                <thead className="bg-zinc-50 dark:bg-zinc-700">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-zinc-500 dark:text-zinc-300 uppercase tracking-wider">
                       Актив
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-zinc-500 dark:text-zinc-300 uppercase tracking-wider">
                       Количество
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-zinc-500 dark:text-zinc-300 uppercase tracking-wider">
                       Объем (₽)
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-zinc-500 dark:text-zinc-300 uppercase tracking-wider">
                       Матчи
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-zinc-500 dark:text-zinc-300 uppercase tracking-wider">
                       Прибыль (₽)
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white dark:bg-zinc-800 divide-y divide-zinc-200 dark:divide-zinc-700">
                   {Object.entries(data.stats.assetStats).map(([asset, stats]) => (
                     <tr key={asset}>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -203,14 +203,14 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
                 }
                 
                 return (
-                  <div key={status} className="p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
+                  <div key={status} className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
                     <div className="flex justify-between items-center mb-1">
                       <span className={`px-2 py-1 rounded text-xs ${colorClass}`}>
                         {status}
                       </span>
                       <span className="text-lg font-bold">{count}</span>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                    <div className="w-full bg-zinc-200 dark:bg-zinc-600 rounded-full h-2.5">
                       <div 
                         className={status.toLowerCase() === "completed" 
                           ? "bg-green-500 h-2.5 rounded-full" 
@@ -221,7 +221,7 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
                         style={{ width: `${(count / data.stats.totalTransactions) * 100}%` }}
                       ></div>
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
+                    <p className="text-sm text-zinc-500 dark:text-zinc-300 mt-1">
                       {Math.round((count / data.stats.totalTransactions) * 100)}% от общего
                     </p>
                   </div>
@@ -231,7 +231,7 @@ export function UserStatsTab({ userId }: UserStatsTabProps) {
           </div>
         </div>
       ) : (
-        <div className="text-center py-10 text-gray-500">
+        <div className="text-center py-10 text-zinc-500">
           {data?.message || "Нет данных статистики для отображения"}
         </div>
       )}

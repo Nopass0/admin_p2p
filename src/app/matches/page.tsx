@@ -16,7 +16,10 @@ import { Checkbox } from "@heroui/checkbox";
 import { 
   CheckCircle, AlertCircle, RefreshCw, Search, Users, User, Calendar, 
   TrendingUp, ArrowUp, ArrowDown, Link, Unlink, Filter, SortAsc, SortDesc,
-  BarChart2, Database, AlertTriangle, Download, FileText
+  BarChart2, Database, AlertTriangle, Download, FileText,
+  DollarSign,
+  ArrowUpDown,
+  CircleDollarSign
 } from "lucide-react";
 import dayjs from "dayjs";
 import "dayjs/locale/ru"; // Импортируем русскую локаль
@@ -954,43 +957,70 @@ startDate
     
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardBody className="py-4">
-            <h3 className="text-lg font-medium mb-1">Валовый расход</h3>
-            <p className="text-2xl font-semibold">{formatNumber(stats.grossExpense)} USDT</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="py-4">
-            <h3 className="text-lg font-medium mb-1">Валовый доход</h3>
-            <p className="text-2xl font-semibold">{formatNumber(stats.grossIncome)} USDT</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="py-4">
-            <h3 className="text-lg font-medium mb-1">Валовая прибыль</h3>
-            <p className={`text-2xl font-semibold ${stats.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatNumber(stats.grossProfit)} USDT
-              <span className={`text-sm ml-2 ${stats.profitPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                ({formatNumber(stats.profitPercentage)}% от выручки)
+        <div className="flex flex-col bg-red-50 dark:bg-red-900/20 rounded-lg p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Валовый расход</span>
+            <DollarSign className="w-4 h-4 text-red-500" />
+          </div>
+          <div className="flex items-center">
+            <span className="text-xl font-bold text-red-600 dark:text-red-400">
+              {formatNumber(stats.grossExpense)}
+            </span>
+            <span className="text-xs ml-1 text-gray-500">USDT</span>
+          </div>
+        </div>
+        
+        <div className="flex flex-col bg-green-50 dark:bg-green-900/20 rounded-lg p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Валовый доход</span>
+            <DollarSign className="w-4 h-4 text-green-500" />
+          </div>
+          <div className="flex items-center">
+            <span className="text-xl font-bold text-green-600 dark:text-green-400">
+              {formatNumber(stats.grossIncome)}
+            </span>
+            <span className="text-xs ml-1 text-gray-500">USDT</span>
+          </div>
+        </div>
+        
+        <div className="flex flex-col bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Валовая прибыль</span>
+            <ArrowUpDown className="w-4 h-4 text-blue-500" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center">
+              <span className={`text-xl font-bold ${stats.grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatNumber(stats.grossProfit)}
               </span>
-            </p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="py-4">
-            <h3 className="text-lg font-medium mb-1">Спред на ордер</h3>
-            <p className="text-2xl font-semibold">
-              {stats.matchedCount} ордеров
-              <span className={`text-sm block mt-1 ${stats.profitPerOrder >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <span className="text-xs ml-1 text-gray-500">USDT</span>
+            </div>
+            <span className={`text-xs ${stats.profitPercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              ({formatNumber(stats.profitPercentage)}%)
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex flex-col bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Спред на ордер</span>
+            <CircleDollarSign className="w-4 h-4 text-purple-500" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center">
+              <span className="text-xl font-bold text-purple-600 dark:text-purple-400">{stats.matchedCount}</span>
+              <span className="text-xs ml-1 text-gray-500">ордеров</span>
+            </div>
+            <div className="flex flex-col mt-1 text-xs">
+              <span className={`${stats.profitPerOrder >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 Ср. спред: {formatNumber(stats.profitPerOrder)} USDT
               </span>
-              <span className="text-sm block">
+              <span className="text-gray-500">
                 Ср. расход: {formatNumber(stats.expensePerOrder)} USDT
               </span>
-            </p>
-          </CardBody>
-        </Card>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -1009,62 +1039,58 @@ startDate
     const unmatchedIdexTransactions = stats.totalUnmatchedIdexTransactions || stats.unmatchedIdexTransactions || 0;
     
     return (
-      <Card className="mb-6">
-        <CardHeader>
-          <h3 className="text-lg font-medium">Статистика транзакций</h3>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-100 rounded-lg p-4">
-              <div className="flex items-center mb-2">
-                <Database className="w-5 h-5 text-blue-500 mr-2" />
-                <h4 className="font-medium">Телеграмм транзакции</h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 shadow-sm">
+              <div className="flex items-center mb-1">
+                <Database className="w-4 h-4 text-blue-500 dark:text-blue-400 mr-2" />
+                <h4 className="font-medium text-sm">Телеграмм транзакции</h4>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
-                  <p className="text-sm text-gray-600">Всего:</p>
-                  <p className="text-xl font-bold">{totalTransactions}</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Всего:</p>
+                  <p className="text-lg font-bold">{totalTransactions}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Сопоставлено:</p>
-                  <p className="text-xl font-bold">{matchedTransactions}</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Сопоставлено:</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{matchedTransactions}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Не сопоставлено:</p>
-                  <p className="text-xl font-bold">{unmatchedTransactions}</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Не сопоставлено:</p>
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{unmatchedTransactions}</p>
                 </div>
               </div>
             </div>
             
-            <div className="bg-purple-100 rounded-lg p-4">
-              <div className="flex items-center mb-2">
-                <BarChart2 className="w-5 h-5 text-purple-500 mr-2" />
-                <h4 className="font-medium">IDEX транзакции</h4>
+            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 shadow-sm">
+              <div className="flex items-center mb-1">
+                <BarChart2 className="w-4 h-4 text-purple-500 dark:text-purple-400 mr-2" />
+                <h4 className="font-medium text-sm">IDEX транзакции</h4>
               </div>
-              <div className="grid grid-cols-2 gap-4 mt-3">
+              <div className="grid grid-cols-2 gap-3 mt-2">
                 {/* Левая колонка со статистикой */}
-                <div className="grid grid-cols-1 gap-2">
+                <div className="grid grid-cols-1 gap-1.5">
                   <div>
-                    <p className="text-sm text-gray-600">Всего IDEX:</p>
-                    <p className="text-xl font-bold">{totalIdexTransactions}</p>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400">Всего IDEX:</p>
+                    <p className="text-lg font-bold">{totalIdexTransactions}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Сопоставлено IDEX:</p>
-                    <p className="text-xl font-bold text-green-500">{matchedIdexTransactions}</p>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400">Сопоставлено IDEX:</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{matchedIdexTransactions}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Не сопоставлено IDEX:</p>
-                    <p className="text-xl font-bold text-red-500">{unmatchedIdexTransactions}</p>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400">Не сопоставлено IDEX:</p>
+                    <p className="text-lg font-bold text-red-600 dark:text-red-400">{unmatchedIdexTransactions}</p>
                   </div>
                 </div>
                 
                 {/* Правая колонка со списком кабинетов */}
-                <div className="border-l pl-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-sm font-medium text-gray-700">Фильтр по кабинетам:</p>
+                <div className="border-l border-zinc-200 dark:border-zinc-700 pl-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Фильтр по кабинетам:</p>
                     <div className="flex gap-1">
                       <Button 
-                        size="sm" 
+                        size="xs" 
                         variant="flat" 
                         color="primary"
                         onClick={selectAllCabinets}
@@ -1072,7 +1098,7 @@ startDate
                         Все
                       </Button>
                       <Button 
-                        size="sm" 
+                        size="xs" 
                         variant="flat" 
                         color="danger"
                         onClick={clearCabinetSelection}
@@ -1081,9 +1107,9 @@ startDate
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-48 overflow-y-auto pr-2">
+                  <div className="max-h-36 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600">
                     {cabinetStatsData && cabinetsData?.cabinets ? (
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {getSortedCabinets().map(cabinet => {
                           const cabinetStats = cabinetStatsData.cabinetStats[cabinet.id] || { matchCount: 0, totalCount: 0 };
                           const isSelected = !!selectedViewCabinetIds[cabinet.id];
@@ -1091,10 +1117,10 @@ startDate
                           return (
                             <div 
                               key={cabinet.id}
-                              className={`flex items-center justify-between rounded-md p-1.5 cursor-pointer ${
-                                isSelected ? 'bg-blue-100' : 
-                                cabinetStats.matchCount > 0 ? 'bg-green-200' : 
-                                'bg-white'
+                              className={`flex items-center justify-between rounded-md p-1 cursor-pointer transition-colors ${
+                                isSelected ? 'bg-blue-100 dark:bg-blue-900/40' : 
+                                cabinetStats.matchCount > 0 ? 'bg-green-100 dark:bg-green-900/30' : 
+                                'bg-white dark:bg-zinc-800'
                               }`}
                               onClick={() => toggleViewCabinetSelection(cabinet.id)}
                             >
@@ -1102,12 +1128,12 @@ startDate
                                 <Checkbox 
                                   isSelected={isSelected}
                                   onChange={() => toggleViewCabinetSelection(cabinet.id)} 
-                                  className="mr-2"
+                                  className="mr-1"
                                 />
-                                <span className="text-sm font-medium">ID {cabinet.idexId}</span>
+                                <span className="text-xs font-medium">ID {cabinet.idexId}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 px-1 py-0.5 rounded">
                                   {cabinetStats.matchCount}/{cabinetStats.totalCount || 0}
                                 </span>
                               </div>
@@ -1116,11 +1142,11 @@ startDate
                         })}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500">Загрузка кабинетов...</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Загрузка кабинетов...</p>
                     )}
                   </div>
                   {Object.keys(selectedViewCabinetIds).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-1 flex flex-wrap gap-1">
                       {Object.keys(selectedViewCabinetIds).map(id => {
                         const cabinet = cabinetsData?.cabinets.find(c => c.id === parseInt(id));
                         return cabinet ? (
@@ -1128,7 +1154,7 @@ startDate
                             key={id} 
                             color="primary" 
                             variant="flat"
-                            className="cursor-pointer"
+                            className="cursor-pointer text-xs"
                             onClick={() => toggleViewCabinetSelection(parseInt(id))}
                           >
                             ID {cabinet.idexId}
@@ -1141,10 +1167,8 @@ startDate
                 </div>
               </div>
             </div>
-            
           </div>
-        </CardBody>
-      </Card>
+
     );
   };
 
@@ -1279,6 +1303,42 @@ startDate
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold">Сопоставление транзакций</h1>
+        <Tabs 
+        selectedKey={activeTab} 
+        onSelectionChange={(key) => setActiveTab(key as string)}
+        className=" "
+      >
+        <Tab key="all" title={
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            <span>Все Сопоставления</span>
+          </div>
+        } />
+        <Tab key="byUser" title={
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4" />
+            <span>Сопоставления пользователя</span>
+          </div>
+        } />
+        <Tab key="unmatchedIdex" title={
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>Несопоставленные IDEX</span>
+          </div>
+        } />
+        <Tab key="unmatchedUser" title={
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Ручное сопоставление</span>
+          </div>
+        } />
+        <Tab key="userStats" title={
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-4 h-4" />
+            <span>Статистика по пользователям</span>
+          </div>
+        } />
+      </Tabs>
         <div className="flex gap-2">
           <Button
             color="primary"
@@ -1402,65 +1462,7 @@ startDate
         </CardBody>
       </Card>
       
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="flex -mb-px">
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              activeTab === "all" 
-                ? "border-primary-500 text-primary-500" 
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Database className="w-4 h-4" />
-            <span>Все Сопоставления</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("byUser")}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              activeTab === "byUser" 
-                ? "border-primary-500 text-primary-500" 
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <User className="w-4 h-4" />
-            <span>Сопоставления пользователя</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("unmatchedIdex")}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              activeTab === "unmatchedIdex" 
-                ? "border-primary-500 text-primary-500" 
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <AlertCircle className="w-4 h-4" />
-            <span>Несопоставленные IDEX</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("unmatchedUser")}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              activeTab === "unmatchedUser" 
-                ? "border-primary-500 text-primary-500" 
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4" />
-            <span>Ручное сопоставление</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("userStats")}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              activeTab === "userStats" 
-                ? "border-primary-500 text-primary-500" 
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <BarChart2 className="w-4 h-4" />
-            <span>Статистика по пользователям</span>
-          </button>
-        </nav>
-      </div>
+
       
       {/* All matches stats */}
       {activeTab === "all" && allMatchesData?.stats && (
@@ -1488,7 +1490,7 @@ startDate
                 <div>
                   <h3 className="text-md font-medium mb-2">Выбранная транзакция кошелька</h3>
                   {selectedUserTransaction ? (
-                    <div className="p-3 bg-gray-100 rounded">
+                    <div className="p-3 bg-zinc-100 dark:bg-zinc-800/20 rounded">
                       <p>ID: {selectedUserTransaction}</p>
                       {unmatchedUserData?.transactions && (
                         <>
@@ -1517,13 +1519,13 @@ startDate
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-gray-500">Выберите транзакцию кошелька из таблицы ниже</p>
+                    <p className="text-zinc-500 dark:text-zinc-400">Выберите транзакцию кошелька из таблицы ниже</p>
                   )}
                 </div>
                 <div>
                   <h3 className="text-md font-medium mb-2">Выбранная IDEX транзакция</h3>
                   {selectedIdexTransaction ? (
-                    <div className="p-3 bg-gray-100 rounded">
+                    <div className="p-3 bg-zinc-100 dark:bg-zinc-800/20 rounded">
                       <p>ID: {selectedIdexTransaction}</p>
                       {unmatchedIdexData?.transactions && (
                         <>
@@ -1564,7 +1566,7 @@ startDate
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-gray-500">Выберите IDEX транзакцию из таблицы ниже</p>
+                    <p className="text-zinc-500 dark:text-zinc-400">Выберите IDEX транзакцию из таблицы ниже</p>
                   )}
                 </div>
               </div>
@@ -1613,7 +1615,7 @@ startDate
                           {unmatchedUserData.transactions.map((transaction) => (
                             <TableRow 
                               key={transaction.id}
-                              className={selectedUserTransaction === transaction.id ? "bg-blue-100" : ""}
+                              className={selectedUserTransaction === transaction.id ? "bg-blue-100 dark:bg-blue-900/20 rounded-md" : ""}
                             >
                               <TableCell>{transaction.id}</TableCell>
                               <TableCell>{transaction.user?.name || '-'}</TableCell>
@@ -1716,12 +1718,12 @@ startDate
             <Spinner size="sm" />
           </div>
         ) : (
-          <div className="max-h-32 overflow-y-auto border rounded p-2">
+          <div className="max-h-32 overflow-y-auto  rounded p-2">
             {idexCabinetsData?.cabinets && idexCabinetsData.cabinets.length > 0 ? (
               idexCabinetsData.cabinets.map(cabinet => (
                 <div 
                   key={cabinet.id}
-                  className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
+                  className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-900/20 cursor-pointer"
                   onClick={() => toggleIdexCabinetSelection(cabinet.id)}
                 >
                   <div className="flex items-center">
@@ -1803,7 +1805,7 @@ startDate
                 return (
                   <TableRow 
                     key={transaction.id}
-                    className={selectedIdexTransaction === transaction.id ? "bg-blue-100" : ""}
+                    className={selectedIdexTransaction === transaction.id ? "bg-blue-100 dark:bg-blue-900/20 rounded-md" : ""}
                   >
                     <TableCell>{transaction.id}</TableCell>
                     <TableCell>{transaction.externalId.toString()}</TableCell>
@@ -2105,12 +2107,12 @@ startDate
               <Spinner size="sm" />
             </div>
           ) : (
-            <div className="max-h-48 overflow-y-auto border rounded p-2">
+            <div className="max-h-48 overflow-y-auto  rounded p-2">
               {idexCabinetsData?.cabinets && idexCabinetsData.cabinets.length > 0 ? (
                 idexCabinetsData.cabinets.map(cabinet => (
                   <div 
                     key={cabinet.id}
-                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
+                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
                     onClick={() => toggleIdexCabinetSelection(cabinet.id)}
                   >
                     <div className="flex items-center">
@@ -2129,7 +2131,7 @@ startDate
                   </div>
                 ))
               ) : (
-                <div className="text-center text-gray-500 py-4">
+                <div className="text-center text-zinc-500 py-4">
                   Нет доступных кабинетов
                 </div>
               )}
@@ -2255,36 +2257,63 @@ startDate
               <>
                 {/* Global statistics summary */}
                 {usersWithStatsData.totalStats && (
-                  <div className="mb-6">
-                    <Card className="bg-gray-50">
-                      <CardBody>
-                        <h3 className="text-lg font-semibold mb-3">Общая статистика за период</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <p className="text-gray-600">Телеграм транзакции:</p>
-                            <p className="font-medium">Всего: {usersWithStatsData.totalStats.totalTelegramTransactions}</p>
-                            <p className="font-medium text-green-600">Сопоставлено: {usersWithStatsData.totalStats.matchedTelegramTransactions}</p>
-                            <p className="font-medium text-red-600">Не сопоставлено: {usersWithStatsData.totalStats.unmatchedTelegramTransactions}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">IDEX транзакции:</p>
-                            <p className="font-medium">Всего: {usersWithStatsData.totalStats.totalIdexTransactions}</p>
-                            <p className="font-medium text-green-600">Сопоставлено: {usersWithStatsData.totalStats.matchedIdexTransactions}</p>
-                            <p className="font-medium text-red-600">Не сопоставлено: {usersWithStatsData.totalStats.unmatchedIdexTransactions}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Финансовые показатели:</p>
-                            <p className="font-medium">Валовый расход: {formatNumber(usersWithStatsData.totalStats.grossExpense)} USDT</p>
-                            <p className="font-medium">Валовый доход: {formatNumber(usersWithStatsData.totalStats.grossIncome)} USDT</p>
-                            <p className={`font-medium ${usersWithStatsData.totalStats.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              Валовая прибыль: {formatNumber(usersWithStatsData.totalStats.grossProfit)} USDT 
-                              ({formatNumber(usersWithStatsData.totalStats.profitPercentage)}%)
-                            </p>
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  </div>
+                  <div className="mb-4">
+  <Card className="bg-gray-50 dark:bg-zinc-800/50 shadow-sm">
+    <CardBody className="py-3">
+      <h3 className="text-md font-semibold mb-2">Общая статистика за период</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Телеграм транзакции:</p>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Всего:</span>
+            <span className="font-medium">{usersWithStatsData.totalStats.totalTelegramTransactions}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Сопоставлено:</span>
+            <span className="font-medium text-green-600 dark:text-green-400">{usersWithStatsData.totalStats.matchedTelegramTransactions}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Не сопоставлено:</span>
+            <span className="font-medium text-red-600 dark:text-red-400">{usersWithStatsData.totalStats.unmatchedTelegramTransactions}</span>
+          </div>
+        </div>
+        <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">IDEX транзакции:</p>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Всего:</span>
+            <span className="font-medium">{usersWithStatsData.totalStats.totalIdexTransactions}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Сопоставлено:</span>
+            <span className="font-medium text-green-600 dark:text-green-400">{usersWithStatsData.totalStats.matchedIdexTransactions}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Не сопоставлено:</span>
+            <span className="font-medium text-red-600 dark:text-red-400">{usersWithStatsData.totalStats.unmatchedIdexTransactions}</span>
+          </div>
+        </div>
+        <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Финансовые показатели:</p>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Валовый расход:</span>
+            <span className="font-medium">{formatNumber(usersWithStatsData.totalStats.grossExpense)} USDT</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Валовый доход:</span>
+            <span className="font-medium">{formatNumber(usersWithStatsData.totalStats.grossIncome)} USDT</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Валовая прибыль:</span>
+            <span className={`font-medium ${usersWithStatsData.totalStats.grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {formatNumber(usersWithStatsData.totalStats.grossProfit)} USDT 
+              <span className="text-xs ml-1">({formatNumber(usersWithStatsData.totalStats.profitPercentage)}%)</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </CardBody>
+  </Card>
+</div>
                 )}
                 
                 <div className="overflow-x-auto">
@@ -2306,7 +2335,7 @@ startDate
                       {usersWithStatsData.users.map((user) => (
                         <TableRow 
                           key={user.id} 
-                          className="cursor-pointer hover:bg-gray-50"
+                          className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
                           onClick={() => {
                             setSelectedUserId(user.id);
                             setActiveTab("byUser");

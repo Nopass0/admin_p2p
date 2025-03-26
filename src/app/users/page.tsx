@@ -44,7 +44,7 @@ export default function UsersPage() {
         </div>
       </div>
       
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+      <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-sm p-6">
         <UsersTable />
       </div>
     </div>

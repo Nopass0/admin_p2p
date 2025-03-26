@@ -88,7 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   return (
     <aside className={cn(
-      "flex flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 w-64 p-4",
+      "flex flex-col h-screen bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 w-64 p-4",
       className
     )}>
       <div className="flex items-center gap-2 px-2 py-4">
@@ -103,8 +103,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               <button
                 onClick={() => toggleMenu(item.name)}
                 className={cn(
-                  "flex items-center justify-between w-full px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
-                  isActiveLink(item.submenu[0].path) && "bg-gray-100 dark:bg-gray-800 text-primary"
+                  "flex items-center justify-between w-full px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors",
+                  isActiveLink(item.submenu[0].path) && "bg-gray-100 dark:bg-zinc-800 text-primary"
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -126,7 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                       key={subIndex}
                       href={subItem.path}
                       className={cn(
-                        "flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+                        "flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors",
                         isActiveLink(subItem.path) ? "text-primary font-medium" : "text-gray-600 dark:text-gray-400"
                       )}
                     >
@@ -141,9 +141,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               key={index}
               href={item.path}
               className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+                "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors",
                 isActiveLink(item.path)
-                  ? "bg-gray-100 dark:bg-gray-800 text-primary"
+                  ? "bg-gray-100 dark:bg-zinc-800 text-primary"
                   : "text-gray-600 dark:text-gray-400"
               )}
             >
@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         ))}
       </nav>
       
-      <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-800">
+      <div className="mt-auto pt-4 border-t border-gray-200 dark:border-zinc-800">
         <Button variant="flat" color="danger" className="w-full justify-start" startIcon={<LogOut className="w-4 h-4" />}>
           Выйти
         </Button>

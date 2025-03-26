@@ -3,6 +3,7 @@ import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
+import { Prisma } from "@prisma/client";
 
 // Подключаем плагины для работы с таймзонами
 dayjs.extend(utc);
@@ -1266,20 +1267,94 @@ export const matchRouter = createTRPCRouter({
         };
       }
       
-      // Добавляем поиск по запросу, если указан
-      if (searchQuery) {
-        const numericSearch = !isNaN(Number(searchQuery)) ? Number(searchQuery) : undefined;
-        
-        where = {
-          ...where,
-          OR: [
-            numericSearch 
-              ? { externalId: { equals: BigInt(numericSearch) } } 
-              : {},
-            { wallet: { contains: searchQuery, mode: 'insensitive' } }
-          ].filter(condition => Object.keys(condition).length > 0)
-        };
+// Добавляем поиск, если указан
+if (searchQuery) {
+  const numericQuery = parseFloat(searchQuery);
+  const isNumeric = !isNaN(numericQuery);
+
+  // Initialize OR condition array
+  const orConditions: Prisma.IdexTransactionWhereInput[] = [];
+
+  // Для числовых полей используем числовое сравнение
+  if (isNumeric) {
+    // Поиск по числовому externalId (BigInt)
+    orConditions.push({ 
+      externalId: { equals: BigInt(numericQuery) } 
+    });
+    
+    // Поиск по totalPrice (если такое поле есть в IdexTransaction)
+    // Проверьте, есть ли такое поле в вашей модели
+    // orConditions.push({ totalPrice: { equals: numericQuery } });
+
+    // --- ПОИСК В JSON ПОЛЯХ ---
+    // Поиск в поле amount по значению trader.643
+    orConditions.push({
+      amount: {
+        path: ['trader', '643'],
+        equals: numericQuery
       }
+    });
+    
+    // Поиск в поле amount по значению trader.000001
+    orConditions.push({
+      amount: {
+        path: ['trader', '000001'],
+        equals: numericQuery
+      }
+    });
+    
+    // Поиск в поле total по значению trader.643
+    orConditions.push({
+      total: {
+        path: ['trader', '643'],
+        equals: numericQuery
+      }
+    });
+    
+    // Поиск в поле total по значению trader.000001
+    orConditions.push({
+      total: {
+        path: ['trader', '000001'],
+        equals: numericQuery
+      }
+    });
+    
+    // Поиск в extraData (если нужен)
+    orConditions.push({
+      extraData: {
+        path: ['trader', '643'],
+        equals: numericQuery
+      }
+    });
+    
+    orConditions.push({
+      extraData: {
+        path: ['trader', '000001'],
+        equals: numericQuery
+      }
+    });
+  }
+  
+  // Для строковых поисков (только если у вас есть строковые поля в IdexTransaction)
+  // В вашей схеме wallet - это строковое поле, его можно использовать для поиска
+  orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+  
+  // Для поиска по строковым значениям в JSON
+  if (!isNumeric) {
+    // Можно добавить строковый поиск в JSON полях если нужно
+    // Например:
+    // orConditions.push({
+    //   extraData: {
+    //     path: ['someStringKey'],
+    //     string_contains: searchQuery
+    //   }
+    // });
+  }
+
+  if (orConditions.length > 0) {
+    where.OR = orConditions;
+  }
+}
       
       // Формируем объект сортировки
       let orderBy: any = { approvedAt: 'desc' };

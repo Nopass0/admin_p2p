@@ -20,7 +20,7 @@ export default function RootLayout({
         <Providers>
           <div className="flex min-h-screen">
             <AppSidebar />
-            <div className="flex-1 bg-gray-50 dark:bg-slate-950">
+            <div className="flex-1 bg-gray-50 dark:bg-zinc-950">
               {children}
             </div>
           </div>
