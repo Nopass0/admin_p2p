@@ -517,6 +517,25 @@ startDate
     enabled: activeTab === "bybit"
   });
 
+  // Add this query to your component
+  const {
+    data: unmatchedBybitData,
+    isLoading: isLoadingUnmatchedBybit,
+    refetch: refetchUnmatchedBybit
+  } = api.match.getUnmatchedBybitTransactions.useQuery({
+    userId: activeTab === "unmatchedUser" ? selectedUnmatchedUserId : null,
+    startDate,
+    endDate,
+    page,
+    pageSize,
+    searchQuery,
+    sortColumn: sortState.column || undefined,
+    sortDirection: sortState.direction || undefined
+  }, {
+    refetchOnWindowFocus: false,
+    enabled: activeTab === "unmatchedUser"
+  });
+
   // Get user statistics
   const {
     data: usersWithStatsData,
@@ -1794,6 +1813,79 @@ startDate
 
           {/* Split view for manual matching */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Bybit transactions */}
+<Card>
+  <CardHeader>
+    <div className="flex items-center gap-2">
+      <Database className="w-5 h-5 text-orange-500" />
+      <h2 className="text-lg font-semibold">Несопоставленные Bybit транзакции</h2>
+    </div>
+  </CardHeader>
+  <CardBody>
+    {isLoadingUnmatchedBybit ? (
+      <div className="flex justify-center py-10">
+        <Spinner size="lg" color="primary" />
+      </div>
+    ) : unmatchedBybitData?.transactions && unmatchedBybitData.transactions.length > 0 ? (
+      <>
+        <div className="overflow-x-auto">
+          <Table aria-label="Таблица несопоставленных Bybit транзакций">
+            <TableHeader>
+              <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+              <TableColumn>{renderSortableHeader("user.name", "Пользователь")}</TableColumn>
+              <TableColumn>{renderSortableHeader("dateTime", "Дата")}</TableColumn>
+              <TableColumn>{renderSortableHeader("totalPrice", "Сумма")}</TableColumn>
+              <TableColumn>{renderSortableHeader("type", "Тип")}</TableColumn>
+              <TableColumn>Действия</TableColumn>
+            </TableHeader>
+            <TableBody>
+              {unmatchedBybitData.transactions.map((transaction) => (
+                <TableRow 
+                  key={transaction.id}
+                  className={selectedBybitTransaction === transaction.id ? "bg-blue-100 dark:bg-blue-900/20 rounded-md" : ""}
+                >
+                  <TableCell>{transaction.id}</TableCell>
+                  <TableCell>{transaction.user?.name || '-'}</TableCell>
+                  <TableCell>{dayjs(shiftTimeBy3Hours(transaction.dateTime)).format(DATE_FORMAT)}</TableCell>
+                  <TableCell>{formatNumber(transaction.totalPrice)} ₽</TableCell>
+                  <TableCell>{transaction.type}</TableCell>
+                  <TableCell>
+                    <Button 
+                      color={selectedBybitTransaction === transaction.id ? "secondary" : "primary"} 
+                      variant="flat" 
+                      size="sm"
+                      onClick={() => setSelectedBybitTransaction(
+                        selectedBybitTransaction === transaction.id ? null : transaction.id
+                      )}
+                    >
+                      {selectedBybitTransaction === transaction.id ? "Отменить выбор" : "Выбрать"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        {unmatchedBybitData?.pagination.totalPages > 1 && (
+          <div className="flex justify-center mt-4">
+            <Pagination
+              total={unmatchedBybitData.pagination.totalPages}
+              initialPage={page}
+              page={page}
+              onChange={setPage}
+              aria-label="Пагинация несопоставленных Bybit транзакций"
+            />
+          </div>
+        )}
+      </>
+    ) : (
+      <div className="text-center py-10 text-gray-500">
+        <FileText className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+        <p>Нет несопоставленных Bybit транзакций в выбранном диапазоне дат</p>
+      </div>
+    )}
+  </CardBody>
+</Card>
             {/* User transactions */}
             <Card>
               <CardHeader>
