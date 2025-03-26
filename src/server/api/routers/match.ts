@@ -977,44 +977,116 @@ matchBybitWithIdex: publicProcedure
   endDate: z.string(),
   userId: z.number().int().positive().nullable().optional(),
   userIds: z.array(z.number().int().positive()).optional(),
-  cabinetIds: z.array(z.number().int().positive()).optional()
+  // Keep cabinetIds for backward compatibility
+  cabinetIds: z.array(z.number().int().positive()).optional(),
+  // Add support for per-cabinet date configurations
+  cabinetConfigs: z.array(z.object({
+    cabinetId: z.number().int().positive(),
+    startDate: z.string(),
+    endDate: z.string(),
+  })).optional(),
 }))
 .mutation(async ({ ctx, input }) => {
   try {
-    const { startDate, endDate, userId, userIds, cabinetIds } = input;
+    const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
-    // Преобразуем даты с учетом таймзоны
-    const startDateTime = dayjs(startDate).utc().toDate();
-    const endDateTime = dayjs(endDate).utc().toDate();
+    // Преобразуем глобальные даты с учетом таймзоны
+    const globalStartDateTime = dayjs(startDate).utc().toDate();
+    const globalEndDateTime = dayjs(endDate).utc().toDate();
     
-    // Получаем IDEX транзакции в указанном диапазоне дат
-    let idexTransactionsWhere: any = {
-      approvedAt: {
-        gte: startDateTime.toISOString(),
-        lte: endDateTime.toISOString()
-      },
-      // Только несопоставленные с Bybit
+    console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
+    console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
+    
+    // Получаем IDEX транзакции в указанном диапазоне дат с учетом настроек кабинетов
+    let idexTransactionsWhere: any;
+    
+    if (cabinetConfigs && cabinetConfigs.length > 0) {
+      // Если есть конфигурации кабинетов, создаем условия OR для каждого кабинета
+      idexTransactionsWhere = {
+        OR: cabinetConfigs.map(config => ({
+          AND: [
+            { cabinetId: config.cabinetId },
+            {
+              approvedAt: {
+                gte: dayjs(config.startDate).utc().toISOString(),
+                lte: dayjs(config.endDate).utc().toISOString()
+              }
+            }
+          ]
+        }))
+      };
+      
+      // Для логирования
+      cabinetConfigs.forEach(config => {
+        console.log(`Кабинет ID ${config.cabinetId}: с ${config.startDate} по ${config.endDate}`);
+      });
+    } else {
+      // Если кабинеты выбраны, но без конфигураций, используем глобальный диапазон
+      const selectedCabinetIds = cabinetIds || 
+        (cabinetConfigs ? cabinetConfigs.map(config => config.cabinetId) : []);
+        
+      if (selectedCabinetIds.length > 0) {
+        idexTransactionsWhere = {
+          cabinetId: {
+            in: selectedCabinetIds
+          },
+          approvedAt: {
+            gte: globalStartDateTime.toISOString(),
+            lte: globalEndDateTime.toISOString()
+          }
+        };
+      } else {
+        // Если нет выбранных кабинетов, используем только глобальный диапазон
+        idexTransactionsWhere = {
+          approvedAt: {
+            gte: globalStartDateTime.toISOString(),
+            lte: globalEndDateTime.toISOString()
+          }
+        };
+      }
+    }
+    
+    // Добавляем условие, что IDEX транзакции не должны быть еще сопоставлены с Bybit
+    idexTransactionsWhere = {
+      ...idexTransactionsWhere,
       BybitMatch: {
         none: {}
       }
     };
     
-    // Применяем фильтр по кабинетам, если указан
-    if (cabinetIds && cabinetIds.length > 0) {
-      idexTransactionsWhere.cabinetId = {
-        in: cabinetIds
-      };
-    }
-    
     const idexTransactions = await ctx.db.idexTransaction.findMany({
-      where: idexTransactionsWhere
+      where: idexTransactionsWhere,
     });
+    
+    console.log(`Найдено ${idexTransactions.length} IDEX транзакций для сопоставления`);
+    
+    // Фильтруем IDEX транзакции по диапазону дат кабинетов
+    const filteredIdexTransactions = idexTransactions.filter(tx => {
+      if (!tx.approvedAt) return false;
+      
+      // Если для этого кабинета есть специальный диапазон дат, проверяем по нему
+      if (cabinetConfigs) {
+        const cabinetConfig = cabinetConfigs.find(config => config.cabinetId === tx.cabinetId);
+        if (cabinetConfig) {
+          const configStartDate = dayjs(cabinetConfig.startDate).utc();
+          const configEndDate = dayjs(cabinetConfig.endDate).utc();
+          const approvedDate = dayjs(tx.approvedAt).utc();
+          return approvedDate.isAfter(configStartDate) && approvedDate.isBefore(configEndDate);
+        }
+      }
+      
+      // Иначе проверяем по глобальному диапазону
+      const approvedDate = dayjs(tx.approvedAt).utc();
+      return approvedDate.isAfter(globalStartDateTime) && approvedDate.isBefore(globalEndDateTime);
+    });
+    
+    console.log(`После фильтрации осталось ${filteredIdexTransactions.length} IDEX транзакций`);
     
     // Получаем Bybit транзакции в указанном диапазоне дат
     let bybitTransactionsWhere: any = {
       dateTime: {
-        gte: startDateTime,
-        lte: endDateTime
+        gte: globalStartDateTime,
+        lte: globalEndDateTime
       },
       // Только несопоставленные
       BybitMatch: {
@@ -1038,7 +1110,7 @@ matchBybitWithIdex: publicProcedure
       where: bybitTransactionsWhere
     });
     
-    console.log(`Найдено ${idexTransactions.length} IDEX транзакций и ${bybitTransactions.length} Bybit транзакций для сопоставления`);
+    console.log(`Найдено ${bybitTransactions.length} Bybit транзакций для сопоставления`);
     
     // Подготовка к сопоставлению
     const matchedIdexTransactions = new Set<number>();
@@ -1046,7 +1118,7 @@ matchBybitWithIdex: publicProcedure
     const matches = [];
     
     // Пытаемся сопоставить каждую IDEX транзакцию с Bybit транзакцией
-    for (const idexTx of idexTransactions) {
+    for (const idexTx of filteredIdexTransactions) {
       if (matchedIdexTransactions.has(idexTx.id)) continue;
       if (!idexTx.approvedAt) continue; // Пропускаем, если нет даты подтверждения
       
@@ -1143,7 +1215,7 @@ matchBybitWithIdex: publicProcedure
         profitPerOrder,
         expensePerOrder,
         totalBybitTransactions: bybitTransactions.length,
-        totalIdexTransactions: idexTransactions.length
+        totalIdexTransactions: filteredIdexTransactions.length
       }
     };
   } catch (error) {
