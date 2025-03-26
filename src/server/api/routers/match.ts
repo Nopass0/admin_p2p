@@ -996,6 +996,10 @@ matchBybitWithIdex: publicProcedure
     
     console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
     console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
+    console.log(`userId: ${userId}`);
+    console.log(`userIds: ${userIds}`);
+    console.log(`cabinetIds: ${cabinetIds}`);
+    console.log(`cabinetConfigs: ${cabinetConfigs}`);
     
     // Получаем IDEX транзакции в указанном диапазоне дат с учетом настроек кабинетов
     let idexTransactionsWhere: any;
