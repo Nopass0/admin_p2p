@@ -2896,7 +2896,7 @@ function calculateTotalStats(matches: any[]): {
 // Вспомогательная функция для расчета метрик сопоставления Bybit и IDEX
 function calculateBybitMatchMetrics(bybitTransaction: any, idexTransaction: any) {
   const amount = bybitTransaction.amount || 0;
-  const grossExpense = amount * COMMISSION;
+  const grossExpense = amount;
   
   // Парсим поле total для получения суммы
   let totalUsdt = 0;
