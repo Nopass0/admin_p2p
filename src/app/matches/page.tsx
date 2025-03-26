@@ -82,6 +82,10 @@ interface StatsData {
   totalMatchedIdexTransactions?: number;
   totalUnmatchedIdexTransactions?: number;
   matchedCount: number;
+  // Добавляем статистику по Bybit
+  totalBybitTransactions?: number;
+  matchedBybitTransactions?: number;
+  unmatchedBybitTransactions?: number;
 }
 
 // Интерфейс для выбранных пользователей в модальном окне сопоставления
@@ -101,6 +105,38 @@ const DATE_FORMAT = "DD.MM.YYYY HH:mm";
 interface MatchRecord {
   id: number;
   transaction: {
+    dateTime: string;
+    user: {
+      id: number;
+      name: string;
+      telegramAccounts?: Array<{ username: string }>;
+      passCode: string;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+      lastNotification: Date | null;
+    };
+    totalPrice: number;
+    type: string;
+    originalData: any;
+  };
+  idexTransaction: {
+    externalId: string;
+    cabinet: {
+      idexId: string;
+    };
+    approvedAt: string | null;
+  };
+  grossExpense: number;
+  grossIncome: number;
+  grossProfit: number;
+  profitPercentage: number;
+}
+
+// Добавим интерфейс для записей сопоставлений Bybit с IDEX
+interface BybitMatchRecord {
+  id: number;
+  bybitTransaction: {
     dateTime: string;
     user: {
       id: number;
@@ -149,6 +185,14 @@ const isMatchRecord = (item: any): item is MatchRecord => {
     item.idexTransaction;
 };
 
+// Функция для проверки типа записи сопоставления Bybit
+const isBybitMatchRecord = (item: any): item is BybitMatchRecord => {
+  return item && 
+    typeof item.id === 'number' && 
+    item.bybitTransaction && 
+    item.idexTransaction;
+};
+
 // Функция для проверки типа записи статистики пользователя
 const isUserStatsRecord = (item: any): item is UserStatsRecord => {
   return item && 
@@ -165,7 +209,7 @@ export default function EnhancedMatchingPage() {
   const [pageSize, setPageSize] = useState(10);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all"); // "all", "byUser", "unmatchedIdex", "unmatchedUser", "userStats"
+  const [activeTab, setActiveTab] = useState("all"); // "all", "byUser", "unmatchedIdex", "unmatchedUser", "userStats", "bybit", "bybitMatches", "bybitMatching"
   const [isRunningMatch, setIsRunningMatch] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [sortState, setSortState] = useState<SortState>({ column: null, direction: "desc" });
@@ -179,6 +223,7 @@ export default function EnhancedMatchingPage() {
   // Selected transactions for manual matching
   const [selectedIdexTransaction, setSelectedIdexTransaction] = useState<number | null>(null);
   const [selectedUserTransaction, setSelectedUserTransaction] = useState<number | null>(null);
+  const [selectedBybitTransaction, setSelectedBybitTransaction] = useState<number | null>(null);
   
   // Selected user for unmatched transactions view
   const [selectedUnmatchedUserId, setSelectedUnmatchedUserId] = useState<number | null>(null);
@@ -452,6 +497,25 @@ startDate
     refetchOnWindowFocus: false,
     enabled: activeTab === "unmatchedUser"
   });
+  
+  // Queries для данных Bybit транзакций
+  const {
+    data: bybitTransactionsData,
+    isLoading: isLoadingBybitTransactions,
+    refetch: refetchBybitTransactions
+  } = api.match.getBybitTransactions.useQuery({
+    userId: selectedUserId,
+    startDate,
+    endDate,
+    page,
+    pageSize,
+    searchQuery,
+    sortColumn: sortState.column || undefined,
+    sortDirection: sortState.direction || undefined
+  }, {
+    refetchOnWindowFocus: false,
+    enabled: activeTab === "bybit"
+  });
 
   // Get user statistics
   const {
@@ -566,6 +630,7 @@ startDate
       // Reset selected transactions
       setSelectedIdexTransaction(null);
       setSelectedUserTransaction(null);
+      setSelectedBybitTransaction(null);
       // Refresh data in all tabs
       void refetchAllMatches();
       if (selectedUserId) void refetchUserMatches();
@@ -630,15 +695,16 @@ startDate
 
   // Function to create manual match
   const createManualMatch = useCallback(() => {
-    if (selectedIdexTransaction && selectedUserTransaction) {
+    if (selectedIdexTransaction && selectedUserTransaction && selectedBybitTransaction) {
       createManualMatchMutation.mutate({
         idexTransactionId: selectedIdexTransaction,
-        userTransactionId: selectedUserTransaction
+        userTransactionId: selectedUserTransaction,
+        bybitTransactionId: selectedBybitTransaction
       });
     } else {
       showAlert("Ошибка", "Необходимо выбрать обе транзакции для сопоставления", "danger");
     }
-  }, [selectedIdexTransaction, selectedUserTransaction, createManualMatchMutation]);
+  }, [selectedIdexTransaction, selectedUserTransaction, selectedBybitTransaction, createManualMatchMutation]);
 
   // Function to delete match
   const deleteMatch = (matchId: number) => {
@@ -1038,6 +1104,10 @@ startDate
     const matchedIdexTransactions = stats.totalMatchedIdexTransactions || stats.matchedIdexTransactions || 0;
     const unmatchedIdexTransactions = stats.totalUnmatchedIdexTransactions || stats.unmatchedIdexTransactions || 0;
     
+    const totalBybitTransactions = stats.totalBybitTransactions || 0;
+    const matchedBybitTransactions = stats.matchedBybitTransactions || 0;
+    const unmatchedBybitTransactions = stats.unmatchedBybitTransactions || 0;
+    
     return (
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1167,6 +1237,27 @@ startDate
                 </div>
               </div>
             </div>
+            
+            <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 shadow-sm">
+              <div className="flex items-center mb-1">
+                <Database className="w-4 h-4 text-orange-500 dark:text-orange-400 mr-2" />
+                <h4 className="font-medium text-sm">Bybit транзакции</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Всего:</p>
+                  <p className="text-lg font-bold">{totalBybitTransactions}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Сопоставлено:</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{matchedBybitTransactions}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Не сопоставлено:</p>
+                  <p className="text-lg font-bold text-red-600 dark:text-red-400">{unmatchedBybitTransactions}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
     );
@@ -1189,10 +1280,6 @@ startDate
     setDeleteStartDate(startDate);
     setDeleteEndDate(endDate);
     setIsDeleteByFilterOpen(true);
-  };
-
-  const handleCloseDeleteByFilterModal = () => {
-    setIsDeleteByFilterOpen(false);
   };
 
   // Handle modal close
@@ -1354,7 +1441,7 @@ startDate
               color="primary"
 
               onClick={createManualMatch}
-              disabled={!selectedIdexTransaction || !selectedUserTransaction}
+              disabled={!selectedIdexTransaction || !selectedUserTransaction || !selectedBybitTransaction}
             >
               Создать сопоставление
             </Button>
@@ -1569,8 +1656,55 @@ startDate
                     <p className="text-zinc-500 dark:text-zinc-400">Выберите IDEX транзакцию из таблицы ниже</p>
                   )}
                 </div>
+                <div>
+                  <h3 className="text-md font-medium mb-2">Выбранная Bybit транзакция</h3>
+                  {selectedBybitTransaction ? (
+                    <div className="p-3 bg-zinc-100 dark:bg-zinc-800/20 rounded">
+                      <p>ID: {selectedBybitTransaction}</p>
+                      {unmatchedIdexData?.transactions && (
+                        <>
+                          <p>
+                            {(() => {
+                              const tx = unmatchedIdexData.transactions.find(t => t.id === selectedBybitTransaction);
+                              if (!tx) return '';
+                              let amountValue = 0;
+                              try {
+                                if (typeof tx.amount === 'string') {
+                                  const amountJson = JSON.parse(tx.amount);
+                                  amountValue = parseFloat(amountJson.trader?.[643] || 0);
+                                } else if (tx.amount && typeof tx.amount === 'object') {
+                                  amountValue = parseFloat(tx.amount.trader?.[643] || 0);
+                                }
+                              } catch (error) {
+                                console.error('Ошибка при парсинге JSON поля amount:', error);
+                              }
+                              return `Сумма: ${formatNumber(amountValue)} ₽`;
+                            })()}
+                          </p>
+                          <p>
+                            {(() => {
+                              const tx = unmatchedIdexData.transactions.find(t => t.id === selectedBybitTransaction);
+                              return tx?.approvedAt ? `Дата: ${dayjs(shiftTimeBy3Hours(tx.approvedAt)).format(DATE_FORMAT)}` : '';
+                            })()}
+                          </p>
+                        </>
+                      )}
+                      <Button 
+                        size="sm" 
+                        color="danger" 
+                        variant="flat" 
+                        className="mt-2"
+                        onClick={() => setSelectedBybitTransaction(null)}
+                      >
+                        Отменить выбор
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 dark:text-zinc-400">Выберите Bybit транзакцию из таблицы ниже</p>
+                  )}
+                </div>
               </div>
-              {selectedIdexTransaction && selectedUserTransaction && (
+              {selectedIdexTransaction && selectedUserTransaction && selectedBybitTransaction && (
                 <div className="mt-4 text-center">
                   <Button
                     color="primary"
@@ -1742,7 +1876,7 @@ startDate
                 </div>
               ))
             ) : (
-              <div className="text-center text-gray-500 py-4">
+              <div className="text-center text-zinc-500 py-4">
                 Нет доступных кабинетов
               </div>
             )}
@@ -1821,6 +1955,9 @@ startDate
                           setSelectedIdexTransaction(
                             selectedIdexTransaction === transaction.id ? null : transaction.id
                           );
+                          if (activeTab === "unmatchedIdex") {
+                            setActiveTab("unmatchedUser");
+                          }
                         }}
                       >
                         {selectedIdexTransaction === transaction.id ? "Отменить выбор" : "Выбрать для сопоставления"}
@@ -2202,7 +2339,7 @@ startDate
                           >
                             <TableCell>{transaction.id}</TableCell>
                             <TableCell>{transaction.externalId.toString()}</TableCell>
-                            <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).format(DATE_FORMAT) : '-'}</TableCell>
+                            <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
                             <TableCell>{formatNumber(amountValue)} ₽</TableCell>
                             <TableCell>
                               <Button 

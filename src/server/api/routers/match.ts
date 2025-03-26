@@ -513,6 +513,32 @@ export const matchRouter = createTRPCRouter({
             }
           }
         });
+
+              // Get Bybit statistics for this user
+      const totalUserBybitTransactions = await ctx.db.bybitTransaction.count({
+        where: {
+          userId,
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          }
+        }
+      });
+      
+      const matchedUserBybitTransactions = await ctx.db.bybitTransaction.count({
+        where: {
+          userId,
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          },
+          BybitMatch: {
+            some: {}
+          }
+        }
+      });
+      
+      const unmatchedUserBybitTransactions = totalUserBybitTransactions - matchedUserBybitTransactions;
         
         return {
           success: true,
@@ -539,7 +565,10 @@ export const matchRouter = createTRPCRouter({
             matchedTransactions: totalMatchedUserTransactions,
             matchedIdexTransactions,
             unmatchedTelegramTransactions: totalUserTransactions - totalMatchedUserTransactions,
-            unmatchedIdexTransactions: totalIdexTransactions - matchedIdexTransactions
+            unmatchedIdexTransactions: totalIdexTransactions - matchedIdexTransactions,
+            totalBybitTransactions: totalUserBybitTransactions,
+            matchedBybitTransactions: matchedUserBybitTransactions,
+            unmatchedBybitTransactions: unmatchedUserBybitTransactions
           },
           pagination: {
             totalMatches,
@@ -701,6 +730,843 @@ export const matchRouter = createTRPCRouter({
       };
     }
   }),
+
+  // Получение Bybit транзакций пользователя
+getBybitTransactions: publicProcedure
+.input(z.object({
+  userId: z.number().int().positive().nullable().optional(),
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional()
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { userId, startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Базовый фильтр
+    let where: any = {
+      dateTime: {
+        gte: startDateTime,
+        lte: endDateTime
+      }
+    };
+    
+    // Добавляем фильтр по пользователю, если указан
+    if (userId) {
+      where.userId = userId;
+    }
+    
+    // Добавляем поиск, если указан
+    if (searchQuery) {
+      where.OR = [
+        { orderNo: { contains: searchQuery } },
+        { counterparty: { contains: searchQuery } },
+        { totalPrice: { equals: parseFloat(searchQuery) || undefined } }
+      ];
+    }
+    
+    // Формируем объект сортировки
+    let orderBy: any = { dateTime: 'desc' };
+    
+    if (sortColumn && sortDirection && sortDirection !== "null") {
+      // Обрабатываем специальные случаи для вложенных полей
+      if (sortColumn === "user.name") {
+        orderBy = {
+          user: {
+            name: sortDirection
+          }
+        };
+      } else {
+        orderBy = {
+          [sortColumn]: sortDirection
+        };
+      }
+    }
+    
+    // Получаем Bybit транзакции
+    const transactions = await ctx.db.bybitTransaction.findMany({
+      where,
+      include: {
+        user: true,
+        BybitMatch: true
+      },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
+    
+    // Считаем общее количество для пагинации
+    const totalTransactions = await ctx.db.bybitTransaction.count({
+      where
+    });
+
+    // Считаем статистику по соответствиям
+    const matchedTransactions = await ctx.db.bybitTransaction.count({
+      where: {
+        ...where,
+        BybitMatch: {
+          some: {}
+        }
+      }
+    });
+    
+    const unmatchedTransactions = totalTransactions - matchedTransactions;
+    
+    return {
+      success: true,
+      transactions: transactions.map(tx => ({
+        ...tx,
+        // Преобразуем дату в московский формат для вывода
+        dateTime: dayjs(tx.dateTime).tz(MOSCOW_TIMEZONE).format()
+      })),
+      stats: {
+        totalTransactions,
+        matchedTransactions,
+        unmatchedTransactions
+      },
+      pagination: {
+        totalTransactions,
+        totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+        currentPage: page,
+        pageSize
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при получении Bybit транзакций:", error);
+    return {
+      success: false,
+      message: "Ошибка при получении Bybit транзакций",
+      transactions: [],
+      stats: {
+        totalTransactions: 0,
+        matchedTransactions: 0,
+        unmatchedTransactions: 0
+      },
+      pagination: {
+        totalTransactions: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
+
+// Получение несопоставленных Bybit транзакций
+getUnmatchedBybitTransactions: publicProcedure
+.input(z.object({
+  userId: z.number().int().positive().nullable().optional(),
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional()
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { userId, startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Базовый фильтр
+    let where: any = {
+      dateTime: {
+        gte: startDateTime,
+        lte: endDateTime
+      },
+      // Только несопоставленные
+      BybitMatch: {
+        none: {}
+      }
+    };
+    
+    // Добавляем фильтр по пользователю, если указан
+    if (userId) {
+      where.userId = userId;
+    }
+    
+    // Добавляем поиск, если указан
+    if (searchQuery) {
+      where.OR = [
+        { orderNo: { contains: searchQuery } },
+        { counterparty: { contains: searchQuery } },
+        { totalPrice: { equals: parseFloat(searchQuery) || undefined } }
+      ];
+    }
+    
+    // Формируем объект сортировки
+    let orderBy: any = { dateTime: 'desc' };
+    
+    if (sortColumn && sortDirection && sortDirection !== "null") {
+      // Обрабатываем специальные случаи для вложенных полей
+      if (sortColumn === "user.name") {
+        orderBy = {
+          user: {
+            name: sortDirection
+          }
+        };
+      } else {
+        orderBy = {
+          [sortColumn]: sortDirection
+        };
+      }
+    }
+    
+    // Получаем несопоставленные Bybit транзакции
+    const transactions = await ctx.db.bybitTransaction.findMany({
+      where,
+      include: {
+        user: true
+      },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
+    
+    // Считаем общее количество для пагинации
+    const totalTransactions = await ctx.db.bybitTransaction.count({
+      where
+    });
+    
+    return {
+      success: true,
+      transactions: transactions.map(tx => ({
+        ...tx,
+        // Преобразуем дату в московский формат для вывода
+        dateTime: dayjs(tx.dateTime).tz(MOSCOW_TIMEZONE).format()
+      })),
+      pagination: {
+        totalTransactions,
+        totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+        currentPage: page,
+        pageSize
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при получении несопоставленных Bybit транзакций:", error);
+    return {
+      success: false,
+      message: "Ошибка при получении несопоставленных Bybit транзакций",
+      transactions: [],
+      pagination: {
+        totalTransactions: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
+
+// Сопоставление Bybit транзакций с IDEX транзакциями
+matchBybitWithIdex: publicProcedure
+.input(z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  userId: z.number().int().positive().nullable().optional(),
+  userIds: z.array(z.number().int().positive()).optional(),
+  cabinetIds: z.array(z.number().int().positive()).optional()
+}))
+.mutation(async ({ ctx, input }) => {
+  try {
+    const { startDate, endDate, userId, userIds, cabinetIds } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Получаем IDEX транзакции в указанном диапазоне дат
+    let idexTransactionsWhere: any = {
+      approvedAt: {
+        gte: startDateTime.toISOString(),
+        lte: endDateTime.toISOString()
+      },
+      // Только несопоставленные с Bybit
+      BybitMatch: {
+        none: {}
+      }
+    };
+    
+    // Применяем фильтр по кабинетам, если указан
+    if (cabinetIds && cabinetIds.length > 0) {
+      idexTransactionsWhere.cabinetId = {
+        in: cabinetIds
+      };
+    }
+    
+    const idexTransactions = await ctx.db.idexTransaction.findMany({
+      where: idexTransactionsWhere
+    });
+    
+    // Получаем Bybit транзакции в указанном диапазоне дат
+    let bybitTransactionsWhere: any = {
+      dateTime: {
+        gte: startDateTime,
+        lte: endDateTime
+      },
+      // Только несопоставленные
+      BybitMatch: {
+        none: {}
+      }
+    };
+    
+    // Применяем фильтр по пользователю, если указан
+    if (userId) {
+      bybitTransactionsWhere.userId = userId;
+    }
+    
+    // Применяем фильтр по массиву пользователей, если указан
+    if (userIds && userIds.length > 0) {
+      bybitTransactionsWhere.userId = {
+        in: userIds
+      };
+    }
+    
+    const bybitTransactions = await ctx.db.bybitTransaction.findMany({
+      where: bybitTransactionsWhere
+    });
+    
+    console.log(`Найдено ${idexTransactions.length} IDEX транзакций и ${bybitTransactions.length} Bybit транзакций для сопоставления`);
+    
+    // Подготовка к сопоставлению
+    const matchedIdexTransactions = new Set<number>();
+    const matchedBybitTransactions = new Set<number>();
+    const matches = [];
+    
+    // Пытаемся сопоставить каждую IDEX транзакцию с Bybit транзакцией
+    for (const idexTx of idexTransactions) {
+      if (matchedIdexTransactions.has(idexTx.id)) continue;
+      if (!idexTx.approvedAt) continue; // Пропускаем, если нет даты подтверждения
+      
+      // Парсим поле amount для получения значения
+      let amountValue = 0;
+      try {
+        // Проверяем, является ли amount строкой JSON
+        if (typeof idexTx.amount === 'string') {
+          const amountJson = JSON.parse(idexTx.amount as string);
+          amountValue = parseFloat(amountJson.trader?.[643] || 0);
+        } else {
+          // Если amount уже является объектом
+          const amountObj = idexTx.amount as any;
+          amountValue = parseFloat(amountObj.trader?.[643] || 0);
+        }
+      } catch (error) {
+        console.error('Ошибка при парсинге JSON поля amount:', error);
+        continue;
+      }
+      
+      // Находим потенциальные совпадения Bybit транзакций
+      const potentialMatches = bybitTransactions
+        .filter(tx => {
+          // Пропускаем уже сопоставленные транзакции
+          if (matchedBybitTransactions.has(tx.id)) return false;
+          
+          // Проверяем, совпадает ли totalPrice
+          if (Math.abs(tx.totalPrice - amountValue) > 0.01) return false;
+          
+          // Проверяем, находится ли дата в пределах +/- 30 минут
+          const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString());
+          return timeDiff <= MINUTES_THRESHOLD;
+        })
+        .map(tx => ({
+          transaction: tx,
+          timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString())
+        }))
+        .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени (ближайшая первая)
+      
+      // Если у нас есть совпадение
+      if (potentialMatches.length > 0) {
+        const match = potentialMatches[0];
+        const tx = match.transaction;
+        
+        // Отмечаем обе транзакции как сопоставленные
+        matchedIdexTransactions.add(idexTx.id);
+        matchedBybitTransactions.add(tx.id);
+        
+        // Рассчитываем метрики матча
+        const metrics = calculateBybitMatchMetrics(tx, idexTx);
+        
+        // Создаем объект матча для пакетного создания
+        matches.push({
+          idexTransactionId: idexTx.id,
+          bybitTransactionId: tx.id,
+          timeDifference: Math.round(match.timeDiff * 60), // Конвертируем минуты в секунды
+          grossExpense: metrics.grossExpense,
+          grossIncome: metrics.grossIncome,
+          grossProfit: metrics.grossProfit,
+          profitPercentage: metrics.profitPercentage
+        });
+      }
+    }
+    
+    console.log(`Найдено ${matches.length} сопоставлений между Bybit и IDEX транзакциями`);
+    
+    // Создаем все сопоставления в базе данных
+    if (matches.length > 0) {
+      await ctx.db.bybitMatch.createMany({
+        data: matches,
+        skipDuplicates: true
+      });
+      
+      console.log(`Сохранено ${matches.length} сопоставлений в базе данных`);
+    }
+    
+    // Рассчитываем совокупную статистику
+    const matchCount = matches.length;
+    const totalGrossExpense = matches.reduce((sum, match) => sum + match.grossExpense, 0);
+    const totalGrossIncome = matches.reduce((sum, match) => sum + match.grossIncome, 0);
+    const totalGrossProfit = matches.reduce((sum, match) => sum + match.grossProfit, 0);
+    const totalProfitPercentage = totalGrossExpense ? (totalGrossProfit / totalGrossExpense) * 100 : 0;
+    const profitPerOrder = matchCount ? totalGrossProfit / matchCount : 0;
+    const expensePerOrder = matchCount ? totalGrossExpense / matchCount : 0;
+    
+    return {
+      success: true,
+      stats: {
+        grossExpense: totalGrossExpense,
+        grossIncome: totalGrossIncome,
+        grossProfit: totalGrossProfit,
+        profitPercentage: totalProfitPercentage,
+        matchedCount: matchCount,
+        profitPerOrder,
+        expensePerOrder,
+        totalBybitTransactions: bybitTransactions.length,
+        totalIdexTransactions: idexTransactions.length
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при сопоставлении Bybit и IDEX транзакций:", error);
+    return { 
+      success: false, 
+      message: "Произошла ошибка при сопоставлении Bybit и IDEX транзакций" 
+    };
+  }
+}),
+
+// Создание ручного сопоставления Bybit с IDEX
+createBybitMatch: publicProcedure
+.input(z.object({
+  idexTransactionId: z.number().int().positive(),
+  bybitTransactionId: z.number().int().positive()
+}))
+.mutation(async ({ ctx, input }) => {
+  try {
+    const { idexTransactionId, bybitTransactionId } = input;
+    
+    // Проверяем, сопоставлена ли уже IDEX транзакция с Bybit
+    const existingIdexMatch = await ctx.db.bybitMatch.findFirst({
+      where: { idexTransactionId }
+    });
+    
+    if (existingIdexMatch) {
+      return {
+        success: false,
+        message: "IDEX транзакция уже сопоставлена с другой Bybit транзакцией"
+      };
+    }
+    
+    // Проверяем, сопоставлена ли уже Bybit транзакция
+    const existingBybitMatch = await ctx.db.bybitMatch.findFirst({
+      where: { bybitTransactionId }
+    });
+    
+    if (existingBybitMatch) {
+      return {
+        success: false,
+        message: "Bybit транзакция уже сопоставлена с другой IDEX транзакцией"
+      };
+    }
+    
+    // Получаем обе транзакции для расчета метрик сопоставления
+    const idexTransaction = await ctx.db.idexTransaction.findUnique({
+      where: { id: idexTransactionId }
+    });
+    
+    const bybitTransaction = await ctx.db.bybitTransaction.findUnique({
+      where: { id: bybitTransactionId }
+    });
+    
+    if (!idexTransaction || !bybitTransaction) {
+      return {
+        success: false,
+        message: "Одна или обе транзакции не найдены"
+      };
+    }
+    
+    // Рассчитываем разницу во времени
+    let timeDifference = 0;
+    if (idexTransaction.approvedAt && bybitTransaction.dateTime) {
+      const timeDiffMinutes = getTimeDifferenceInMinutes(
+        idexTransaction.approvedAt,
+        bybitTransaction.dateTime.toISOString()
+      );
+      timeDifference = Math.round(timeDiffMinutes * 60); // Конвертируем в секунды
+    }
+    
+    // Рассчитываем метрики сопоставления
+    const metrics = calculateBybitMatchMetrics(bybitTransaction, idexTransaction);
+    
+    // Создаем сопоставление
+    const match = await ctx.db.bybitMatch.create({
+      data: {
+        idexTransactionId,
+        bybitTransactionId,
+        timeDifference,
+        grossExpense: metrics.grossExpense,
+        grossIncome: metrics.grossIncome,
+        grossProfit: metrics.grossProfit,
+        profitPercentage: metrics.profitPercentage
+      }
+    });
+    
+    return {
+      success: true,
+      message: "Транзакции успешно сопоставлены",
+      match
+    };
+  } catch (error) {
+    console.error("Ошибка при создании ручного сопоставления Bybit и IDEX:", error);
+    return {
+      success: false,
+      message: "Произошла ошибка при создании ручного сопоставления"
+    };
+  }
+}),
+
+// Получение всех сопоставлений Bybit с IDEX
+getBybitMatches: publicProcedure
+.input(z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+  userId: z.number().int().positive().nullable().optional(),
+  cabinetIds: z.array(z.number().int().positive()).optional()
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, userId, cabinetIds } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Строим базовый фильтр по диапазону дат
+    let where: any = {
+      OR: [
+        {
+          bybitTransaction: {
+            dateTime: {
+              gte: startDateTime,
+              lte: endDateTime
+            }
+          }
+        },
+        {
+          idexTransaction: {
+            approvedAt: {
+              gte: startDateTime.toISOString(),
+              lte: endDateTime.toISOString()
+            }
+          }
+        }
+      ]
+    };
+    
+    // Добавляем фильтр по пользователю, если указан
+    if (userId) {
+      where.bybitTransaction = {
+        ...where.bybitTransaction,
+        userId
+      };
+    }
+    
+    // Если указаны идентификаторы кабинетов, добавляем фильтр
+    if (cabinetIds && cabinetIds.length > 0) {
+      where = {
+        ...where,
+        AND: [
+          {
+            idexTransaction: {
+              cabinetId: {
+                in: cabinetIds
+              }
+            }
+          }
+        ]
+      };
+    }
+    
+    // Если есть поисковый запрос, добавляем фильтры
+    if (searchQuery) {
+      where = {
+        ...where,
+        OR: [
+          {
+            bybitTransaction: {
+              orderNo: { contains: searchQuery }
+            }
+          },
+          {
+            bybitTransaction: {
+              counterparty: { contains: searchQuery }
+            }
+          },
+          {
+            bybitTransaction: {
+              user: {
+                name: { contains: searchQuery }
+              }
+            }
+          },
+          {
+            idexTransaction: {
+              externalId: { equals: /^\d+$/.test(searchQuery) ? BigInt(searchQuery) : undefined }
+            }
+          },
+          {
+            idexTransaction: {
+              wallet: { contains: searchQuery }
+            }
+          }
+        ]
+      };
+    }
+    
+    // Формируем объект сортировки
+    let orderBy: any = {};
+    
+    if (sortColumn && sortDirection && sortDirection !== "null") {
+      // Обрабатываем случаи для вложенных полей
+      if (sortColumn.includes(".")) {
+        const [parentField, childField] = sortColumn.split(".");
+        orderBy = {
+          [parentField as string]: {
+            [childField as string]: sortDirection
+          }
+        };
+      } else {
+        orderBy = {
+          [sortColumn]: sortDirection
+        };
+      }
+    } else {
+      // Сортировка по умолчанию по дате транзакции
+      orderBy = {
+        bybitTransaction: {
+          dateTime: "desc"
+        }
+      };
+    }
+    
+    // Получаем сопоставления для текущей страницы
+    const matches = await ctx.db.bybitMatch.findMany({
+      where,
+      include: {
+        bybitTransaction: {
+          include: {
+            user: true
+          }
+        },
+        idexTransaction: {
+          include: {
+            cabinet: true
+          }
+        }
+      },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
+    
+    // Получаем общее количество сопоставлений для пагинации
+    const totalMatches = await ctx.db.bybitMatch.count({
+      where
+    });
+    
+    // Получаем статистику по транзакциям в выбранном диапазоне
+    const totalBybitTransactions = await ctx.db.bybitTransaction.count({
+      where: {
+        dateTime: {
+          gte: startDateTime,
+          lte: endDateTime
+        },
+        ...(userId ? { userId } : {})
+      }
+    });
+    
+    const totalIdexTransactions = await ctx.db.idexTransaction.count({
+      where: {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        ...(cabinetIds && cabinetIds.length > 0 ? { cabinetId: { in: cabinetIds } } : {})
+      }
+    });
+    
+    // Вычисляем общую статистику для всех сопоставлений
+    let stats = {
+      grossExpense: 0,
+      grossIncome: 0,
+      grossProfit: 0,
+      profitPercentage: 0,
+      matchedCount: 0,
+      profitPerOrder: 0,
+      expensePerOrder: 0,
+    };
+    
+    // Получаем все сопоставления для расчета статистики
+    const allMatches = await ctx.db.bybitMatch.findMany({
+      where
+    });
+    
+    if (allMatches.length > 0) {
+      const totalGrossExpense = allMatches.reduce((sum, match) => sum + match.grossExpense, 0);
+      const totalGrossIncome = allMatches.reduce((sum, match) => sum + match.grossIncome, 0);
+      const totalGrossProfit = allMatches.reduce((sum, match) => sum + match.grossProfit, 0);
+      const totalProfitPercentage = totalGrossExpense ? (totalGrossProfit / totalGrossExpense) * 100 : 0;
+      const profitPerOrder = allMatches.length ? totalGrossProfit / allMatches.length : 0;
+      const expensePerOrder = allMatches.length ? totalGrossExpense / allMatches.length : 0;
+      
+      stats = {
+        grossExpense: totalGrossExpense,
+        grossIncome: totalGrossIncome,
+        grossProfit: totalGrossProfit,
+        profitPercentage: totalProfitPercentage,
+        matchedCount: allMatches.length,
+        profitPerOrder,
+        expensePerOrder
+      };
+    }
+    
+    // Получаем количество сопоставленных транзакций
+    const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
+      where: {
+        dateTime: {
+          gte: startDateTime,
+          lte: endDateTime
+        },
+        ...(userId ? { userId } : {}),
+        BybitMatch: {
+          some: {}
+        }
+      }
+    });
+    
+    const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
+    
+    return {
+      success: true,
+      matches: matches.map(match => ({
+        ...match,
+        // Преобразуем даты в московский формат для вывода
+        bybitTransaction: {
+          ...match.bybitTransaction,
+          dateTime: dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format()
+        },
+        idexTransaction: {
+          ...match.idexTransaction,
+          approvedAt: match.idexTransaction.approvedAt ? 
+            dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+        }
+      })),
+      stats: {
+        ...stats,
+        totalBybitTransactions,
+        totalIdexTransactions,
+        matchedBybitTransactions,
+        unmatchedBybitTransactions
+      },
+      pagination: {
+        totalMatches,
+        totalPages: Math.ceil(totalMatches / pageSize) || 1,
+        currentPage: page,
+        pageSize
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при получении сопоставлений Bybit и IDEX:", error);
+    return { 
+      success: false, 
+      message: "Ошибка при получении сопоставлений Bybit и IDEX",
+      matches: [],
+      stats: {
+        grossExpense: 0,
+        grossIncome: 0,
+        grossProfit: 0,
+        profitPercentage: 0,
+        matchedCount: 0,
+        profitPerOrder: 0,
+        expensePerOrder: 0,
+        totalBybitTransactions: 0,
+        totalIdexTransactions: 0,
+        matchedBybitTransactions: 0,
+        unmatchedBybitTransactions: 0
+      },
+      pagination: {
+        totalMatches: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
+
+// Удаление сопоставления Bybit с IDEX
+deleteBybitMatch: publicProcedure
+.input(z.object({
+  matchId: z.number().int().positive()
+}))
+.mutation(async ({ ctx, input }) => {
+  try {
+    const { matchId } = input;
+    
+    // Проверяем, существует ли сопоставление
+    const match = await ctx.db.bybitMatch.findUnique({
+      where: { id: matchId }
+    });
+    
+    if (!match) {
+      return {
+        success: false,
+        message: "Сопоставление не найдено"
+      };
+    }
+    
+    // Удаляем сопоставление
+    await ctx.db.bybitMatch.delete({
+      where: { id: matchId }
+    });
+    
+    return {
+      success: true,
+      message: "Сопоставление успешно удалено"
+    };
+  } catch (error) {
+    console.error("Ошибка при удалении сопоставления Bybit и IDEX:", error);
+    return {
+      success: false,
+      message: "Произошла ошибка при удалении сопоставления"
+    };
+  }
+}),
 
   // Получение всех сопоставлений
   getAllMatches: publicProcedure
@@ -917,6 +1783,30 @@ export const matchRouter = createTRPCRouter({
         if (allMatches.length > 0) {
           stats = calculateTotalStats(allMatches);
         }
+
+              // Get Bybit statistics
+      const totalBybitTransactions = await ctx.db.bybitTransaction.count({
+        where: {
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          }
+        }
+      });
+      
+      const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
+        where: {
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          },
+          BybitMatch: {
+            some: {}
+          }
+        }
+      });
+      
+      const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
         
         return {
           success: true,
@@ -945,7 +1835,10 @@ export const matchRouter = createTRPCRouter({
             matchedTelegramTransactions: totalTransactions - totalUnmatchedTransactions,
             unmatchedTelegramTransactions: totalUnmatchedTransactions,
             matchedIdexTransactions: totalIdexTransactions - totalUnmatchedIdexTransactions,
-            unmatchedIdexTransactions: totalUnmatchedIdexTransactions
+            unmatchedIdexTransactions: totalUnmatchedIdexTransactions,
+            totalBybitTransactions,
+            matchedBybitTransactions,
+            unmatchedBybitTransactions
           },
           pagination: {
             totalMatches,
@@ -1893,5 +2786,38 @@ function calculateTotalStats(matches: any[]): {
     matchedCount: matchCount,
     profitPerOrder,
     expensePerOrder
+  };
+}
+
+// Вспомогательная функция для расчета метрик сопоставления Bybit и IDEX
+function calculateBybitMatchMetrics(bybitTransaction: any, idexTransaction: any) {
+  const amount = bybitTransaction.amount || 0;
+  const grossExpense = amount * COMMISSION;
+  
+  // Парсим поле total для получения суммы
+  let totalUsdt = 0;
+  try {
+    // Проверяем, является ли total строкой JSON
+    if (typeof idexTransaction.total === 'string') {
+      const totalJson = JSON.parse(idexTransaction.total);
+      totalUsdt = parseFloat(totalJson.trader?.["000001"] || 0);
+    } else {
+      // Если total уже является объектом
+      const totalObj = idexTransaction.total as any;
+      totalUsdt = parseFloat(totalObj.trader?.["000001"] || 0);
+    }
+  } catch (error) {
+    console.error('Ошибка при парсинге JSON поля total:', error);
+  }
+  
+  const grossIncome = totalUsdt;
+  const grossProfit = grossIncome - grossExpense;
+  const profitPercentage = grossExpense ? (grossProfit / grossExpense) * 100 : 0;
+  
+  return {
+    grossExpense,
+    grossIncome,
+    grossProfit,
+    profitPercentage
   };
 }

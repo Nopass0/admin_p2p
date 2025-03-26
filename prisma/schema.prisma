@@ -75,7 +75,7 @@ model Transaction {
 }
 
 model BybitTransaction {
-  id           Int      @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   orderNo      String
   dateTime     DateTime
   type         String
@@ -87,9 +87,10 @@ model BybitTransaction {
   status       String
   originalData Json?
   userId       Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  BybitMatch   BybitMatch[]
 
   @@unique([orderNo, userId])
 }
@@ -142,7 +143,7 @@ model IdexCabinet {
 }
 
 model IdexTransaction {
-  id                Int         @id @default(autoincrement())
+  id                Int          @id @default(autoincrement())
   externalId        BigInt
   paymentMethodId   BigInt
   wallet            String
@@ -155,10 +156,11 @@ model IdexTransaction {
   updatedAtExternal String
   extraData         Json
   cabinetId         Int
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  cabinet           IdexCabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  cabinet           IdexCabinet  @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   matches           Match[]
+  BybitMatch        BybitMatch[]
 
   @@unique([externalId, cabinetId])
 }
@@ -178,6 +180,23 @@ model Match {
   transaction       Transaction     @relation(fields: [transactionId], references: [id])
 
   @@unique([idexTransactionId, transactionId])
+}
+
+model BybitMatch {
+  id                 Int              @id @default(autoincrement())
+  idexTransactionId  Int
+  bybitTransactionId Int
+  timeDifference     Int
+  grossExpense       Float
+  grossIncome        Float
+  grossProfit        Float
+  profitPercentage   Float
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  idexTransaction    IdexTransaction  @relation(fields: [idexTransactionId], references: [id])
+  bybitTransaction   BybitTransaction @relation(fields: [bybitTransactionId], references: [id])
+
+  @@unique([idexTransactionId, bybitTransactionId])
 }
 
 model Card {
