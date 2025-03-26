@@ -731,24 +731,7 @@ const {
     }
   });
   
-  // Mutations для работы с сопоставлениями Bybit
-  const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
-    onSuccess: (data) => {
-      setIsRunningMatch(false);
-      showAlert("Успешно", `Сопоставление Bybit транзакций завершено. Найдено ${data.stats?.matchedCount || 0} сопоставлений.`, "success");
-      // Обновляем данные во всех вкладках
-      void refetchAllMatches();
-      void refetchBybitTransactions();
-      void refetchBybitMatches();
-      void refetchUnmatchedBybit();
-      if (selectedUserId) void refetchUserMatches();
-      void refetchUsersWithStats();
-    },
-    onError: (error) => {
-      setIsRunningMatch(false);
-      showAlert("Ошибка", `Ошибка при сопоставлении Bybit транзакций: ${error.message}`, "danger");
-    }
-  });
+
   
   const createBybitMatchMutation = api.match.createBybitMatch.useMutation({
     onSuccess: () => {
