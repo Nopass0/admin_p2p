@@ -1152,15 +1152,42 @@ matchBybitWithIdex: publicProcedure
           // Проверяем, совпадает ли totalPrice
           if (Math.abs(tx.totalPrice - amountValue) > 0.01) return false;
           
+          // Получаем время из originalData и добавляем 3 часа
+          let txTime;
+          try {
+            const originalData = typeof tx.originalData === 'string' 
+              ? JSON.parse(tx.originalData) 
+              : tx.originalData;
+            
+            if (originalData && originalData.Time) {
+              const timeStr = originalData.Time;
+              const parsedTime = dayjs(timeStr).add(3, 'hour'); // Добавляем 3 часа
+              txTime = parsedTime.toISOString();
+            } else {
+              return false;
+            }
+          } catch (error) {
+            console.error("Error parsing originalData:", error);
+            return false;
+          }
+          
           // Проверяем, находится ли дата в пределах +/- 30 минут
-          const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString());
-          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, tx.dateTime: ${tx.dateTime}`);
+          const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime);
+          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, txTime: ${txTime}`);
           return timeDiff <= MINUTES_THRESHOLD;
         })
-        .map(tx => ({
-          transaction: tx,
-          timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, tx.dateTime.toISOString())
-        }))
+        .map(tx => {
+          const originalData = typeof tx.originalData === 'string' 
+            ? JSON.parse(tx.originalData) 
+            : tx.originalData;
+          const timeStr = originalData.Time;
+          const txTime = dayjs(timeStr).add(3, 'hour').toISOString();
+          
+          return {
+            transaction: tx,
+            timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime)
+          };
+        })
         .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени (ближайшая первая)
       
       // Если у нас есть совпадение
