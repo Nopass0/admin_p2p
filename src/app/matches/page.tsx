@@ -660,6 +660,60 @@ startDate
       showAlert("Ошибка", `Ошибка при удалении сопоставления: ${error.message}`, "danger");
     }
   });
+  
+  // Mutations для работы с сопоставлениями Bybit
+  const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
+    onSuccess: (data) => {
+      setIsRunningMatch(false);
+      showAlert("Успешно", `Сопоставление Bybit транзакций завершено. Найдено ${data.stats?.matchedCount || 0} сопоставлений.`, "success");
+      // Обновляем данные во всех вкладках
+      void refetchAllMatches();
+      void refetchBybitTransactions();
+      void refetchBybitMatches();
+      void refetchUnmatchedBybit();
+      if (selectedUserId) void refetchUserMatches();
+      void refetchUsersWithStats();
+    },
+    onError: (error) => {
+      setIsRunningMatch(false);
+      showAlert("Ошибка", `Ошибка при сопоставлении Bybit транзакций: ${error.message}`, "danger");
+    }
+  });
+  
+  const createBybitMatchMutation = api.match.createBybitMatch.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Транзакции Bybit и IDEX успешно сопоставлены вручную", "success");
+      // Сбрасываем выбранные транзакции
+      setSelectedIdexTransaction(null);
+      setSelectedBybitTransaction(null);
+      // Обновляем данные во всех вкладках
+      void refetchAllMatches();
+      void refetchBybitTransactions();
+      void refetchBybitMatches();
+      void refetchUnmatchedBybit();
+      if (selectedUserId) void refetchUserMatches();
+      void refetchUsersWithStats();
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при ручном сопоставлении: ${error.message}`, "danger");
+    }
+  });
+  
+  const deleteBybitMatchMutation = api.match.deleteBybitMatch.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Сопоставление Bybit и IDEX успешно удалено", "success");
+      // Обновляем данные во всех вкладках
+      void refetchAllMatches();
+      void refetchBybitTransactions();
+      void refetchBybitMatches();
+      void refetchUnmatchedBybit();
+      if (selectedUserId) void refetchUserMatches();
+      void refetchUsersWithStats();
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при удалении сопоставления: ${error.message}`, "danger");
+    }
+  });
 
   // Helper function to show alert notifications
   const showAlert = (title: string, description: string, color: "success" | "danger" | "warning" | "default") => {
@@ -689,7 +743,27 @@ startDate
       startDate,
       endDate,
       approvedOnly: true,
-      userId: activeTab === "byUser" ? selectedUserId : null
+      userId: activeTab === "byUser" ? selectedUserId : null,
+      includeBybit: true // Добавляем параметр для включения Bybit транзакций
+    });
+  };
+
+  // Функция запуска сопоставления Bybit с IDEX
+  const runBybitMatchProcess = () => {
+    if (!startDate || !endDate) {
+      showAlert("Ошибка", "Выберите начальную и конечную дату", "danger");
+      return;
+    }
+    
+    setIsRunningMatch(true);
+    
+    matchBybitWithIdexMutation.mutate({
+      startDate,
+      endDate,
+      userId: activeTab === "bybit" || activeTab === "bybitUserMatches" ? selectedUserId : undefined,
+      cabinetIds: Object.keys(selectedViewCabinetIds).length > 0 ? 
+        Object.keys(selectedViewCabinetIds).map(id => parseInt(id)) : 
+        undefined
     });
   };
 
@@ -702,14 +776,26 @@ startDate
         bybitTransactionId: selectedBybitTransaction
       });
     } else {
-      showAlert("Ошибка", "Необходимо выбрать обе транзакции для сопоставления", "danger");
+      showAlert("Ошибка", "Необходимо выбрать все транзакции для сопоставления", "danger");
     }
   }, [selectedIdexTransaction, selectedUserTransaction, selectedBybitTransaction, createManualMatchMutation]);
-
-  // Function to delete match
-  const deleteMatch = (matchId: number) => {
+  
+  // Функция создания ручного сопоставления Bybit с IDEX
+  const createBybitMatch = useCallback(() => {
+    if (selectedIdexTransaction && selectedBybitTransaction) {
+      createBybitMatchMutation.mutate({
+        idexTransactionId: selectedIdexTransaction,
+        bybitTransactionId: selectedBybitTransaction
+      });
+    } else {
+      showAlert("Ошибка", "Необходимо выбрать обе транзакции для сопоставления", "danger");
+    }
+  }, [selectedIdexTransaction, selectedBybitTransaction, createBybitMatchMutation]);
+  
+  // Функция удаления сопоставления Bybit с IDEX
+  const deleteBybitMatch = (matchId: number) => {
     if (confirm("Вы уверены, что хотите удалить это сопоставление?")) {
-      deleteMatchMutation.mutate({ matchId });
+      deleteBybitMatchMutation.mutate({ matchId });
     }
   };
 
@@ -1661,30 +1747,18 @@ startDate
                   {selectedBybitTransaction ? (
                     <div className="p-3 bg-zinc-100 dark:bg-zinc-800/20 rounded">
                       <p>ID: {selectedBybitTransaction}</p>
-                      {unmatchedIdexData?.transactions && (
+                      {unmatchedBybitData?.transactions && (
                         <>
                           <p>
                             {(() => {
-                              const tx = unmatchedIdexData.transactions.find(t => t.id === selectedBybitTransaction);
-                              if (!tx) return '';
-                              let amountValue = 0;
-                              try {
-                                if (typeof tx.amount === 'string') {
-                                  const amountJson = JSON.parse(tx.amount);
-                                  amountValue = parseFloat(amountJson.trader?.[643] || 0);
-                                } else if (tx.amount && typeof tx.amount === 'object') {
-                                  amountValue = parseFloat(tx.amount.trader?.[643] || 0);
-                                }
-                              } catch (error) {
-                                console.error('Ошибка при парсинге JSON поля amount:', error);
-                              }
-                              return `Сумма: ${formatNumber(amountValue)} ₽`;
+                              const tx = unmatchedBybitData.transactions.find(t => t.id === selectedBybitTransaction);
+                              return tx ? `Сумма: ${formatNumber(tx.totalPrice)} ₽` : '';
                             })()}
                           </p>
                           <p>
                             {(() => {
-                              const tx = unmatchedIdexData.transactions.find(t => t.id === selectedBybitTransaction);
-                              return tx?.approvedAt ? `Дата: ${dayjs(shiftTimeBy3Hours(tx.approvedAt)).format(DATE_FORMAT)}` : '';
+                              const tx = unmatchedBybitData.transactions.find(t => t.id === selectedBybitTransaction);
+                              return tx ? `Дата: ${dayjs(shiftTimeBy3Hours(tx.dateTime)).format(DATE_FORMAT)}` : '';
                             })()}
                           </p>
                         </>
@@ -1852,7 +1926,7 @@ startDate
             <Spinner size="sm" />
           </div>
         ) : (
-          <div className="max-h-32 overflow-y-auto  rounded p-2">
+          <div className="max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600">
             {idexCabinetsData?.cabinets && idexCabinetsData.cabinets.length > 0 ? (
               idexCabinetsData.cabinets.map(cabinet => (
                 <div 
@@ -1943,7 +2017,7 @@ startDate
                   >
                     <TableCell>{transaction.id}</TableCell>
                     <TableCell>{transaction.externalId.toString()}</TableCell>
-                    <TableCell>{transaction.cabinet.idexId}</TableCell>
+                    <TableCell>{transaction.cabinet.idexId.toString()}</TableCell>
                     <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
                     <TableCell>{formatNumber(amountValue)} ₽</TableCell>
                     <TableCell>
@@ -2459,7 +2533,7 @@ startDate
                       <TableColumn>{renderSortableHeader("name", "Пользователь")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.totalTelegramTransactions", "Всего ТГ-транзакций")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.totalIdexTransactions", "Всего Bybit-транзакций")}</TableColumn>
-                      <TableColumn>{renderSortableHeader("stats.totalBybitTransactions", "Всего Bybit-транзакций")}</TableColumn>
+                      <TableColumn>{renderSortableHeader("stats.totalBybitTransactions", "Всего Сопоставлено Bybit-транзакций")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.matchedTelegramTransactions", "Сопоставлено ТГ")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.matchedIdexTransactions", "Сопоставлено IDEX")}</TableColumn>
                       <TableColumn>{renderSortableHeader("stats.grossExpense", "Расход")}</TableColumn>
@@ -2583,9 +2657,9 @@ startDate
               
               <div>
                 <label className="block text-sm font-medium mb-2">Выберите пользователей</label>
-                <div className="max-h-60 overflow-y-auto border rounded-md p-2">
+                <div className="border rounded p-2 max-h-44 overflow-y-auto">
                   {usersData?.users.map(user => (
-                    <div key={user.id} className="flex items-center py-1">
+                    <div key={user.id} className="mb-1">
                       <Checkbox
                         id={`user-${user.id}`}
                         checked={selectedUsersForDeleteMatchIds.includes(user.id)}
