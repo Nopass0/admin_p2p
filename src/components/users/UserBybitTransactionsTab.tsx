@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { api } from "@/trpc/react";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
@@ -6,10 +6,11 @@ import { Input } from "@heroui/input";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Pagination } from "@heroui/pagination";
 import { Badge } from "@heroui/badge";
-import { Search, Calendar, RefreshCw, CalendarIcon } from "lucide-react";
+import { Search, Calendar, RefreshCw, CalendarIcon, Upload, Check, AlertCircle } from "lucide-react";
 import { Card, CardBody } from "@heroui/card";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
 import { Calendar as CalendarComponent } from "@heroui/calendar";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/modal";
 
 export function UserBybitTransactionsTab({ userId }) {
   // State for pagination
@@ -20,6 +21,12 @@ export function UserBybitTransactionsTab({ userId }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
+  
+  // State for file upload
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [showUploadResult, setShowUploadResult] = useState(false);
+  const fileInputRef = useRef(null);
   
   // Fetch transactions
   const { data, isLoading, isError, refetch } = api.bybitTransactions.getUserBybitTransactions.useQuery({
@@ -33,6 +40,67 @@ export function UserBybitTransactionsTab({ userId }) {
     enabled: !!userId,
     refetchOnWindowFocus: false,
   });
+  
+  // Upload transactions mutation
+  const uploadMutation = api.bybitTransactions.uploadBybitTransactions.useMutation({
+    onSuccess: (data) => {
+      setIsUploading(false);
+      setUploadResult(data);
+      setShowUploadResult(true);
+      
+      // Refresh the transactions list if upload was successful
+      if (data.success) {
+        refetch();
+      }
+    },
+    onError: (error) => {
+      setIsUploading(false);
+      setUploadResult({ 
+        success: false, 
+        message: error.message || "Ошибка при загрузке файла" 
+      });
+      setShowUploadResult(true);
+    }
+  });
+  
+  // Function to handle file selection
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsUploading(true);
+    
+    try {
+      // Read the file as base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64String = event.target.result.toString();
+        const base64Content = base64String.split(',')[1]; // Remove data URL prefix
+        
+        // Upload the file
+        uploadMutation.mutate({
+          userId,
+          fileBase64: base64Content
+        });
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      setIsUploading(false);
+      setUploadResult({ 
+        success: false, 
+        message: "Ошибка при чтении файла" 
+      });
+      setShowUploadResult(true);
+    }
+  };
+  
+  // Function to trigger file input click
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
   
   // Function to handle search
   const handleSearch = (e) => {
@@ -180,6 +248,83 @@ export function UserBybitTransactionsTab({ userId }) {
           </form>
         </CardBody>
       </Card>
+      
+      {/* File Upload Button */}
+      <Card className="shadow-sm border border-zinc-200 dark:border-zinc-800">
+        <CardBody className="p-4">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <h3 className="text-lg font-medium">Загрузка транзакций из XLS</h3>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Загрузите XLS файл с транзакциями от Bybit для автоматического импорта
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept=".xls,.xlsx"
+                className="hidden"
+              />
+              <Button
+                type="button"
+                onClick={handleUploadClick}
+                disabled={isUploading}
+                color="success"
+                className="flex items-center"
+              >
+                {isUploading ? (
+                  <Spinner size="sm" color="white" className="mr-2" />
+                ) : (
+                  <Upload className="w-4 h-4 mr-2" />
+                )}
+                {isUploading ? "Загрузка..." : "Загрузить файл"}
+              </Button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+      
+      {/* Upload Result Modal */}
+      <Modal isOpen={showUploadResult} onClose={() => setShowUploadResult(false)}>
+        <ModalContent>
+          <ModalHeader>
+            <div className="flex items-center gap-2">
+              {uploadResult?.success ? (
+                <Check className="w-5 h-5 text-green-500" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-500" />
+              )}
+              <span>
+                {uploadResult?.success ? "Успешная загрузка" : "Ошибка загрузки"}
+              </span>
+            </div>
+          </ModalHeader>
+          <ModalBody>
+            {uploadResult?.success ? (
+              <div className="space-y-2">
+                <p>Файл успешно загружен и обработан.</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Добавлено: <strong>{uploadResult.summary.addedTransactions}</strong> транзакций</li>
+                  <li>Пропущено (дубликаты): <strong>{uploadResult.summary.skippedTransactions}</strong> транзакций</li>
+                  <li>Всего обработано: <strong>{uploadResult.summary.totalProcessed}</strong> транзакций</li>
+                </ul>
+              </div>
+            ) : (
+              <div className="space-y-2 text-red-600">
+                <p>Произошла ошибка при загрузке или обработке файла:</p>
+                <p className="font-medium">{uploadResult?.message}</p>
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button color="primary" onClick={() => setShowUploadResult(false)}>
+              ОК
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
       
       {/* Transactions Table */}
       <Card className="shadow-sm border border-zinc-200 dark:border-zinc-800">

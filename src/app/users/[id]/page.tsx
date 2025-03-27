@@ -305,18 +305,18 @@ export default function UserDetailPage() {
                    // Potentially add count here too if readily available
                 />
                   <Tab 
-    key="bybit-transactions" 
-    title={
-      <div className="flex items-center gap-2">
-        Bybit транзакции
-        {user.bybitTransactions && (
-          <Badge color="primary" variant="flat" size="sm">
-            {user.bybitTransactions.length}
-          </Badge>
-        )}
-      </div>
-    } 
-  />
+                    key="bybit-transactions" 
+                    title={
+                      <div className="flex items-center gap-2">
+                        Bybit транзакции
+                        {user.bybitTransactions && (
+                          <Badge color="primary" variant="flat" size="sm">
+                            {user.bybitTransactions.length}
+                          </Badge>
+                        )}
+                      </div>
+                    } 
+                  />
                  <Tab 
                   key="work-sessions" 
                   title={
@@ -335,8 +335,8 @@ export default function UserDetailPage() {
             </CardHeader>
             <CardBody className="p-4 md:p-6"> {/* Consistent padding */}
             {selectedTab === "work-sessions" && (
-  <UserWorkSessionsTab userId={userId} />
-)}
+                <UserWorkSessionsTab userId={userId} />
+              )}
               {/* Overview Tab */}
               {selectedTab === "info" && (
                 <div className="space-y-6"> {/* Add spacing between sections */}

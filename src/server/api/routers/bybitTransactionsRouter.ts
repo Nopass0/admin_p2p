@@ -1,6 +1,7 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { BybitParser } from "@/utils/bybit-parser";
 
 export const bybitTransactionsRouter = createTRPCRouter({
   // Получение транзакций Bybit для пользователя с фильтрацией
@@ -97,6 +98,89 @@ export const bybitTransactionsRouter = createTRPCRouter({
             totalPages: 0,
             currentPage: input.page,
             pageSize: input.pageSize
+          }
+        };
+      }
+    }),
+
+  // Загрузка транзакций из XLS файла
+  uploadBybitTransactions: publicProcedure
+    .input(
+      z.object({
+        userId: z.number().int().positive(),
+        fileBase64: z.string(), // XLS файл в формате base64
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { userId, fileBase64 } = input;
+        
+        // Декодируем base64 в буфер
+        const fileBuffer = Buffer.from(fileBase64, 'base64');
+        
+        // Парсим XLS файл
+        const parsedData = await BybitParser.parseXLSBuffer(fileBuffer);
+        const { transactions, summary } = parsedData;
+        
+        // Счетчики для статистики
+        let addedCount = 0;
+        let skippedCount = 0;
+        
+        // Обрабатываем каждую транзакцию
+        for (const tx of transactions) {
+          try {
+            // Пытаемся создать транзакцию
+            await ctx.db.bybitTransaction.create({
+              data: {
+                userId,
+                orderNo: tx.orderNo,
+                dateTime: tx.dateTime,
+                type: tx.type,
+                asset: tx.asset,
+                amount: tx.amount,
+                totalPrice: tx.totalPrice,
+                unitPrice: tx.unitPrice,
+                counterparty: tx.counterparty || null,
+                status: tx.status,
+                originalData: tx.originalData || {}
+              }
+            });
+            
+            // Увеличиваем счетчик добавленных транзакций
+            addedCount++;
+          } catch (error) {
+            // Проверяем, является ли ошибка нарушением уникального ограничения
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError && 
+              error.code === 'P2002'
+            ) {
+              // Это дубликат, пропускаем его
+              skippedCount++;
+            } else {
+              // Выбрасываем другие ошибки
+              throw error;
+            }
+          }
+        }
+        
+        return {
+          success: true,
+          summary: {
+            ...summary,
+            addedTransactions: addedCount,
+            skippedTransactions: skippedCount,
+            totalProcessed: transactions.length
+          }
+        };
+      } catch (error) {
+        console.error("Ошибка при загрузке транзакций Bybit:", error);
+        return {
+          success: false,
+          message: `Произошла ошибка при загрузке транзакций: ${error.message}`,
+          summary: {
+            addedTransactions: 0,
+            skippedTransactions: 0,
+            totalProcessed: 0
           }
         };
       }
