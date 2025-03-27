@@ -1017,8 +1017,8 @@ matchBybitWithIdex: publicProcedure
     const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
     // Преобразуем глобальные даты с учетом таймзоны
-    const globalStartDateTime = dayjs(startDate).utc().toDate();
-    const globalEndDateTime = dayjs(endDate).utc().toDate();
+    const globalStartDateTime = dayjs(startDate).utc().add(1, 'day').toDate();
+    const globalEndDateTime = dayjs(endDate).utc().add(1, 'day').toDate();
     
     console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
     console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
