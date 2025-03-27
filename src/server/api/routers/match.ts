@@ -1396,14 +1396,48 @@ getBybitMatches: publicProcedure
     const startDateTime = dayjs(startDate).utc().toDate();
     const endDateTime = dayjs(endDate).utc().toDate();
     
-    // Строим базовый фильтр по диапазону дат
+    // Перед фильтрацией получаем все Bybit транзакции, которые попадают в диапазон дат
+    // (будем фильтровать по Time из originalData на уровне приложения)
+    const bybitTransactions = await ctx.db.bybitTransaction.findMany({
+      where: {
+        ...(userId ? { userId } : {})
+      },
+      select: { id: true, originalData: true, dateTime: true }
+    });
+    
+    // Фильтруем по Time из originalData
+    const filteredBybitIds = bybitTransactions
+      .filter(tx => {
+        try {
+          // Извлекаем Time из originalData
+          const originalData = typeof tx.originalData === 'string'
+            ? JSON.parse(tx.originalData)
+            : tx.originalData;
+          
+          if (originalData && originalData.Time) {
+            // Добавляем 3 часа к Time
+            const txTime = dayjs(originalData.Time).add(3, 'hour');
+            // Проверяем, попадает ли в диапазон дат
+            return txTime.isAfter(dayjs(startDateTime)) && txTime.isBefore(dayjs(endDateTime));
+          }
+          
+          // Если нет Time, используем обычное dateTime
+          return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+        } catch (error) {
+          console.error("Error parsing originalData for transaction:", tx.id, error);
+          // Если ошибка парсинга, используем обычное dateTime
+          return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+        }
+      })
+      .map(tx => tx.id);
+    
+    // Строим базовый фильтр с учетом отфильтрованных bybitIds
     let where: any = {
       OR: [
         {
           bybitTransaction: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
+            id: {
+              in: filteredBybitIds
             }
           }
         },
@@ -1530,15 +1564,7 @@ getBybitMatches: publicProcedure
     });
     
     // Получаем статистику по транзакциям в выбранном диапазоне
-    const totalBybitTransactions = await ctx.db.bybitTransaction.count({
-      where: {
-        dateTime: {
-          gte: startDateTime,
-          lte: endDateTime
-        },
-        ...(userId ? { userId } : {})
-      }
-    });
+    const totalBybitTransactions = filteredBybitIds.length;
     
     const totalIdexTransactions = await ctx.db.idexTransaction.count({
       where: {
@@ -1585,22 +1611,18 @@ getBybitMatches: publicProcedure
       };
     }
     
-    // Получаем количество сопоставленных транзакций
-    const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
+    // Получаем количество сопоставленных Bybit транзакций с учетом отфильтрованных по Time
+    const matchedBybitTransactions = await ctx.db.bybitMatch.count({
       where: {
-        dateTime: {
-          gte: startDateTime,
-          lte: endDateTime
-        },
-        ...(userId ? { userId } : {}),
-        BybitMatch: {
-          some: {}
+        bybitTransaction: {
+          id: {
+            in: filteredBybitIds
+          }
         }
       }
     });
     
     const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
-
 
     const matchedIdexTransactions = await ctx.db.idexTransaction.count({
       where: {
@@ -1619,19 +1641,37 @@ getBybitMatches: publicProcedure
     
     return {
       success: true,
-      matches: matches.map(match => ({
-        ...match,
-        // Преобразуем даты в московский формат для вывода
-        bybitTransaction: {
-          ...match.bybitTransaction,
-          dateTime: dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format()
-        },
-        idexTransaction: {
-          ...match.idexTransaction,
-          approvedAt: match.idexTransaction.approvedAt ? 
-            dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+      matches: matches.map(match => {
+        // Extract Time from originalData and add 3 hours
+        let adjustedDateTime = match.bybitTransaction.dateTime;
+        try {
+          const originalData = typeof match.bybitTransaction.originalData === 'string'
+            ? JSON.parse(match.bybitTransaction.originalData)
+            : match.bybitTransaction.originalData;
+          
+          if (originalData && originalData.Time) {
+            // Add 3 hours to the Time value
+            adjustedDateTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+          }
+        } catch (error) {
+          console.error("Error parsing originalData for bybitTransaction:", error);
+          // Keep the original dateTime if there was an error
         }
-      })),
+        
+        return {
+          ...match,
+          // Use the adjusted dateTime from originalData.Time + 3 hours
+          bybitTransaction: {
+            ...match.bybitTransaction,
+            dateTime: dayjs(adjustedDateTime).tz(MOSCOW_TIMEZONE).format()
+          },
+          idexTransaction: {
+            ...match.idexTransaction,
+            approvedAt: match.idexTransaction.approvedAt ? 
+              dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+          }
+        };
+      }),
       stats: {
         ...stats,
         totalBybitTransactions,
@@ -1640,7 +1680,6 @@ getBybitMatches: publicProcedure
         totalUnmatchedIdexTransactions: unmatchedIdexTransactions,
         matchedBybitTransactions,
         unmatchedBybitTransactions,
-
       },
       pagination: {
         totalMatches,
