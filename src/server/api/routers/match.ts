@@ -326,8 +326,34 @@ export const matchRouter = createTRPCRouter({
             transactionId: { in: transactionIds }
           }
         });
+
+        // Удаляем сопоставления в bybit
+        //get all bybit transactions by dates and userIds
+        const bybitTransactions = await ctx.db.bybitTransaction.findMany({
+          where: {
+            userId: { in: userIds },
+            dateTime: {
+              gte: startDateTime,
+              lte: endDateTime
+            }
+          },
+          select: { id: true }
+        });
+        
+        // Получаем ID транзакций
+        const bybitTransactionIds = bybitTransactions.map(t => t.id);
+
+        console.log(`Найдено ${bybitTransactionIds.length} транзакций в bybit`);
+
+        // Удаляем все совпадения для найденных транзакций
+        const bybitDeleteResult = await ctx.db.bybitMatch.deleteMany({
+          where: {
+            bybitTransactionId: { in: bybitTransactionIds }
+          }
+        });
         
         console.log(`Удалено ${deleteResult.count} сопоставлений`);
+        console.log(`Удалено ${bybitDeleteResult.count} сопоставлений в bybit`);
         
         return { success: true };
       } catch (error) {
@@ -991,8 +1017,8 @@ matchBybitWithIdex: publicProcedure
     const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
     // Преобразуем глобальные даты с учетом таймзоны
-    const globalStartDateTime = dayjs(startDate).utc().add(1, 'day').toDate();
-    const globalEndDateTime = dayjs(endDate).utc().add(1, 'day').toDate();
+    const globalStartDateTime = dayjs(startDate).utc().toDate();
+    const globalEndDateTime = dayjs(endDate).utc().toDate();
     
     console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
     console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
