@@ -1600,6 +1600,22 @@ getBybitMatches: publicProcedure
     });
     
     const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
+
+
+    const matchedIdexTransactions = await ctx.db.idexTransaction.count({
+      where: {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        ...(cabinetIds && cabinetIds.length > 0 ? { cabinetId: { in: cabinetIds } } : {}),
+        BybitMatch: {
+          some: {}
+        }
+      }
+    });
+    
+    const unmatchedIdexTransactions = totalIdexTransactions - matchedIdexTransactions;
     
     return {
       success: true,
@@ -1620,8 +1636,11 @@ getBybitMatches: publicProcedure
         ...stats,
         totalBybitTransactions,
         totalIdexTransactions,
+        totalMatchedIdexTransactions: matchedIdexTransactions,
+        totalUnmatchedIdexTransactions: unmatchedIdexTransactions,
         matchedBybitTransactions,
-        unmatchedBybitTransactions
+        unmatchedBybitTransactions,
+
       },
       pagination: {
         totalMatches,

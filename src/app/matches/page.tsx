@@ -547,26 +547,26 @@ const handleStartBybitMatching = () => {
   });
 
   // Add this query definition at the component level (with the other queries)
-const {
-  data: bybitMatchesData,
-  isLoading: isLoadingBybitMatches,
-  refetch: refetchBybitMatches
-} = api.match.getBybitMatches.useQuery({
-  startDate,
-  endDate,
-  page,
-  pageSize,
-  searchQuery,
-  sortColumn: sortState.column || undefined,
-  sortDirection: sortState.direction || undefined,
-  userId: selectedUserId,
-  cabinetIds: Object.keys(selectedViewCabinetIds).length > 0 ? 
-    Object.keys(selectedViewCabinetIds).map(id => parseInt(id)) : 
-    undefined
-}, {
-  refetchOnWindowFocus: false,
-  enabled: activeTab === "bybitMatches"
-});
+  const {
+    data: bybitMatchesData,
+    isLoading: isLoadingBybitMatches,
+    refetch: refetchBybitMatches
+  } = api.match.getBybitMatches.useQuery({
+    startDate,
+    endDate,
+    page,
+    pageSize,
+    searchQuery,
+    sortColumn: sortState.column || undefined,
+    sortDirection: sortState.direction || undefined,
+    userId: activeTab === "bybitUserMatches" ? selectedUserId : undefined,
+    cabinetIds: Object.keys(selectedViewCabinetIds).length > 0 ? 
+      Object.keys(selectedViewCabinetIds).map(id => parseInt(id)) : 
+      undefined
+  }, {
+    refetchOnWindowFocus: false,
+    enabled: activeTab === "bybitMatches" || activeTab === "bybitUserMatches"
+  });
 
   // Add this query to your component
   const {
@@ -1130,10 +1130,11 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
 
   // Reset pagination when changing user
   useEffect(() => {
-    if (activeTab === "byUser") {
+    if (activeTab === "byUser" || activeTab === "bybitUserMatches") {
       setPage(1);
     }
   }, [selectedUserId, activeTab]);
+  
 
   // Reset pagination when changing unmatched user
   useEffect(() => {
@@ -1583,6 +1584,12 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
       <span>Сопоставления Bybit</span>
     </div>
   } />
+  <Tab key="bybitUserMatches" title={
+  <div className="flex items-center gap-2">
+    <User className="w-4 h-4 text-orange-500" />
+    <span>Bybit по пользователю</span>
+  </div>
+} />
         <Tab key="userStats" title={
           <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4" />
@@ -1655,10 +1662,14 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
               <label className="block text-sm font-medium mb-1">Пользователь</label>
               <Select
                 placeholder="Все пользователи"
-                value={activeTab === "byUser" ? (selectedUserId?.toString() || "") : (activeTab === "unmatchedUser" ? (selectedUnmatchedUserId?.toString() || "") : "")}
+                value={
+                  (activeTab === "byUser" || activeTab === "bybitUserMatches") 
+                    ? (selectedUserId?.toString() || "") 
+                    : (activeTab === "unmatchedUser" ? (selectedUnmatchedUserId?.toString() || "") : "")
+                }
                 onChange={(e) => {
                   const userId = e.target.value ? parseInt(e.target.value) : null;
-                  if (activeTab === "byUser") {
+                  if (activeTab === "byUser" || activeTab === "bybitUserMatches") {
                     setSelectedUserId(userId);
                   } else if (activeTab === "unmatchedUser") {
                     setSelectedUnmatchedUserId(userId);
@@ -1666,7 +1677,7 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
                 }}
                 startContent={<User className="w-4 h-4 text-gray-500" />}
                 aria-label="Выбрать пользователя"
-                isDisabled={activeTab !== "byUser" && activeTab !== "unmatchedUser"}
+                isDisabled={activeTab !== "byUser" && activeTab !== "unmatchedUser" && activeTab !== "bybitUserMatches"}
               >
                 <SelectItem key="all" value="">
                   Все пользователи
@@ -1713,8 +1724,6 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
         </CardBody>
       </Card>
       
-
-      
       {/* All matches stats */}
       {activeTab === "all" && allMatchesData?.stats && (
         <>
@@ -1722,6 +1731,108 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
           {renderTransactionStats(allMatchesData.stats)}
         </>
       )}
+
+{activeTab === "bybitUserMatches" && (
+  !selectedUserId ? (
+    <div className="text-center py-10 text-gray-500">
+      <User className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+      <p>Выберите пользователя для просмотра его сопоставлений Bybit и IDEX</p>
+    </div>
+  ) : isLoadingBybitMatches ? (
+    <div className="flex justify-center py-10">
+      <Spinner size="lg" color="primary" />
+    </div>
+  ) : bybitMatchesData?.matches && bybitMatchesData.matches.length > 0 ? (
+    <>
+      {/* Stats */}
+      {bybitMatchesData.stats && (
+        <>
+          {renderStats(bybitMatchesData.stats)}
+          {renderTransactionStats(bybitMatchesData.stats)}
+        </>
+      )}
+      
+      {/* Matches table */}
+      <div className="overflow-x-auto">
+        <Table aria-label="Таблица сопоставлений Bybit и IDEX для пользователя">
+          <TableHeader>
+            <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+            <TableColumn>{renderSortableHeader("bybitTransaction.dateTime", "Дата Bybit")}</TableColumn>
+            <TableColumn>{renderSortableHeader("bybitTransaction.totalPrice", "Сумма Bybit")}</TableColumn>
+            <TableColumn>{renderSortableHeader("idexTransaction.externalId", "IDEX ID")}</TableColumn>
+            <TableColumn>{renderSortableHeader("idexTransaction.cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+            <TableColumn>{renderSortableHeader("idexTransaction.approvedAt", "Дата IDEX")}</TableColumn>
+            <TableColumn>{renderSortableHeader("grossExpense", "Расход")}</TableColumn>
+            <TableColumn>{renderSortableHeader("grossIncome", "Доход")}</TableColumn>
+            <TableColumn>{renderSortableHeader("grossProfit", "Спред")}</TableColumn>
+            <TableColumn>{renderSortableHeader("profitPercentage", "%")}</TableColumn>
+            <TableColumn>Действия</TableColumn>
+          </TableHeader>
+          <TableBody>
+            {bybitMatchesData.matches.map((match) => (
+              <TableRow key={match.id}>
+                <TableCell>{match.id}</TableCell>
+                <TableCell>{dayjs(shiftTimeBy3Hours(match.bybitTransaction.dateTime)).format(DATE_FORMAT)}</TableCell>
+                <TableCell>{formatNumber(match.bybitTransaction.totalPrice)} ₽</TableCell>
+                <TableCell>{match.idexTransaction.externalId.toString()}</TableCell>
+                <TableCell>{match.idexTransaction.cabinet.idexId.toString()}</TableCell>
+                <TableCell>{match.idexTransaction.approvedAt ? dayjs(shiftTimeBy3Hours(match.idexTransaction.approvedAt)).format(DATE_FORMAT) : '-'}</TableCell>
+                <TableCell>{formatNumber(match.grossExpense)} USDT</TableCell>
+                <TableCell>{formatNumber(match.grossIncome)} USDT</TableCell>
+                <TableCell className={match.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  {formatNumber(match.grossProfit)} USDT
+                </TableCell>
+                <TableCell className={match.profitPercentage >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  {formatNumber(match.profitPercentage)}%
+                </TableCell>
+                <TableCell>
+                  <Button 
+                    color="danger" 
+                    variant="flat" 
+                    size="sm"
+                    startIcon={<Unlink className="w-4 h-4" />}
+                    onClick={() => deleteBybitMatch(match.id)}
+                  >
+                    Удалить
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      
+      {/* Pagination */}
+      {bybitMatchesData?.pagination.totalPages > 1 && (
+        <div className="flex justify-center mt-4">
+          <Pagination
+            total={bybitMatchesData.pagination.totalPages}
+            initialPage={page}
+            page={page}
+            onChange={setPage}
+            aria-label="Пагинация сопоставлений Bybit и IDEX для пользователя"
+          />
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="text-center py-10 text-gray-500">
+      <Database className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+      <p>Нет сопоставлений Bybit и IDEX для выбранного пользователя</p>
+      <Button
+        variant="flat"
+        color="primary"
+        size="sm"
+        className="mt-2"
+        onClick={runBybitMatchProcess}
+        aria-label="Запустить сопоставление Bybit и IDEX"
+      >
+        <RefreshCw className="w-4 h-4 mr-2" />
+        Запустить сопоставление
+      </Button>
+    </div>
+  )
+)}
       
       {/* User matches stats */}
       {activeTab === "byUser" && userMatchesData?.stats && (
@@ -1730,107 +1841,108 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
           {renderTransactionStats(userMatchesData.stats)}
         </>
       )}
-{/* Bybit matches table */}
-{activeTab === "bybitMatches" && (
-  <>
-    {isLoadingBybitMatches ? (
-      <div className="flex justify-center py-10">
-        <Spinner size="lg" color="primary" />
-      </div>
-    ) : bybitMatchesData?.matches && bybitMatchesData.matches.length > 0 ? (
-      <>
-        {/* Stats */}
-        {bybitMatchesData.stats && (
-          <>
-            {renderStats(bybitMatchesData.stats)}
-            {renderTransactionStats(bybitMatchesData.stats)}
-          </>
-        )}
-        
-        {/* Matches table */}
-        <div className="overflow-x-auto">
-          <Table aria-label="Таблица сопоставлений Bybit и IDEX транзакций">
-            <TableHeader>
-              <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
-              <TableColumn>{renderSortableHeader("bybitTransaction.user.name", "Пользователь")}</TableColumn>
-              <TableColumn>{renderSortableHeader("bybitTransaction.dateTime", "Дата Bybit")}</TableColumn>
-              <TableColumn>{renderSortableHeader("bybitTransaction.totalPrice", "Сумма Bybit")}</TableColumn>
-              <TableColumn>{renderSortableHeader("idexTransaction.externalId", "IDEX ID")}</TableColumn>
-              <TableColumn>{renderSortableHeader("idexTransaction.cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
-              <TableColumn>{renderSortableHeader("idexTransaction.approvedAt", "Дата IDEX")}</TableColumn>
-              <TableColumn>{renderSortableHeader("grossExpense", "Расход")}</TableColumn>
-              <TableColumn>{renderSortableHeader("grossIncome", "Доход")}</TableColumn>
-              <TableColumn>{renderSortableHeader("grossProfit", "Спред")}</TableColumn>
-              <TableColumn>{renderSortableHeader("profitPercentage", "%")}</TableColumn>
-              <TableColumn>Действия</TableColumn>
-            </TableHeader>
-            <TableBody>
-              {bybitMatchesData.matches.map((match) => (
-                <TableRow key={match.id}>
-                  <TableCell>{match.id}</TableCell>
-                  <TableCell>{match.bybitTransaction.user.name}</TableCell>
-                  <TableCell>{dayjs(shiftTimeBy3Hours(match.bybitTransaction.dateTime)).format(DATE_FORMAT)}</TableCell>
-                  <TableCell>{formatNumber(match.bybitTransaction.totalPrice)} ₽</TableCell>
-                  <TableCell>{match.idexTransaction.externalId.toString()}</TableCell>
-                  <TableCell>{match.idexTransaction.cabinet.idexId.toString()}</TableCell>
-                  <TableCell>{match.idexTransaction.approvedAt ? dayjs(shiftTimeBy3Hours(match.idexTransaction.approvedAt)).format(DATE_FORMAT) : '-'}</TableCell>
-                  <TableCell>{formatNumber(match.grossExpense)} USDT</TableCell>
-                  <TableCell>{formatNumber(match.grossIncome)} USDT</TableCell>
-                  <TableCell className={match.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {formatNumber(match.grossProfit)} USDT
-                  </TableCell>
-                  <TableCell className={match.profitPercentage >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {formatNumber(match.profitPercentage)}%
-                  </TableCell>
-                  <TableCell>
-                    <Button 
-                      color="danger" 
-                      variant="flat" 
-                      size="sm"
-                      startIcon={<Unlink className="w-4 h-4" />}
-                      onClick={() => deleteBybitMatch(match.id)}
-                    >
-                      Удалить
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        
-        {/* Pagination */}
-        {bybitMatchesData?.pagination.totalPages > 1 && (
-          <div className="flex justify-center mt-4">
-            <Pagination
-              total={bybitMatchesData.pagination.totalPages}
-              initialPage={page}
-              page={page}
-              onChange={setPage}
-              aria-label="Пагинация сопоставлений Bybit и IDEX"
-            />
-          </div>
-        )}
-      </>
-    ) : (
-      <div className="text-center py-10 text-gray-500">
-        <Database className="w-16 h-16 mx-auto text-gray-400 mb-2" />
-        <p>Нет сопоставлений Bybit и IDEX в выбранном диапазоне дат</p>
-        <Button
-          variant="flat"
-          color="primary"
-          size="sm"
-          className="mt-2"
-          onClick={runBybitMatchProcess}
-          aria-label="Запустить сопоставление Bybit и IDEX"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Запустить сопоставление
-        </Button>
-      </div>
-    )}
-  </>
-)}
+
+      {/* Bybit matches table */}
+      {activeTab === "bybitMatches" && (
+        <>
+          {isLoadingBybitMatches ? (
+            <div className="flex justify-center py-10">
+              <Spinner size="lg" color="primary" />
+            </div>
+          ) : bybitMatchesData?.matches && bybitMatchesData.matches.length > 0 ? (
+            <>
+              {/* Stats */}
+              {bybitMatchesData.stats && (
+                <>
+                  {renderStats(bybitMatchesData.stats)}
+                  {renderTransactionStats(bybitMatchesData.stats)}
+                </>
+              )}
+              
+              {/* Matches table */}
+              <div className="overflow-x-auto">
+                <Table aria-label="Таблица сопоставлений Bybit и IDEX транзакций">
+                  <TableHeader>
+                    <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("bybitTransaction.user.name", "Пользователь")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("bybitTransaction.dateTime", "Дата Bybit")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("bybitTransaction.totalPrice", "Сумма Bybit")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("idexTransaction.externalId", "IDEX ID")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("idexTransaction.cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("idexTransaction.approvedAt", "Дата IDEX")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("grossExpense", "Расход")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("grossIncome", "Доход")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("grossProfit", "Спред")}</TableColumn>
+                    <TableColumn>{renderSortableHeader("profitPercentage", "%")}</TableColumn>
+                    <TableColumn>Действия</TableColumn>
+                  </TableHeader>
+                  <TableBody>
+                    {bybitMatchesData.matches.map((match) => (
+                      <TableRow key={match.id}>
+                        <TableCell>{match.id}</TableCell>
+                        <TableCell>{match.bybitTransaction.user.name}</TableCell>
+                        <TableCell>{dayjs(shiftTimeBy3Hours(match.bybitTransaction.dateTime)).format(DATE_FORMAT)}</TableCell>
+                        <TableCell>{formatNumber(match.bybitTransaction.totalPrice)} ₽</TableCell>
+                        <TableCell>{match.idexTransaction.externalId.toString()}</TableCell>
+                        <TableCell>{match.idexTransaction.cabinet.idexId.toString()}</TableCell>
+                        <TableCell>{match.idexTransaction.approvedAt ? dayjs(shiftTimeBy3Hours(match.idexTransaction.approvedAt)).format(DATE_FORMAT) : '-'}</TableCell>
+                        <TableCell>{formatNumber(match.grossExpense)} USDT</TableCell>
+                        <TableCell>{formatNumber(match.grossIncome)} USDT</TableCell>
+                        <TableCell className={match.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {formatNumber(match.grossProfit)} USDT
+                        </TableCell>
+                        <TableCell className={match.profitPercentage >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {formatNumber(match.profitPercentage)}%
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            color="danger" 
+                            variant="flat" 
+                            size="sm"
+                            startIcon={<Unlink className="w-4 h-4" />}
+                            onClick={() => deleteBybitMatch(match.id)}
+                          >
+                            Удалить
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination */}
+              {bybitMatchesData?.pagination.totalPages > 1 && (
+                <div className="flex justify-center mt-4">
+                  <Pagination
+                    total={bybitMatchesData.pagination.totalPages}
+                    initialPage={page}
+                    page={page}
+                    onChange={setPage}
+                    aria-label="Пагинация сопоставлений Bybit и IDEX"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-10 text-gray-500">
+              <Database className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+              <p>Нет сопоставлений Bybit и IDEX в выбранном диапазоне дат</p>
+              <Button
+                variant="flat"
+                color="primary"
+                size="sm"
+                className="mt-2"
+                onClick={runBybitMatchProcess}
+                aria-label="Запустить сопоставление Bybit и IDEX"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Запустить сопоставление
+              </Button>
+            </div>
+          )}
+        </>
+      )}
       
       {/* Unmatched User split view for manual matching */}
       {activeTab === "unmatchedUser" && (
