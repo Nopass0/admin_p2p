@@ -1067,8 +1067,8 @@ getUnmatchedBybitTransactions: publicProcedure
           
           // Если поле Time существует, используем его
           if (originalData && originalData.Time) {
-            // Парсим дату из поля Time и добавляем 3 часа
-            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+
+            transactionTime = dayjs(originalData.Time).toDate();
           }
         } catch (error) {
           console.error("Error parsing originalData for transaction:", tx.id, error);
