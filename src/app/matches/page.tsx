@@ -261,6 +261,10 @@ const [matchingType, setMatchingType] = useState("telegram"); // "telegram" or "
 // Добавляем переменную состояния
 const [idexMatchType, setIdexMatchType] = useState<"telegram" | "bybit">("telegram");
 
+// Добавляем к существующим состояниям:
+const [idexViewMode, setIdexViewMode] = useState<"unmatched" | "matched">("unmatched");
+const [matchedTransactionType, setMatchedTransactionType] = useState<"idex" | "bybit">("idex");
+
   // Add these new interfaces at the top of your component
   interface CabinetConfig {
     cabinetId: number;
@@ -452,6 +456,26 @@ const handleStartBybitMatching = () => {
     refetchOnWindowFocus: false,
     enabled: activeTab === "all"
   });
+
+  // Запрос для получения сопоставленных IDEX транзакций
+const {
+  data: matchedIdexData,
+  isLoading: isLoadingMatchedIdex,
+  refetch: refetchMatchedIdex
+} = api.match.getMatchedTransactions.useQuery({
+  startDate,
+  endDate,
+  page,
+  pageSize,
+  searchQuery: idexSearchQuery,
+  cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
+    Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
+    undefined,
+  transactionType: matchedTransactionType
+}, {
+  refetchOnWindowFocus: false,
+  enabled: activeTab === "unmatchedIdex" && idexViewMode === "matched"
+});
 
   // Get matches for specific user
   const {
@@ -2292,10 +2316,41 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
   <CardHeader>
     <div className="flex items-center gap-2">
       <Database className="w-5 h-5 text-purple-500" />
-      <h2 className="text-lg font-semibold">Несопоставленные IDEX транзакции</h2>
+      <h2 className="text-lg font-semibold">{`${idexViewMode === "unmatched" ? "Несопоставленные" : "Сопоставленные"} IDEX транзакции`}</h2>
     </div>
   </CardHeader>
   <CardBody>
+          {/* Переключатель режима просмотра */}
+          <div>
+        <label className="block text-sm font-medium mb-2">Режим просмотра</label>
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            size="sm" 
+            color={idexViewMode === "unmatched" ? "primary" : "default"}
+            variant={idexViewMode === "unmatched" ? "solid" : "flat"}
+            onClick={() => {
+              setIdexViewMode("unmatched");
+              setTimeout(() => refetchUnmatchedIdex(), 100);
+            }}
+          >
+            <AlertCircle className="w-4 h-4 mr-2" />
+            Несопоставленные
+          </Button>
+          <Button 
+            size="sm" 
+            color={idexViewMode === "matched" ? "primary" : "default"}
+            variant={idexViewMode === "matched" ? "solid" : "flat"}
+            onClick={() => {
+              setIdexViewMode("matched");
+              setTimeout(() => refetchMatchedIdex(), 100);
+            }}
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Сопоставленные
+          </Button>
+        </div>
+      </div>
+      
     {/* Добавляем переключатель типа несопоставленных IDEX транзакций */}
 <div className="mb-4">
   <label className="block text-sm font-medium mb-2">Тип несопоставленных IDEX транзакций</label>
