@@ -116,52 +116,102 @@ uploadBybitTransactions: publicProcedure
     try {
       const { userId, fileBase64 } = input;
       
-      // Декодируем base64 в буфер
-      const fileBuffer = Buffer.from(fileBase64, 'base64');
+      // Проверка валидности base64
+      if (!fileBase64 || fileBase64.trim() === '') {
+        throw new Error("Пустая строка base64");
+      }
       
-      // Парсим XLS файл
-      const parsedData = await BybitParser.parseXLSBuffer(fileBuffer);
+      // Декодируем base64 в буфер с обработкой ошибок
+      let fileBuffer;
+      try {
+        fileBuffer = Buffer.from(fileBase64, 'base64');
+        
+        // Проверка, что буфер не пустой
+        if (fileBuffer.length === 0) {
+          throw new Error("Получен пустой буфер после декодирования base64");
+        }
+      } catch (decodeError) {
+        console.error("Ошибка декодирования base64:", decodeError);
+        throw new Error("Не удалось декодировать файл из формата base64");
+      }
+      
+      // Парсим XLS файл с дополнительной обработкой ошибок
+      let parsedData;
+      try {
+        parsedData = await BybitParser.parseXLSBuffer(fileBuffer);
+      } catch (parseError) {
+        console.error("Ошибка парсинга XLS:", parseError);
+        throw new Error(`Не удалось обработать файл: ${parseError.message}`);
+      }
+      
       const { transactions, summary } = parsedData;
+      
+      // Проверка наличия транзакций
+      if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+        return {
+          success: false,
+          message: "В файле не найдено транзакций для обработки",
+          summary: {
+            addedTransactions: 0,
+            skippedTransactions: 0,
+            totalProcessed: 0
+          }
+        };
+      }
       
       // Счетчики для статистики
       let addedCount = 0;
       let skippedCount = 0;
+      let errorCount = 0;
       
       // Обрабатываем каждую транзакцию
       for (const tx of transactions) {
-        // Проверяем существование записи перед созданием
-        const existingTransaction = await ctx.db.bybitTransaction.findFirst({
-          where: {
-            orderNo: tx.orderNo,
-            userId: userId
+        try {
+          // Проверяем наличие необходимых полей
+          if (!tx.orderNo) {
+            errorCount++;
+            console.warn("Пропущена транзакция без orderNo");
+            continue;
           }
-        });
-        
-        // Если транзакция уже существует, пропускаем её
-        if (existingTransaction) {
-          skippedCount++;
-          continue;
+          
+          // Проверяем существование записи перед созданием
+          const existingTransaction = await ctx.db.bybitTransaction.findFirst({
+            where: {
+              orderNo: tx.orderNo,
+              userId: userId
+            }
+          });
+          
+          // Если транзакция уже существует, пропускаем её
+          if (existingTransaction) {
+            skippedCount++;
+            continue;
+          }
+          
+          // Создаем новую транзакцию, если она не существует
+          await ctx.db.bybitTransaction.create({
+            data: {
+              userId,
+              orderNo: tx.orderNo,
+              dateTime: tx.dateTime,
+              type: tx.type,
+              asset: tx.asset,
+              amount: tx.amount,
+              totalPrice: tx.totalPrice,
+              unitPrice: tx.unitPrice,
+              counterparty: tx.counterparty || null,
+              status: tx.status,
+              originalData: tx.originalData || {}
+            }
+          });
+          
+          // Увеличиваем счетчик добавленных транзакций
+          addedCount++;
+        } catch (txError) {
+          errorCount++;
+          console.error("Ошибка при обработке транзакции:", txError, tx);
+          // Продолжаем обработку следующих транзакций
         }
-        
-        // Создаем новую транзакцию, если она не существует
-        await ctx.db.bybitTransaction.create({
-          data: {
-            userId,
-            orderNo: tx.orderNo,
-            dateTime: tx.dateTime,
-            type: tx.type,
-            asset: tx.asset,
-            amount: tx.amount,
-            totalPrice: tx.totalPrice,
-            unitPrice: tx.unitPrice,
-            counterparty: tx.counterparty || null,
-            status: tx.status,
-            originalData: tx.originalData || {}
-          }
-        });
-        
-        // Увеличиваем счетчик добавленных транзакций
-        addedCount++;
       }
       
       return {
@@ -170,6 +220,7 @@ uploadBybitTransactions: publicProcedure
           ...summary,
           addedTransactions: addedCount,
           skippedTransactions: skippedCount,
+          errorTransactions: errorCount,
           totalProcessed: transactions.length
         }
       };
@@ -181,6 +232,7 @@ uploadBybitTransactions: publicProcedure
         summary: {
           addedTransactions: 0,
           skippedTransactions: 0,
+          errorTransactions: 0,
           totalProcessed: 0
         }
       };
