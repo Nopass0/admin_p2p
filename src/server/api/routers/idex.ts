@@ -135,8 +135,8 @@ getCabinetsWithTotals: publicProcedure
     const skip = (page - 1) * perPage;
     
     // Convert dates with timezone consideration
-    const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
-    const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
+    const startDateTime = startDate ? dayjs(startDate).utc().toISOString() : undefined;
+    const endDateTime = endDate ? dayjs(endDate).utc().toISOString() : undefined;
     
     let where = {};
     
