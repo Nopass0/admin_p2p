@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { api } from "@/trpc/react";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
@@ -10,7 +10,7 @@ import { Input } from "@heroui/input";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Pagination } from "@heroui/pagination";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle, DownloadIcon, Calculator, History } from "lucide-react";
+import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle, DownloadIcon, Calculator, History, Database, FileText } from "lucide-react";
 import { Alert } from "@heroui/alert";
 import { IdexSyncOrdersModal } from "@/components/idex/IdexSyncOrdersModal"; // Assuming this component exists
 import { formatNumber } from "@/utils/format"; // Assuming you have this utility or we'll create it
@@ -85,6 +85,14 @@ export default function IdexCabinetsTotalsPage() {
     refetchOnWindowFocus: false
   });
   
+  // Fetch IdexStats for overall system statistics
+  const {
+    data: idexStats,
+    isLoading: isLoadingStats,
+  } = api.idex.getIdexStats.useQuery(undefined, {
+    refetchOnWindowFocus: false
+  });
+  
   // Handle cabinet selection
   const toggleCabinetSelection = (cabinetId: number) => {
     const newSelection = new Set(selectedCabinets);
@@ -110,9 +118,15 @@ export default function IdexCabinetsTotalsPage() {
     }
   };
   
-  // Calculate totals for selected cabinets
-  const selectedTotals = useMemo(() => {
-    if (!cabinetsData?.cabinets) return { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 };
+  // Calculate totals and counts for selected cabinets
+  const selectedStats = useMemo(() => {
+    if (!cabinetsData?.cabinets) return { 
+      amountRub: 0, 
+      amountUsdt: 0, 
+      totalRub: 0, 
+      totalUsdt: 0,
+      transactionCount: 0 
+    };
     
     return cabinetsData.cabinets
       .filter(cabinet => selectedCabinets.has(cabinet.id))
@@ -121,10 +135,26 @@ export default function IdexCabinetsTotalsPage() {
           amountRub: acc.amountRub + cabinet.totals.amountRub,
           amountUsdt: acc.amountUsdt + cabinet.totals.amountUsdt,
           totalRub: acc.totalRub + cabinet.totals.totalRub,
-          totalUsdt: acc.totalUsdt + cabinet.totals.totalUsdt
+          totalUsdt: acc.totalUsdt + cabinet.totals.totalUsdt,
+          transactionCount: acc.transactionCount + cabinet._count.transactions
         };
-      }, { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 });
+      }, { 
+        amountRub: 0, 
+        amountUsdt: 0, 
+        totalRub: 0, 
+        totalUsdt: 0,
+        transactionCount: 0 
+      });
   }, [cabinetsData, selectedCabinets]);
+  
+  // Calculate total transactions on current page
+  const currentPageTransactionCount = useMemo(() => {
+    if (!cabinetsData?.cabinets) return 0;
+    
+    return cabinetsData.cabinets.reduce((sum, cabinet) => {
+      return sum + cabinet._count.transactions;
+    }, 0);
+  }, [cabinetsData]);
   
   // Format currency values
   const formatCurrency = (value: number, currency: string) => {
@@ -202,7 +232,7 @@ export default function IdexCabinetsTotalsPage() {
     });
     
     // Add totals row
-    csvContent += `ИТОГО,,${selectedData.reduce((sum, cabinet) => sum + cabinet._count.transactions, 0)},${selectedTotals.amountRub},${selectedTotals.amountUsdt},${selectedTotals.totalRub},${selectedTotals.totalUsdt}\n`;
+    csvContent += `ИТОГО,,${selectedStats.transactionCount},${selectedStats.amountRub},${selectedStats.amountUsdt},${selectedStats.totalRub},${selectedStats.totalUsdt}\n`;
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -279,6 +309,52 @@ export default function IdexCabinetsTotalsPage() {
         </div>
       </div>
       
+      {/* System statistics Card */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            <h3 className="text-lg font-medium">Общая статистика системы</h3>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Всего кабинетов</div>
+              <div className="text-xl font-semibold dark:text-indigo-200">
+                {isLoadingStats ? (
+                  <Spinner size="sm" color="primary" />
+                ) : (
+                  idexStats?.totalCabinets || cabinetsData?.totalCount || 0
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Всего транзакций</div>
+              <div className="text-xl font-semibold dark:text-emerald-200">
+                {isLoadingStats ? (
+                  <Spinner size="sm" color="primary" />
+                ) : (
+                  idexStats?.totalTransactions || 0
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Транзакций на текущей странице</div>
+              <div className="text-xl font-semibold dark:text-purple-200">
+                {isLoadingCabinets ? (
+                  <Spinner size="sm" color="primary" />
+                ) : (
+                  currentPageTransactionCount
+                )}
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+      
       {/* Selected Cabinets Summary Card */}
       <Card className="mb-6">
         <CardHeader>
@@ -299,15 +375,30 @@ export default function IdexCabinetsTotalsPage() {
           </div>
         </CardHeader>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="p-4 bg-gray-50 dark:bg-gray-800/40 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Кол-во транзакций</div>
+              <div className="text-xl font-semibold dark:text-gray-200">{selectedStats.transactionCount}</div>
+            </div>
+            
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Amount (RUB)</div>
-              <div className="text-xl font-semibold dark:text-blue-200">{formatCurrency(selectedTotals.amountRub, 'RUB')}</div>
+              <div className="text-xl font-semibold dark:text-blue-200">{formatCurrency(selectedStats.amountRub, 'RUB')}</div>
             </div>
-
+            
+            <div className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Amount (USDT)</div>
+              <div className="text-xl font-semibold dark:text-teal-200">{formatCurrency(selectedStats.amountUsdt, 'USDT')}</div>
+            </div>
+            
+            <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Total (RUB)</div>
+              <div className="text-xl font-semibold dark:text-orange-200">{formatCurrency(selectedStats.totalRub, 'RUB')}</div>
+            </div>
+            
             <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Total (USDT)</div>
-              <div className="text-xl font-semibold dark:text-amber-200">{formatCurrency(selectedTotals.totalUsdt, 'USDT')}</div>
+              <div className="text-xl font-semibold dark:text-amber-200">{formatCurrency(selectedStats.totalUsdt, 'USDT')}</div>
             </div>
           </div>
         </CardBody>
@@ -341,7 +432,8 @@ export default function IdexCabinetsTotalsPage() {
                   <TableColumn>Логин</TableColumn>
                   <TableColumn>Кол-во транзакций</TableColumn>
                   <TableColumn>Amount (RUB)</TableColumn>
-
+                  <TableColumn>Amount (USDT)</TableColumn>
+                  <TableColumn>Total (RUB)</TableColumn>
                   <TableColumn>Total (USDT)</TableColumn>
                   <TableColumn>Действия</TableColumn>
                 </TableHeader>
@@ -356,9 +448,15 @@ export default function IdexCabinetsTotalsPage() {
                       </TableCell>
                       <TableCell>{cabinet.idexId}</TableCell>
                       <TableCell>{cabinet.login}</TableCell>
-                      <TableCell>{cabinet._count.transactions}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <FileText className="w-4 h-4 text-gray-400 mr-1" />
+                          {cabinet._count.transactions}
+                        </div>
+                      </TableCell>
                       <TableCell>{formatCurrency(cabinet.totals.amountRub, 'RUB')}</TableCell>
-
+                      <TableCell>{formatCurrency(cabinet.totals.amountUsdt, 'USDT')}</TableCell>
+                      <TableCell>{formatCurrency(cabinet.totals.totalRub, 'RUB')}</TableCell>
                       <TableCell>{formatCurrency(cabinet.totals.totalUsdt, 'USDT')}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -387,13 +485,27 @@ export default function IdexCabinetsTotalsPage() {
               {/* Overall Totals */}
               <div className="bg-gray-50 dark:bg-gray-800/40 p-4 rounded-lg mb-4">
                 <h4 className="text-md font-medium mb-2 dark:text-gray-200">Общие итоги по всем кабинетам на странице</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Кол-во транзакций</div>
+                    <div className="font-semibold dark:text-gray-200">{currentPageTransactionCount}</div>
+                  </div>
+                  
                   <div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Amount (RUB)</div>
                     <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.amountRub, 'RUB')}</div>
                   </div>
-
-
+                  
+                  <div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Amount (USDT)</div>
+                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.amountUsdt, 'USDT')}</div>
+                  </div>
+                  
+                  <div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Total (RUB)</div>
+                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.totalRub, 'RUB')}</div>
+                  </div>
+                  
                   <div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Total (USDT)</div>
                     <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.totalUsdt, 'USDT')}</div>
