@@ -1067,8 +1067,8 @@ getUnmatchedBybitTransactions: publicProcedure
           
           // Если поле Time существует, используем его
           if (originalData && originalData.Time) {
-
-            transactionTime = dayjs(originalData.Time).toDate();
+            // Парсим дату из поля Time и добавляем 3 часа
+            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
           }
         } catch (error) {
           console.error("Error parsing originalData for transaction:", tx.id, error);
@@ -1125,8 +1125,8 @@ matchBybitWithIdex: publicProcedure
     const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
     // Преобразуем глобальные даты с учетом таймзоны
-    const globalStartDateTime = dayjs(startDate).utc().add(1, 'day').toDate();
-    const globalEndDateTime = dayjs(endDate).utc().add(1, 'day').toDate();
+    const globalStartDateTime = dayjs(startDate).utc().toDate();
+    const globalEndDateTime = dayjs(endDate).utc().toDate();
     
     console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
     console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
