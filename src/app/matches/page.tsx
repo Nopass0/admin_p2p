@@ -258,6 +258,9 @@ startDate
   // Add this state variable for tracking matching type in modal
 const [matchingType, setMatchingType] = useState("telegram"); // "telegram" or "bybit"
 
+// Добавляем переменную состояния
+const [idexMatchType, setIdexMatchType] = useState<"telegram" | "bybit">("telegram");
+
   // Add these new interfaces at the top of your component
   interface CabinetConfig {
     cabinetId: number;
@@ -472,23 +475,25 @@ const handleStartBybitMatching = () => {
   });
 
   // Get unmatched IDEX transactions
-  const {
-    data: unmatchedIdexData,
-    isLoading: isLoadingUnmatchedIdex,
-    refetch: refetchUnmatchedIdex
-  } = api.match.getUnmatchedIdexTransactions.useQuery({
-    startDate,
-    endDate,
-    page,
-    pageSize,
-    searchQuery: idexSearchQuery,
-    cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
-      Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
-      undefined
-  }, {
-    refetchOnWindowFocus: false,
-    enabled: activeTab === "unmatchedIdex" || activeTab === "unmatchedUser"
-  });
+// Get unmatched IDEX transactions
+const {
+  data: unmatchedIdexData,
+  isLoading: isLoadingUnmatchedIdex,
+  refetch: refetchUnmatchedIdex
+} = api.match.getUnmatchedIdexTransactions.useQuery({
+  startDate,
+  endDate,
+  page,
+  pageSize,
+  searchQuery: idexSearchQuery,
+  cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
+    Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
+    undefined,
+  matchType: idexMatchType // Добавляем тип сопоставления
+}, {
+  refetchOnWindowFocus: false,
+  enabled: activeTab === "unmatchedIdex" || activeTab === "unmatchedUser"
+});
 
   // Add this new query to get the cabinets with stats
   const {
@@ -2291,6 +2296,36 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
     </div>
   </CardHeader>
   <CardBody>
+    {/* Добавляем переключатель типа несопоставленных IDEX транзакций */}
+<div className="mb-4">
+  <label className="block text-sm font-medium mb-2">Тип несопоставленных IDEX транзакций</label>
+  <div className="flex flex-wrap gap-2">
+    <Button 
+      size="sm" 
+      color={idexMatchType === "telegram" ? "primary" : "default"}
+      variant={idexMatchType === "telegram" ? "solid" : "flat"}
+      onClick={() => {
+        setIdexMatchType("telegram");
+        setTimeout(() => refetchUnmatchedIdex(), 100);
+      }}
+    >
+      <Database className="w-4 h-4 mr-2 text-blue-500" />
+      Не сопоставлены с Telegram
+    </Button>
+    <Button 
+      size="sm" 
+      color={idexMatchType === "bybit" ? "primary" : "default"}
+      variant={idexMatchType === "bybit" ? "solid" : "flat"}
+      onClick={() => {
+        setIdexMatchType("bybit");
+        setTimeout(() => refetchUnmatchedIdex(), 100);
+      }}
+    >
+      <Database className="w-4 h-4 mr-2 text-orange-500" />
+      Не сопоставлены с Bybit
+    </Button>
+  </div>
+</div>
     {/* Добавляем поиск и фильтры по кабинетам */}
     <div className="mb-4 grid grid-cols-1 gap-4">
       <div>
