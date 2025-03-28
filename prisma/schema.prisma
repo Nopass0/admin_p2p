@@ -103,6 +103,7 @@ model WorkSession {
   autoCompleted Boolean       @default(false)
   userId        Int
   idexCabinets  IdexCabinet[]
+  comment       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

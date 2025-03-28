@@ -81,7 +81,7 @@ export const idexRouter = createTRPCRouter({
             skip,
             take: perPage,
             orderBy: {
-              id: 'asc'
+              idexId: 'asc'
             },
             include: {
               _count: {
@@ -100,7 +100,6 @@ export const idexRouter = createTRPCRouter({
           })),
           withRetry(() => ctx.db.idexCabinet.count({ where }))
         ]);
-        
         const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
         
         return {
