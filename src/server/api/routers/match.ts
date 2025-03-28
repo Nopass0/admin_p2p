@@ -540,16 +540,45 @@ export const matchRouter = createTRPCRouter({
           }
         });
 
-              // Get Bybit statistics for this user
-      const totalUserBybitTransactions = await ctx.db.bybitTransaction.count({
+                    // Get Bybit statistics for this user
+      const bybitTransactions = await ctx.db.bybitTransaction.findMany({
         where: {
-          userId,
-          dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
-          }
+          userId
+        },
+        select: {
+          id: true,
+          dateTime: true,
+          originalData: true
         }
       });
+      
+      // Фильтруем по Time из originalData с более точной датой
+      const filteredBybitIds = bybitTransactions
+        .filter(tx => {
+          try {
+            // Извлекаем Time из originalData
+            const originalData = typeof tx.originalData === 'string'
+              ? JSON.parse(tx.originalData)
+              : tx.originalData;
+              
+            if (originalData && originalData.Time) {
+              // Добавляем 3 часа к Time
+              const txTime = dayjs(originalData.Time).add(3, 'hour');
+              // Проверяем, попадает ли в диапазон дат, включая границы
+              return txTime.isAfter(dayjs(startDateTime).subtract(1, 'millisecond')) && txTime.isBefore(dayjs(endDateTime).add(1, 'millisecond'));
+            }
+              
+            // Если нет Time, используем обычное dateTime
+            return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+          } catch (error) {
+            console.error("Error parsing originalData for transaction:", tx.id, error);
+            // Если ошибка парсинга, используем обычное dateTime
+            return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+          }
+        })
+        .map(tx => tx.id);
+      
+      const totalUserBybitTransactions = filteredBybitIds.length;
       
       const matchedUserBybitTransactions = await ctx.db.bybitTransaction.count({
         where: {
