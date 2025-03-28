@@ -1504,16 +1504,18 @@ getBybitMatches: publicProcedure
     const startDateTime = dayjs(startDate).utc().toDate();
     const endDateTime = dayjs(endDate).utc().toDate();
     
-    // Перед фильтрацией получаем все Bybit транзакции, которые попадают в диапазон дат
-    // (будем фильтровать по Time из originalData на уровне приложения)
+
+    // для уменьшения количества обрабатываемых записей
     const bybitTransactions = await ctx.db.bybitTransaction.findMany({
       where: {
-        ...(userId ? { userId } : {})
-      },
-      select: { id: true, originalData: true, dateTime: true }
+        ...(userId ? { userId } : {}),
+       
+      }
     });
     
-    // Фильтруем по Time из originalData
+    console.log(`Предварительно выбрано ${bybitTransactions.length} Bybit транзакций по dateTime`);
+    
+    // Фильтруем по Time из originalData с более точной датой
     const filteredBybitIds = bybitTransactions
       .filter(tx => {
         try {
@@ -1525,8 +1527,8 @@ getBybitMatches: publicProcedure
           if (originalData && originalData.Time) {
             // Добавляем 3 часа к Time
             const txTime = dayjs(originalData.Time).add(3, 'hour');
-            // Проверяем, попадает ли в диапазон дат
-            return txTime.isAfter(dayjs(startDateTime)) && txTime.isBefore(dayjs(endDateTime));
+            // Проверяем, попадает ли в диапазон дат, включая границы
+            return txTime.isSameOrAfter(dayjs(startDateTime)) && txTime.isSameOrBefore(dayjs(endDateTime));
           }
           
           // Если нет Time, используем обычное dateTime
@@ -1539,13 +1541,29 @@ getBybitMatches: publicProcedure
       })
       .map(tx => tx.id);
     
+    // Удаляем возможные дубликаты
+    const uniqueBybitIds = [...new Set(filteredBybitIds)];
+    
+    console.log(`После фильтрации по Time осталось ${uniqueBybitIds.length} уникальных Bybit транзакций`);
+    
+    // Получаем ТОЧНОЕ количество Bybit транзакций в базе данных для данного периода
+    const totalBybitTransactions = await ctx.db.bybitTransaction.count({
+      where: {
+        id: {
+          in: uniqueBybitIds
+        }
+      }
+    });
+    
+    console.log(`Точное количество Bybit транзакций в базе: ${totalBybitTransactions}`);
+    
     // Строим базовый фильтр с учетом отфильтрованных bybitIds
     let where: any = {
       OR: [
         {
           bybitTransaction: {
             id: {
-              in: filteredBybitIds
+              in: uniqueBybitIds
             }
           }
         },
@@ -1671,9 +1689,7 @@ getBybitMatches: publicProcedure
       where
     });
     
-    // Получаем статистику по транзакциям в выбранном диапазоне
-    const totalBybitTransactions = filteredBybitIds.length;
-    
+    // Получаем статистику по транзакциям IDEX в выбранном диапазоне
     const totalIdexTransactions = await ctx.db.idexTransaction.count({
       where: {
         approvedAt: {
@@ -1719,12 +1735,12 @@ getBybitMatches: publicProcedure
       };
     }
     
-    // Получаем количество сопоставленных Bybit транзакций с учетом отфильтрованных по Time
+    // Получаем количество сопоставленных Bybit транзакций
     const matchedBybitTransactions = await ctx.db.bybitMatch.count({
       where: {
         bybitTransaction: {
           id: {
-            in: filteredBybitIds
+            in: uniqueBybitIds
           }
         }
       }
@@ -1823,7 +1839,7 @@ getBybitMatches: publicProcedure
       }
     };
   }
-}),
+})
 
 // Удаление сопоставления Bybit с IDEX
 deleteBybitMatch: publicProcedure
