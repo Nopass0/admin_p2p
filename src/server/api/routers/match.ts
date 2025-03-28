@@ -1951,30 +1951,18 @@ deleteBybitMatch: publicProcedure
         ]
       };
 
-      // Build base filter for date range for bybit matches
+      // For Bybit matches, we'll only filter by idexTransaction initially,
+      // then filter by parsed Time field in memory
       let bybitWhere: any = {
-        OR: [
-          {
-            bybitTransaction: {
-              originalData: {
-                path: ['Time'],
-                gte: dayjs(startDateTime).subtract(3, 'hours').toISOString(),
-                lte: dayjs(endDateTime).subtract(3, 'hours').toISOString()
-              }
-            }
-          },
-          {
-            idexTransaction: {
-              approvedAt: {
-                gte: startDateTime.toISOString(),
-                lte: endDateTime.toISOString()
-              }
-            }
+        idexTransaction: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
           }
-        ]
+        }
       };
 
-      // If cabinet IDs are specified, add filter for both regular and bybit matches
+      // If cabinet IDs are specified, add filter
       if (cabinetIds && cabinetIds.length > 0) {
         const cabinetFilter = {
           AND: [
@@ -1988,10 +1976,18 @@ deleteBybitMatch: publicProcedure
           ]
         };
         where = { ...where, ...cabinetFilter };
-        bybitWhere = { ...bybitWhere, ...cabinetFilter };
+        bybitWhere = {
+          ...bybitWhere,
+          idexTransaction: {
+            ...bybitWhere.idexTransaction,
+            cabinetId: {
+              in: cabinetIds
+            }
+          }
+        };
       }
     
-      // If there's a search query, add filters for both regular and bybit matches
+      // If there's a search query, add filters for regular matches
       if (searchQuery) {
         const regularSearchFilter = {
           OR: [
@@ -2030,40 +2026,7 @@ deleteBybitMatch: publicProcedure
           ]
         };
         
-        const bybitSearchFilter = {
-          OR: [
-            {
-              bybitTransaction: {
-                orderNo: { contains: searchQuery }
-              }
-            },
-            {
-              bybitTransaction: {
-                counterparty: { contains: searchQuery }
-              }
-            },
-            {
-              bybitTransaction: {
-                user: {
-                  name: { contains: searchQuery }
-                }
-              }
-            },
-            {
-              idexTransaction: {
-                externalId: { equals: /^\d+$/.test(searchQuery) ? BigInt(searchQuery) : undefined }
-              }
-            },
-            {
-              idexTransaction: {
-                wallet: { contains: searchQuery }
-              }
-            }
-          ]
-        };
-        
         where = { ...where, ...regularSearchFilter };
-        bybitWhere = { ...bybitWhere, ...bybitSearchFilter };
       }
       
       // Create sort object for regular matches
@@ -2090,30 +2053,6 @@ deleteBybitMatch: publicProcedure
         };
       }
       
-      // Create sort object for bybit matches
-      let bybitOrderBy: any = {};
-      
-      if (sortColumn && sortDirection && sortDirection !== "null") {
-        if (sortColumn.includes(".")) {
-          const [parentField, childField] = sortColumn.split(".");
-          bybitOrderBy = {
-            [parentField === 'transaction' ? 'bybitTransaction' : parentField as string]: {
-              [childField as string]: sortDirection
-            }
-          };
-        } else {
-          bybitOrderBy = {
-            [sortColumn === 'transaction' ? 'bybitTransaction' : sortColumn]: sortDirection
-          };
-        }
-      } else {
-        bybitOrderBy = {
-          bybitTransaction: {
-            dateTime: "desc"
-          }
-        };
-      }
-      
       // Get regular matches for current page
       const matches = await ctx.db.match.findMany({
         where,
@@ -2134,8 +2073,8 @@ deleteBybitMatch: publicProcedure
         skip: (page - 1) * pageSize
       });
       
-      // Get bybit matches for current page
-      const bybitMatches = await ctx.db.bybitMatch.findMany({
+      // For Bybit matches, we need to fetch all and filter in memory based on Time field
+      const allBybitMatches = await ctx.db.bybitMatch.findMany({
         where: bybitWhere,
         include: {
           bybitTransaction: {
@@ -2148,21 +2087,111 @@ deleteBybitMatch: publicProcedure
               cabinet: true
             }
           }
-        },
-        orderBy: bybitOrderBy,
-        take: pageSize,
-        skip: (page - 1) * pageSize
+        }
       });
+      
+      // Function to parse and check Time field in originalData
+      const isInTimeRange = (originalData: any) => {
+        try {
+          if (originalData && originalData.Time) {
+            const transactionTime = dayjs(originalData.Time).add(3, 'hour');
+            return transactionTime.isAfter(dayjs(startDateTime)) && 
+                   transactionTime.isBefore(dayjs(endDateTime));
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Filter Bybit matches based on the Time field in originalData
+      const filteredBybitMatches = allBybitMatches.filter(match => {
+        const originalData = typeof match.bybitTransaction.originalData === 'string'
+          ? JSON.parse(match.bybitTransaction.originalData)
+          : match.bybitTransaction.originalData;
+        
+        return isInTimeRange(originalData);
+      });
+      
+      // Apply search filter to bybit matches if needed
+      let searchFilteredBybitMatches = filteredBybitMatches;
+      if (searchQuery) {
+        searchFilteredBybitMatches = filteredBybitMatches.filter(match => {
+          const { bybitTransaction, idexTransaction } = match;
+          
+          // Check if any of the fields contain the search query
+          return (
+            (bybitTransaction.orderNo && bybitTransaction.orderNo.includes(searchQuery)) ||
+            (bybitTransaction.counterparty && bybitTransaction.counterparty.includes(searchQuery)) ||
+            (bybitTransaction.user && bybitTransaction.user.name && 
+             bybitTransaction.user.name.includes(searchQuery)) ||
+            (idexTransaction.externalId && 
+             idexTransaction.externalId.toString() === searchQuery) ||
+            (idexTransaction.wallet && idexTransaction.wallet.includes(searchQuery))
+          );
+        });
+      }
+      
+      // Sort the filtered bybit matches
+      const sortBybitMatches = (a: any, b: any) => {
+        if (sortColumn && sortDirection && sortDirection !== "null") {
+          let aValue, bValue;
+          
+          if (sortColumn.includes(".")) {
+            const [parentField, childField] = sortColumn.split(".");
+            const parent = parentField === 'transaction' ? 'bybitTransaction' : parentField;
+            
+            aValue = a[parent]?.[childField];
+            bValue = b[parent]?.[childField];
+          } else {
+            const field = sortColumn === 'transaction' ? 'bybitTransaction' : sortColumn;
+            aValue = a[field];
+            bValue = b[field];
+          }
+          
+          if (aValue === bValue) return 0;
+          
+          if (sortDirection === "asc") {
+            return aValue < bValue ? -1 : 1;
+          } else {
+            return aValue > bValue ? -1 : 1;
+          }
+        } else {
+          // Default sort by Time in originalData
+          try {
+            const aData = typeof a.bybitTransaction.originalData === 'string' 
+              ? JSON.parse(a.bybitTransaction.originalData) 
+              : a.bybitTransaction.originalData;
+            
+            const bData = typeof b.bybitTransaction.originalData === 'string' 
+              ? JSON.parse(b.bybitTransaction.originalData) 
+              : b.bybitTransaction.originalData;
+            
+            const aTime = aData?.Time ? dayjs(aData.Time).valueOf() : 0;
+            const bTime = bData?.Time ? dayjs(bData.Time).valueOf() : 0;
+            
+            return bTime - aTime; // Desc by default
+          } catch {
+            return 0;
+          }
+        }
+      };
+      
+      const sortedBybitMatches = [...searchFilteredBybitMatches].sort(sortBybitMatches);
+      
+      // Apply pagination to filtered and sorted Bybit matches
+      const bybitMatches = sortedBybitMatches.slice(
+        (page - 1) * pageSize, 
+        page * pageSize
+      );
       
       // Count total regular matches for pagination
       const totalMatches = await ctx.db.match.count({
         where
       });
       
-      // Count total bybit matches for pagination
-      const totalBybitMatches = await ctx.db.bybitMatch.count({
-        where: bybitWhere
-      });
+      // Count total bybit matches (filtered in memory)
+      const totalBybitMatches = searchFilteredBybitMatches.length;
       
       // Get statistics for transactions in selected range
       const totalTransactions = await ctx.db.transaction.count({
@@ -2211,29 +2240,30 @@ deleteBybitMatch: publicProcedure
         }
       });
       
-      // Get Bybit statistics
-      const totalBybitTransactions = await ctx.db.bybitTransaction.count({
-        where: {
-          originalData: {
-            path: ['Time'],
-            gte: dayjs(startDateTime).subtract(3, 'hours').toISOString(),
-            lte: dayjs(endDateTime).subtract(3, 'hours').toISOString()
+      // For Bybit transactions, we need to fetch all and filter in memory
+      const allBybitTransactions = await ctx.db.bybitTransaction.findMany({
+        include: {
+          BybitMatch: {
+            select: {
+              id: true
+            }
           }
         }
       });
       
-      const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
-        where: {
-          originalData: {
-            path: ['Time'],
-            gte: dayjs(startDateTime).subtract(3, 'hours').toISOString(),
-            lte: dayjs(endDateTime).subtract(3, 'hours').toISOString()
-          },
-          BybitMatch: {
-            some: {}
-          }
-        }
+      // Filter Bybit transactions based on originalData.Time
+      const filteredBybitTransactions = allBybitTransactions.filter(tx => {
+        const originalData = typeof tx.originalData === 'string'
+          ? JSON.parse(tx.originalData)
+          : tx.originalData;
+        
+        return isInTimeRange(originalData);
       });
+      
+      const totalBybitTransactions = filteredBybitTransactions.length;
+      const matchedBybitTransactions = filteredBybitTransactions.filter(tx => 
+        tx.BybitMatch && tx.BybitMatch.length > 0
+      ).length;
       
       const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
       
@@ -2268,13 +2298,17 @@ deleteBybitMatch: publicProcedure
         expensePerOrder: 0,
       };
       
-      // Get all bybit matches for statistics calculation
-      const allBybitMatches = await ctx.db.bybitMatch.findMany({
-        where: bybitWhere
-      });
-      
-      if (allBybitMatches.length > 0) {
-        bybitStats = calculateTotalStats(allBybitMatches);
+      // We already have filtered Bybit matches
+      if (searchFilteredBybitMatches.length > 0) {
+        // We need to extract just the necessary fields for calculateTotalStats
+        const simplifiedBybitMatches = searchFilteredBybitMatches.map(match => ({
+          grossExpense: match.grossExpense,
+          grossIncome: match.grossIncome,
+          grossProfit: match.grossProfit,
+          profitPercentage: match.profitPercentage
+        }));
+        
+        bybitStats = calculateTotalStats(simplifiedBybitMatches);
       }
       
       // Calculate combined statistics
