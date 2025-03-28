@@ -1015,7 +1015,7 @@ getUnmatchedBybitTransactions: publicProcedure
       }
     };
   }
-})
+}),
 
 // Сопоставление Bybit транзакций с IDEX транзакциями
 matchBybitWithIdex: publicProcedure
