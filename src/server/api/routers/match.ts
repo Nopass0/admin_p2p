@@ -2125,21 +2125,23 @@ deleteBybitMatch: publicProcedure
           stats = calculateTotalStats(allMatches);
         }
 
-        // Get Bybit statistics
-        const totalBybitTransactions = await ctx.db.bybitTransaction.count({
-          where: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
+              // Get Bybit statistics
+      const totalBybitTransactions = await ctx.db.bybitTransaction.count({
+        where: {
+          originalData: {
+            path: ['Time'],
+            gte: dayjs(startDateTime).subtract(3, 'hours').toISOString(),
+            lte: dayjs(endDateTime).subtract(3, 'hours').toISOString()
           }
         }
       });
       
       const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
         where: {
-          dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
+          originalData: {
+            path: ['Time'],
+            gte: dayjs(startDateTime).subtract(3, 'hours').toISOString(),
+            lte: dayjs(endDateTime).subtract(3, 'hours').toISOString()
           },
           BybitMatch: {
             some: {}
