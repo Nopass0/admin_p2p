@@ -931,35 +931,31 @@ getUnmatchedBybitTransactions: publicProcedure
   try {
     const { userId, startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
     
-    // Преобразуем даты с учетом таймзоны
-    const startDateTime = dayjs(startDate).utc().toDate();
-    const endDateTime = dayjs(endDate).utc().toDate();
+    // Convert dates to dayjs objects for easier comparison
+    const startDateObj = dayjs(startDate).utc();
+    const endDateObj = dayjs(endDate).utc();
     
-    // Базовый фильтр
+    // Base filter - only filter for unmatched transactions and optionally by user
     let where: any = {
-      dateTime: {
-        gte: startDateTime,
-        lte: endDateTime
-      },
-      // Только несопоставленные
+      // Only unmatched transactions
       BybitMatch: {
         none: {}
       }
     };
     
-    // Добавляем фильтр по пользователю, если указан
+    // Add user filter if specified
     if (userId) {
       where.userId = userId;
     }
     
-    // Расширенный поиск, если указан
+    // Extended search if specified
     if (searchQuery && searchQuery.trim() !== '') {
-      // Определяем, может ли поисковый запрос быть числом
+      // Check if search query can be a number
       const numericSearch = !isNaN(parseFloat(searchQuery)) ? parseFloat(searchQuery) : null;
       
       const searchConditions = [];
       
-      // Поиск по строковым полям
+      // Search string fields
       searchConditions.push(
         { orderNo: { contains: searchQuery, mode: 'insensitive' } },
         { counterparty: { contains: searchQuery, mode: 'insensitive' } },
@@ -968,30 +964,30 @@ getUnmatchedBybitTransactions: publicProcedure
         { status: { contains: searchQuery, mode: 'insensitive' } }
       );
       
-      // Если есть связь с пользователем, ищем и в его данных
+      // If user relation exists, search in user data
       searchConditions.push({
         user: {
           name: { contains: searchQuery, mode: 'insensitive' }
         }
       });
       
-      // Поиск по числовым полям (только если поисковый запрос может быть преобразован в число)
+      // Search numeric fields (only if search query can be converted to a number)
       if (numericSearch !== null) {
         searchConditions.push(
-          // Точное соответствие
+          // Exact match
           { id: { equals: parseInt(searchQuery) || undefined } },
           { totalPrice: { equals: numericSearch } },
           { amount: { equals: numericSearch } },
           { unitPrice: { equals: numericSearch } },
           
-          // Приблизительное соответствие для цен (поиск значений, которые содержат введенное число)
+          // Approximate match for prices (search values that contain the entered number)
           { totalPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
           { amount: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
           { unitPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } }
         );
       }
       
-      // Поиск внутри JSON поля originalData
+      // Search inside originalData JSON field
       searchConditions.push({
         originalData: {
           path: ['Time'],
@@ -1020,7 +1016,7 @@ getUnmatchedBybitTransactions: publicProcedure
         }
       });
       
-      // Если numericSearch не null, ищем и в числовых полях JSON
+      // If numericSearch is not null, search in numeric JSON fields
       if (numericSearch !== null) {
         searchConditions.push({
           originalData: {
@@ -1044,69 +1040,96 @@ getUnmatchedBybitTransactions: publicProcedure
         });
       }
       
-      // Добавляем условия поиска к where
+      // Add search conditions to where
       where.OR = searchConditions;
     }
     
-    // Формируем объект сортировки
-    let orderBy: any = { dateTime: 'desc' };
-    
-    if (sortColumn && sortDirection && sortDirection !== "null") {
-      // Обрабатываем специальные случаи для вложенных полей
-      if (sortColumn === "user.name") {
-        orderBy = {
-          user: {
-            name: sortDirection
-          }
-        };
-      } else {
-        orderBy = {
-          [sortColumn]: sortDirection
-        };
-      }
-    }
-    
-    // Получаем несопоставленные Bybit транзакции
-    const transactions = await ctx.db.bybitTransaction.findMany({
+    // Get all unmatched Bybit transactions (without date filtering in DB query)
+    const allTransactions = await ctx.db.bybitTransaction.findMany({
       where,
       include: {
         user: true
-      },
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize
+      }
     });
     
-    // Считаем общее количество для пагинации
-    const totalTransactions = await ctx.db.bybitTransaction.count({
-      where
+    // Function to get and parse Time from originalData
+    const getTransactionTime = (tx: any) => {
+      try {
+        const originalData = typeof tx.originalData === 'string'
+          ? JSON.parse(tx.originalData)
+          : tx.originalData;
+        
+        if (originalData && originalData.Time) {
+          return dayjs(originalData.Time).add(3, 'hour');
+        }
+        // Fallback to dateTime from DB if Time not found
+        return dayjs(tx.dateTime);
+      } catch (error) {
+        console.error("Error parsing originalData for transaction:", tx.id, error);
+        return dayjs(tx.dateTime);
+      }
+    };
+    
+    // Filter transactions based on the Time field in originalData
+    const filteredTransactions = allTransactions.filter(tx => {
+      const transactionTime = getTransactionTime(tx);
+      return transactionTime.isAfter(startDateObj) && transactionTime.isBefore(endDateObj);
     });
+    
+    // Sort function for transactions
+    const sortTransactions = (a: any, b: any) => {
+      if (sortColumn && sortDirection && sortDirection !== "null") {
+        let aValue, bValue;
+        
+        // Handle nested fields
+        if (sortColumn === "user.name") {
+          aValue = a.user?.name;
+          bValue = b.user?.name;
+        } else if (sortColumn === "dateTime") {
+          // For dateTime, sort by the parsed Time field
+          aValue = getTransactionTime(a).valueOf();
+          bValue = getTransactionTime(b).valueOf();
+        } else {
+          aValue = a[sortColumn];
+          bValue = b[sortColumn];
+        }
+        
+        if (aValue === bValue) return 0;
+        
+        if (sortDirection === "asc") {
+          return aValue < bValue ? -1 : 1;
+        } else {
+          return aValue > bValue ? -1 : 1;
+        }
+      } else {
+        // Default sort by Time in originalData (desc)
+        const aTime = getTransactionTime(a).valueOf();
+        const bTime = getTransactionTime(b).valueOf();
+        return bTime - aTime;
+      }
+    };
+    
+    // Sort the filtered transactions
+    const sortedTransactions = [...filteredTransactions].sort(sortTransactions);
+    
+    // Apply pagination
+    const paginatedTransactions = sortedTransactions.slice(
+      (page - 1) * pageSize,
+      page * pageSize
+    );
+    
+    // Total count for pagination
+    const totalTransactions = filteredTransactions.length;
     
     return {
       success: true,
-      transactions: transactions.map(tx => {
-        // Извлекаем поле Time из originalData
-        let transactionTime = tx.dateTime; // По умолчанию используем dateTime из БД
-        
-        try {
-          // Проверяем, является ли originalData строкой JSON или объектом
-          const originalData = typeof tx.originalData === 'string'
-            ? JSON.parse(tx.originalData)
-            : tx.originalData;
-          
-          // Если поле Time существует, используем его
-          if (originalData && originalData.Time) {
-            // Парсим дату из поля Time и добавляем 3 часа
-            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
-          }
-        } catch (error) {
-          console.error("Error parsing originalData for transaction:", tx.id, error);
-          // В случае ошибки используем имеющийся dateTime
-        }
+      transactions: paginatedTransactions.map(tx => {
+        // Get the transaction time from originalData
+        const transactionTime = getTransactionTime(tx).toDate();
         
         return {
           ...tx,
-          // Преобразуем дату в московский формат для вывода
+          // Convert date to Moscow format for display
           dateTime: dayjs(transactionTime).tz(MOSCOW_TIMEZONE).format()
         };
       }),
