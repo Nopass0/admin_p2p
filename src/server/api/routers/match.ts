@@ -1839,7 +1839,7 @@ getBybitMatches: publicProcedure
       }
     };
   }
-})
+}),
 
 // Удаление сопоставления Bybit с IDEX
 deleteBybitMatch: publicProcedure
