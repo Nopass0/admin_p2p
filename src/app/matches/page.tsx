@@ -253,6 +253,8 @@ startDate
   const [selectedIdexCabinetIds, setSelectedIdexCabinetIds] = useState<Record<number, boolean>>({});
   const [idexSearchQuery, setIdexSearchQuery] = useState("");
 
+  const [bybitSearchQuery, setBybitSearchQuery] = useState("");
+
   // Add this state variable for tracking matching type in modal
 const [matchingType, setMatchingType] = useState("telegram"); // "telegram" or "bybit"
 
@@ -579,7 +581,7 @@ const handleStartBybitMatching = () => {
     endDate,
     page,
     pageSize,
-    searchQuery,
+    searchQuery: bybitSearchQuery, // Using the dedicated bybit search query
     sortColumn: sortState.column || undefined,
     sortDirection: sortState.direction || undefined
   }, {
@@ -2110,7 +2112,8 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
 
           {/* Split view for manual matching */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Bybit transactions */}
+
+{/* Bybit transactions */}
 <Card>
   <CardHeader>
     <div className="flex items-center gap-2">
@@ -2119,6 +2122,28 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
     </div>
   </CardHeader>
   <CardBody>
+    {/* Add Bybit search input */}
+    <div className="mb-4">
+      <label className="block text-sm font-medium mb-2">Поиск транзакций Bybit</label>
+      <div className="flex gap-2">
+        <Input
+          placeholder="Поиск по ID, сумме, контрагенту..."
+          value={bybitSearchQuery}
+          onChange={(e) => setBybitSearchQuery(e.target.value)}
+          startContent={<Search className="w-4 h-4 text-gray-500" />}
+          aria-label="Поиск по Bybit транзакциям"
+        />
+        <Button
+          color="primary"
+          variant="flat"
+          onClick={() => refetchUnmatchedBybit()}
+          aria-label="Применить фильтры для Bybit"
+        >
+          <Filter className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+    
     {isLoadingUnmatchedBybit ? (
       <div className="flex justify-center py-10">
         <Spinner size="lg" color="primary" />

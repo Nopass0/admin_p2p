@@ -923,13 +923,100 @@ getUnmatchedBybitTransactions: publicProcedure
       where.userId = userId;
     }
     
-    // Добавляем поиск, если указан
-    if (searchQuery) {
-      where.OR = [
-        { orderNo: { contains: searchQuery } },
-        { counterparty: { contains: searchQuery } },
-        { totalPrice: { equals: parseFloat(searchQuery) || undefined } }
-      ];
+    // Расширенный поиск, если указан
+    if (searchQuery && searchQuery.trim() !== '') {
+      // Определяем, может ли поисковый запрос быть числом
+      const numericSearch = !isNaN(parseFloat(searchQuery)) ? parseFloat(searchQuery) : null;
+      
+      const searchConditions = [];
+      
+      // Поиск по строковым полям
+      searchConditions.push(
+        { orderNo: { contains: searchQuery, mode: 'insensitive' } },
+        { counterparty: { contains: searchQuery, mode: 'insensitive' } },
+        { type: { contains: searchQuery, mode: 'insensitive' } },
+        { asset: { contains: searchQuery, mode: 'insensitive' } },
+        { status: { contains: searchQuery, mode: 'insensitive' } }
+      );
+      
+      // Если есть связь с пользователем, ищем и в его данных
+      searchConditions.push({
+        user: {
+          name: { contains: searchQuery, mode: 'insensitive' }
+        }
+      });
+      
+      // Поиск по числовым полям (только если поисковый запрос может быть преобразован в число)
+      if (numericSearch !== null) {
+        searchConditions.push(
+          // Точное соответствие
+          { id: { equals: parseInt(searchQuery) || undefined } },
+          { totalPrice: { equals: numericSearch } },
+          { amount: { equals: numericSearch } },
+          { unitPrice: { equals: numericSearch } },
+          
+          // Приблизительное соответствие для цен (поиск значений, которые содержат введенное число)
+          { totalPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
+          { amount: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
+          { unitPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } }
+        );
+      }
+      
+      // Поиск внутри JSON поля originalData
+      searchConditions.push({
+        originalData: {
+          path: ['Time'],
+          string_contains: searchQuery
+        }
+      });
+      
+      searchConditions.push({
+        originalData: {
+          path: ['Cryptocurrency'],
+          string_contains: searchQuery
+        }
+      });
+      
+      searchConditions.push({
+        originalData: {
+          path: ['Counterparty'],
+          string_contains: searchQuery
+        }
+      });
+      
+      searchConditions.push({
+        originalData: {
+          path: ['Order No.'],
+          string_contains: searchQuery
+        }
+      });
+      
+      // Если numericSearch не null, ищем и в числовых полях JSON
+      if (numericSearch !== null) {
+        searchConditions.push({
+          originalData: {
+            path: ['Fiat Amount'],
+            equals: numericSearch.toString()
+          }
+        });
+        
+        searchConditions.push({
+          originalData: {
+            path: ['Coin Amount'],
+            equals: numericSearch.toString()
+          }
+        });
+        
+        searchConditions.push({
+          originalData: {
+            path: ['Price'],
+            equals: numericSearch.toString()
+          }
+        });
+      }
+      
+      // Добавляем условия поиска к where
+      where.OR = searchConditions;
     }
     
     // Формируем объект сортировки
@@ -974,8 +1061,8 @@ getUnmatchedBybitTransactions: publicProcedure
         
         try {
           // Проверяем, является ли originalData строкой JSON или объектом
-          const originalData = typeof tx.originalData === 'string' 
-            ? JSON.parse(tx.originalData) 
+          const originalData = typeof tx.originalData === 'string'
+            ? JSON.parse(tx.originalData)
             : tx.originalData;
           
           // Если поле Time существует, используем его
