@@ -45,21 +45,48 @@ export class BybitParser {
    */
   static async parseXLSBuffer(buffer: Buffer): Promise<ParsedBybitXLS> {
     try {
-      // Загружаем XLS из буфера
-      const workbook = xlsx.read(buffer, { type: 'buffer' });
+      // Проверяем, что буфер не пустой
+      if (!buffer || buffer.length === 0) {
+        throw new Error("Получен пустой буфер");
+      }
       
-      // Предполагаем, что данные находятся на первом листе
+      // Создаем копию буфера, чтобы избежать проблем с потоками
+      const bufferCopy = Buffer.from(buffer);
+      
+      // Читаем Excel файл с более детальными опциями
+      const workbook = xlsx.read(bufferCopy, { 
+        type: 'buffer',
+        cellDates: true,     // Корректно обрабатывать даты
+        cellNF: true,        // Сохранять форматы чисел
+        cellText: false,     // Не генерировать текстовые поля
+        WTF: true,           // Включить режим отладки
+        codepage: 65001      // UTF-8 кодировка
+      });
+      
+      // Проверяем наличие листов
+      if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+        throw new Error("В файле не найдено листов");
+      }
+      
+      // Получаем первый лист
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       
-      // Преобразуем лист в массив объектов
-      const rawData = xlsx.utils.sheet_to_json(worksheet);
+      // Преобразуем лист в массив объектов с расширенными опциями
+      const rawData = xlsx.utils.sheet_to_json(worksheet, {
+        defval: '',          // Значение по умолчанию для пустых ячеек
+        blankrows: false,    // Пропускать пустые строки
+        raw: false           // Преобразовывать значения
+      });
+      
+      // Проверяем, что данные получены
+      if (!rawData || rawData.length === 0) {
+        throw new Error("Не удалось извлечь данные из файла");
+      }
       
       // Преобразуем данные в формат транзакций Bybit
       const transactions: BybitTransaction[] = rawData.map((row: any) => {
-        // Преобразуем в понятный формат транзакции
-        // Структура может быть адаптирована в зависимости от фактического формата Bybit XLS
-        const transaction: BybitTransaction = {
+        return {
           orderNo: row['Номер ордера'] || row['Order No.'] || '',
           dateTime: new Date(row['Время транзакции'] || row['Transaction Time'] || new Date()),
           type: this.mapTransactionType(row['Тип конвертации'] || row['Convert Type'] || ''),
@@ -69,12 +96,10 @@ export class BybitParser {
           unitPrice: this.parseNumber(row['Цена'] || row['Price'] || 0),
           counterparty: row['Контрагент'] || row['Counterparty'] || '',
           status: this.mapTransactionStatus(row['Статус'] || row['Status'] || ''),
-          originalData: { ...row } // Сохраняем оригинальные данные
+          originalData: { ...row }
         };
-        
-        return transaction;
       });
-
+  
       // Вычисляем сводную информацию
       const summary = this.calculateSummary(transactions);
       
@@ -83,8 +108,8 @@ export class BybitParser {
         summary
       };
     } catch (error) {
-      console.error('Ошибка при парсинге XLS файла Bybit:', error);
-      throw new Error(`Ошибка при обработке XLS файла Bybit: ${error.message}`);
+      console.error('Подробная ошибка при парсинге XLS файла:', error);
+      throw new Error(`Ошибка при обработке XLS файла: ${error.message}`);
     }
   }
 

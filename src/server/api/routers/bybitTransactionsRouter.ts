@@ -105,7 +105,7 @@ export const bybitTransactionsRouter = createTRPCRouter({
 
   // Загрузка транзакций из XLS файла
 
-uploadBybitTransactions: publicProcedure
+  uploadBybitTransactions: publicProcedure
   .input(
     z.object({
       userId: z.number().int().positive(),
@@ -121,14 +121,26 @@ uploadBybitTransactions: publicProcedure
         throw new Error("Пустая строка base64");
       }
       
+      // Очистка строки base64 от возможных префиксов
+      let cleanBase64 = fileBase64;
+      if (fileBase64.includes(';base64,')) {
+        cleanBase64 = fileBase64.split(';base64,')[1];
+      }
+      
       // Декодируем base64 в буфер с обработкой ошибок
       let fileBuffer;
       try {
-        fileBuffer = Buffer.from(fileBase64, 'base64');
+        fileBuffer = Buffer.from(cleanBase64, 'base64');
         
         // Проверка, что буфер не пустой
         if (fileBuffer.length === 0) {
           throw new Error("Получен пустой буфер после декодирования base64");
+        }
+        
+        // Проверка разумного размера файла
+        const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+        if (fileBuffer.length > MAX_SIZE) {
+          throw new Error(`Файл слишком большой: ${(fileBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
         }
       } catch (decodeError) {
         console.error("Ошибка декодирования base64:", decodeError);
@@ -154,6 +166,7 @@ uploadBybitTransactions: publicProcedure
           summary: {
             addedTransactions: 0,
             skippedTransactions: 0,
+            errorTransactions: 0,
             totalProcessed: 0
           }
         };
@@ -164,53 +177,57 @@ uploadBybitTransactions: publicProcedure
       let skippedCount = 0;
       let errorCount = 0;
       
-      // Обрабатываем каждую транзакцию
-      for (const tx of transactions) {
-        try {
-          // Проверяем наличие необходимых полей
-          if (!tx.orderNo) {
+      // Используем batch операции для оптимизации
+      const batchSize = 50; // Обрабатываем по 50 транзакций за раз
+      
+      for (let i = 0; i < transactions.length; i += batchSize) {
+        const batch = transactions.slice(i, i + batchSize);
+        
+        for (const tx of batch) {
+          try {
+            // Проверяем наличие необходимых полей
+            if (!tx.orderNo) {
+              errorCount++;
+              continue;
+            }
+            
+            // Используем findFirst вместо создания для каждой записи
+            const existingTransaction = await ctx.db.bybitTransaction.findFirst({
+              where: {
+                orderNo: tx.orderNo,
+                userId: userId
+              },
+              select: { id: true } // Выбираем только ID для оптимизации
+            });
+            
+            // Если транзакция уже существует, пропускаем её
+            if (existingTransaction) {
+              skippedCount++;
+              continue;
+            }
+            
+            // Создаем новую транзакцию
+            await ctx.db.bybitTransaction.create({
+              data: {
+                userId,
+                orderNo: tx.orderNo,
+                dateTime: tx.dateTime,
+                type: tx.type,
+                asset: tx.asset,
+                amount: tx.amount,
+                totalPrice: tx.totalPrice,
+                unitPrice: tx.unitPrice,
+                counterparty: tx.counterparty || null,
+                status: tx.status,
+                originalData: tx.originalData || {}
+              }
+            });
+            
+            addedCount++;
+          } catch (txError) {
             errorCount++;
-            console.warn("Пропущена транзакция без orderNo");
-            continue;
+            console.error("Ошибка при обработке транзакции:", txError);
           }
-          
-          // Проверяем существование записи перед созданием
-          const existingTransaction = await ctx.db.bybitTransaction.findFirst({
-            where: {
-              orderNo: tx.orderNo,
-              userId: userId
-            }
-          });
-          
-          // Если транзакция уже существует, пропускаем её
-          if (existingTransaction) {
-            skippedCount++;
-            continue;
-          }
-          
-          // Создаем новую транзакцию, если она не существует
-          await ctx.db.bybitTransaction.create({
-            data: {
-              userId,
-              orderNo: tx.orderNo,
-              dateTime: tx.dateTime,
-              type: tx.type,
-              asset: tx.asset,
-              amount: tx.amount,
-              totalPrice: tx.totalPrice,
-              unitPrice: tx.unitPrice,
-              counterparty: tx.counterparty || null,
-              status: tx.status,
-              originalData: tx.originalData || {}
-            }
-          });
-          
-          // Увеличиваем счетчик добавленных транзакций
-          addedCount++;
-        } catch (txError) {
-          errorCount++;
-          console.error("Ошибка при обработке транзакции:", txError, tx);
-          // Продолжаем обработку следующих транзакций
         }
       }
       
