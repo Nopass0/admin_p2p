@@ -968,11 +968,32 @@ getUnmatchedBybitTransactions: publicProcedure
     
     return {
       success: true,
-      transactions: transactions.map(tx => ({
-        ...tx,
-        // Преобразуем дату в московский формат для вывода
-        dateTime: dayjs(tx.dateTime).tz(MOSCOW_TIMEZONE).format()
-      })),
+      transactions: transactions.map(tx => {
+        // Извлекаем поле Time из originalData
+        let transactionTime = tx.dateTime; // По умолчанию используем dateTime из БД
+        
+        try {
+          // Проверяем, является ли originalData строкой JSON или объектом
+          const originalData = typeof tx.originalData === 'string' 
+            ? JSON.parse(tx.originalData) 
+            : tx.originalData;
+          
+          // Если поле Time существует, используем его
+          if (originalData && originalData.Time) {
+            // Парсим дату из поля Time и добавляем 3 часа
+            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+          }
+        } catch (error) {
+          console.error("Error parsing originalData for transaction:", tx.id, error);
+          // В случае ошибки используем имеющийся dateTime
+        }
+        
+        return {
+          ...tx,
+          // Преобразуем дату в московский формат для вывода
+          dateTime: dayjs(transactionTime).tz(MOSCOW_TIMEZONE).format()
+        };
+      }),
       pagination: {
         totalTransactions,
         totalPages: Math.ceil(totalTransactions / pageSize) || 1,
@@ -994,7 +1015,7 @@ getUnmatchedBybitTransactions: publicProcedure
       }
     };
   }
-}),
+})
 
 // Сопоставление Bybit транзакций с IDEX транзакциями
 matchBybitWithIdex: publicProcedure
