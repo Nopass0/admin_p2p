@@ -386,15 +386,7 @@ export default function IdexCabinetsTotalsPage() {
               <div className="text-xl font-semibold dark:text-blue-200">{formatCurrency(selectedStats.amountRub, 'RUB')}</div>
             </div>
             
-            <div className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Amount (USDT)</div>
-              <div className="text-xl font-semibold dark:text-teal-200">{formatCurrency(selectedStats.amountUsdt, 'USDT')}</div>
-            </div>
-            
-            <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Total (RUB)</div>
-              <div className="text-xl font-semibold dark:text-orange-200">{formatCurrency(selectedStats.totalRub, 'RUB')}</div>
-            </div>
+
             
             <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Total (USDT)</div>
@@ -432,8 +424,7 @@ export default function IdexCabinetsTotalsPage() {
                   <TableColumn>Логин</TableColumn>
                   <TableColumn>Кол-во транзакций</TableColumn>
                   <TableColumn>Amount (RUB)</TableColumn>
-                  <TableColumn>Amount (USDT)</TableColumn>
-                  <TableColumn>Total (RUB)</TableColumn>
+
                   <TableColumn>Total (USDT)</TableColumn>
                   <TableColumn>Действия</TableColumn>
                 </TableHeader>
@@ -455,8 +446,7 @@ export default function IdexCabinetsTotalsPage() {
                         </div>
                       </TableCell>
                       <TableCell>{formatCurrency(cabinet.totals.amountRub, 'RUB')}</TableCell>
-                      <TableCell>{formatCurrency(cabinet.totals.amountUsdt, 'USDT')}</TableCell>
-                      <TableCell>{formatCurrency(cabinet.totals.totalRub, 'RUB')}</TableCell>
+
                       <TableCell>{formatCurrency(cabinet.totals.totalUsdt, 'USDT')}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -496,16 +486,7 @@ export default function IdexCabinetsTotalsPage() {
                     <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.amountRub, 'RUB')}</div>
                   </div>
                   
-                  <div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Amount (USDT)</div>
-                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.amountUsdt, 'USDT')}</div>
-                  </div>
-                  
-                  <div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Total (RUB)</div>
-                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.totalRub, 'RUB')}</div>
-                  </div>
-                  
+
                   <div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Total (USDT)</div>
                     <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.totalUsdt, 'USDT')}</div>
