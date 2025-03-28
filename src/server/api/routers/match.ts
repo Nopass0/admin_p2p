@@ -1528,7 +1528,7 @@ getBybitMatches: publicProcedure
             // Добавляем 3 часа к Time
             const txTime = dayjs(originalData.Time).add(3, 'hour');
             // Проверяем, попадает ли в диапазон дат, включая границы
-            return txTime.isSameOrAfter(dayjs(startDateTime)) && txTime.isSameOrBefore(dayjs(endDateTime));
+            return txTime.isAfter(dayjs(startDateTime).subtract(1, 'millisecond')) && txTime.isBefore(dayjs(endDateTime).add(1, 'millisecond'));
           }
           
           // Если нет Time, используем обычное dateTime
