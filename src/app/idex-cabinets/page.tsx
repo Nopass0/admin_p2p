@@ -1,22 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { api } from "@/trpc/react";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Spinner } from "@heroui/spinner";
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import { Checkbox } from "@heroui/checkbox";
 import { Input } from "@heroui/input";
-import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle, Clock, History } from "lucide-react";
-import { IdexCabinetsTable } from "@/components/idex/IdexCabinetsTable";
-import { IdexSyncOrdersModal } from "@/components/idex/IdexSyncOrdersModal";
+import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
+import { Pagination } from "@heroui/pagination";
+import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import { PlusIcon, RefreshCw, Globe, CheckCircle, AlertCircle, DownloadIcon, Calculator, History } from "lucide-react";
 import { Alert } from "@heroui/alert";
-import { useForm } from "react-hook-form";
+import { IdexSyncOrdersModal } from "@/components/idex/IdexSyncOrdersModal"; // Assuming this component exists
+import { formatNumber } from "@/utils/format"; // Assuming you have this utility or we'll create it
 
-interface CabinetForm {
+interface CabinetWithTotals {
+  id: number;
   idexId: number;
   login: string;
-  password: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    transactions: number;
+  };
+  totals: {
+    amountRub: number;
+    amountUsdt: number;
+    totalRub: number;
+    totalUsdt: number;
+  };
 }
 
 interface AlertState {
@@ -26,25 +39,23 @@ interface AlertState {
   color: "success" | "danger" | "primary" | "warning" | "default" | "secondary";
 }
 
-export default function IdexCabinetsPage() {
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+export default function IdexCabinetsTotalsPage() {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedCabinets, setSelectedCabinets] = useState<Set<number>>(new Set());
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isSyncOrdersModalOpen, setIsSyncOrdersModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [selectedCabinetId, setSelectedCabinetId] = useState<number | null>(null);
   const [pagesToFetch, setPagesFetch] = useState(10);
+  const [selectedCabinetId, setSelectedCabinetId] = useState<number | null>(null);
   const [alert, setAlert] = useState<AlertState>({
     isVisible: false,
     title: "",
     description: "",
     color: "default"
   });
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CabinetForm>();
   
   const showAlert = (title: string, description: string, color: AlertState['color']) => {
     setAlert({
@@ -60,12 +71,12 @@ export default function IdexCabinetsPage() {
     }, 5000);
   };
   
-  // Получение списка кабинетов
+  // Fetch cabinets with totals
   const {
     data: cabinetsData,
     isLoading: isLoadingCabinets,
     refetch: refetchCabinets,
-  } = api.idex.getAllCabinets.useQuery({
+  } = api.idex.getCabinetsWithTotals.useQuery({
     page,
     perPage: pageSize,
     startDate,
@@ -74,24 +85,59 @@ export default function IdexCabinetsPage() {
     refetchOnWindowFocus: false
   });
   
-  // Мутации для работы с кабинетами
-  const addCabinetMutation = api.idex.createCabinet.useMutation({
-    onSuccess: () => {
-      showAlert("Успешно", "Кабинет успешно добавлен", "success");
-      void refetchCabinets();
-      handleCloseAddModal();
-    },
-    onError: (error) => {
-      showAlert("Ошибка", `Не удалось добавить кабинет: ${error.message}`, "danger");
+  // Handle cabinet selection
+  const toggleCabinetSelection = (cabinetId: number) => {
+    const newSelection = new Set(selectedCabinets);
+    if (newSelection.has(cabinetId)) {
+      newSelection.delete(cabinetId);
+    } else {
+      newSelection.add(cabinetId);
     }
-  });
+    setSelectedCabinets(newSelection);
+  };
   
+  // Handle "Select All" checkbox
+  const toggleSelectAll = () => {
+    if (cabinetsData?.cabinets) {
+      if (selectedCabinets.size === cabinetsData.cabinets.length) {
+        // Deselect all
+        setSelectedCabinets(new Set());
+      } else {
+        // Select all
+        const allIds = cabinetsData.cabinets.map(cabinet => cabinet.id);
+        setSelectedCabinets(new Set(allIds));
+      }
+    }
+  };
+  
+  // Calculate totals for selected cabinets
+  const selectedTotals = useMemo(() => {
+    if (!cabinetsData?.cabinets) return { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 };
+    
+    return cabinetsData.cabinets
+      .filter(cabinet => selectedCabinets.has(cabinet.id))
+      .reduce((acc, cabinet) => {
+        return {
+          amountRub: acc.amountRub + cabinet.totals.amountRub,
+          amountUsdt: acc.amountUsdt + cabinet.totals.amountUsdt,
+          totalRub: acc.totalRub + cabinet.totals.totalRub,
+          totalUsdt: acc.totalUsdt + cabinet.totals.totalUsdt
+        };
+      }, { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 });
+  }, [cabinetsData, selectedCabinets]);
+  
+  // Format currency values
+  const formatCurrency = (value: number, currency: string) => {
+    return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (currency === 'RUB' ? ' ₽' : ' USDT');
+  };
+  
+  // Sync cabinets mutations
   const syncCabinetsMutation = api.idex.syncAllCabinets.useMutation({
     onSuccess: (data) => {
       showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
-      setIsSyncOrdersModalOpen(true); // Открываем модальное окно с запросами
+      setIsSyncOrdersModalOpen(true); // Open sync orders modal
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка создания запроса на синхронизацию: ${error.message}`, "danger");
@@ -104,7 +150,7 @@ export default function IdexCabinetsPage() {
       showAlert("Успешно", data.message, "success");
       setIsSyncing(false);
       setIsSyncModalOpen(false);
-      setIsSyncOrdersModalOpen(true); // Открываем модальное окно с запросами
+      setIsSyncOrdersModalOpen(true); // Open sync orders modal
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка создания запроса на синхронизацию: ${error.message}`, "danger");
@@ -112,22 +158,19 @@ export default function IdexCabinetsPage() {
     }
   });
   
-  const deleteCabinetMutation = api.idex.deleteCabinet.useMutation({
-    onSuccess: () => {
-      showAlert("Успешно", "Кабинет успешно удален", "success");
-      void refetchCabinets();
-    },
-    onError: (error) => {
-      showAlert("Ошибка", `Не удалось удалить кабинет: ${error.message}`, "danger");
-    }
-  });
+  // Sync handlers
+  const handleSyncAll = () => {
+    setSelectedCabinetId(null);
+    setIsSyncModalOpen(true);
+  };
   
-  const onAddCabinet = (data: CabinetForm) => {
-    addCabinetMutation.mutate({
-      idexId: data.idexId,
-      login: data.login,
-      password: data.password
-    });
+  const handleSyncCabinet = (id: number) => {
+    setSelectedCabinetId(id);
+    setIsSyncModalOpen(true);
+  };
+  
+  const handleSyncHistory = () => {
+    setIsSyncOrdersModalOpen(true);
   };
   
   const onSyncCabinets = () => {
@@ -144,38 +187,33 @@ export default function IdexCabinetsPage() {
     }
   };
   
-  const handleDeleteCabinet = (id: number) => {
-    if (confirm("Вы уверены, что хотите удалить этот кабинет?")) {
-      deleteCabinetMutation.mutate({ id });
+  // Export selected data to CSV
+  const exportSelectedToCSV = () => {
+    if (!cabinetsData?.cabinets || selectedCabinets.size === 0) {
+      showAlert("Внимание", "Нет выбранных кабинетов для экспорта", "warning");
+      return;
     }
-  };
-  
-  const handleViewTransactions = (id: number) => {
-    window.location.href = `/idex-cabinets/${id}/transactions`;
-  };
-  
-  const handleSyncCabinet = (id: number) => {
-    setSelectedCabinetId(id);
-    setIsSyncModalOpen(true);
-  };
-  
-  const handleSyncAll = () => {
-    setSelectedCabinetId(null);
-    setIsSyncModalOpen(true);
-  };
-  
-  const handleOpenAddModal = () => {
-    reset();
-    setIsAddModalOpen(true);
-  };
-  
-  const handleCloseAddModal = () => {
-    reset();
-    setIsAddModalOpen(false);
-  };
-  
-  const handleSyncHistory = () => {
-    setIsSyncOrdersModalOpen(true);
+    
+    const selectedData = cabinetsData.cabinets.filter(cabinet => selectedCabinets.has(cabinet.id));
+    
+    let csvContent = "ID,Логин,Кол-во транзакций,Amount (RUB),Amount (USDT),Total (RUB),Total (USDT)\n";
+    selectedData.forEach(cabinet => {
+      csvContent += `${cabinet.idexId},${cabinet.login},${cabinet._count.transactions},${cabinet.totals.amountRub},${cabinet.totals.amountUsdt},${cabinet.totals.totalRub},${cabinet.totals.totalUsdt}\n`;
+    });
+    
+    // Add totals row
+    csvContent += `ИТОГО,,${selectedData.reduce((sum, cabinet) => sum + cabinet._count.transactions, 0)},${selectedTotals.amountRub},${selectedTotals.amountUsdt},${selectedTotals.totalRub},${selectedTotals.totalUsdt}\n`;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `idex-cabinets-report-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showAlert("Успешно", "Отчет успешно экспортирован", "success");
   };
   
   return (
@@ -183,34 +221,43 @@ export default function IdexCabinetsPage() {
       {/* Alert notification */}
       {alert.isVisible && (
         <div className="fixed top-4 right-4 z-50 w-96">
-        <Alert
-          color={alert.color}
-          variant="solid"
-          title={alert.title}
-          description={alert.description}
-          isVisible={alert.isVisible}
-          isClosable={true}
-          onVisibleChange={(isVisible) => setAlert(prev => ({ ...prev, isVisible }))}
-          icon={alert.color === "success" ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-        />
-      </div>
+          <Alert
+            color={alert.color}
+            variant="solid"
+            title={alert.title}
+            description={alert.description}
+            isVisible={alert.isVisible}
+            isClosable={true}
+            onVisibleChange={(isVisible) => setAlert(prev => ({ ...prev, isVisible }))}
+            icon={alert.color === "success" ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          />
+        </div>
       )}
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-2xl font-bold">IDEX Кабинеты</h1>
+        <h1 className="text-2xl font-bold">Финансовый отчет по IDEX кабинетам</h1>
         <div className="flex gap-2">
           <Input
             type="datetime-local"
             placeholder="Начальная дата"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+            className="w-auto"
           />
           <Input
             type="datetime-local"
             placeholder="Конечная дата"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
+            className="w-auto"
           />
+          <Button 
+            color="primary" 
+            onClick={() => refetchCabinets()}
+            startIcon={<RefreshCw className="w-4 h-4" />}
+          >
+            Применить
+          </Button>
         </div>
         <div className="flex gap-2">
           <Button
@@ -229,21 +276,49 @@ export default function IdexCabinetsPage() {
           >
             Синхронизировать все
           </Button>
-          <Button
-            color="primary"
-            startIcon={<PlusIcon className="w-4 h-4" />}
-            onClick={handleOpenAddModal}
-          >
-            Добавить кабинет
-          </Button>
         </div>
       </div>
       
+      {/* Selected Cabinets Summary Card */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <h3 className="text-lg font-medium">Итоги по выбранным кабинетам ({selectedCabinets.size})</h3>
+            </div>
+            <Button
+              color="primary"
+              variant="light"
+              startIcon={<DownloadIcon className="w-4 h-4" />}
+              onClick={exportSelectedToCSV}
+              disabled={selectedCabinets.size === 0}
+            >
+              Экспорт выбранных
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Amount (RUB)</div>
+              <div className="text-xl font-semibold dark:text-blue-200">{formatCurrency(selectedTotals.amountRub, 'RUB')}</div>
+            </div>
+
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Сумма Total (USDT)</div>
+              <div className="text-xl font-semibold dark:text-amber-200">{formatCurrency(selectedTotals.totalUsdt, 'USDT')}</div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+      
+      {/* Cabinets Table Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-gray-500" />
-            <h3 className="text-lg font-medium">Список кабинетов</h3>
+            <h3 className="text-lg font-medium">Кабинеты с финансовыми показателями</h3>
           </div>
         </CardHeader>
         <CardBody>
@@ -252,95 +327,99 @@ export default function IdexCabinetsPage() {
               <Spinner size="lg" color="primary" />
             </div>
           ) : cabinetsData?.cabinets && cabinetsData.cabinets.length > 0 ? (
-            <IdexCabinetsTable
-              cabinets={cabinetsData.cabinets}
-              pagination={{
-                totalCount: cabinetsData.totalCount,
-                totalPages: cabinetsData.totalPages,
-                currentPage: cabinetsData.currentPage
-              }}
-              onPageChange={setPage}
-              onDelete={handleDeleteCabinet}
-              onViewTransactions={handleViewTransactions}
-              onSync={handleSyncCabinet}
-            />
+            <>
+              <Table className="mb-4">
+                <TableHeader>
+                  <TableColumn className="w-12">
+                    <Checkbox
+                      isSelected={cabinetsData.cabinets.length > 0 && selectedCabinets.size === cabinetsData.cabinets.length}
+                      isIndeterminate={selectedCabinets.size > 0 && selectedCabinets.size < cabinetsData.cabinets.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableColumn>
+                  <TableColumn>ID</TableColumn>
+                  <TableColumn>Логин</TableColumn>
+                  <TableColumn>Кол-во транзакций</TableColumn>
+                  <TableColumn>Amount (RUB)</TableColumn>
+
+                  <TableColumn>Total (USDT)</TableColumn>
+                  <TableColumn>Действия</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {cabinetsData.cabinets.map((cabinet) => (
+                    <TableRow key={cabinet.id}>
+                      <TableCell>
+                        <Checkbox
+                          isSelected={selectedCabinets.has(cabinet.id)}
+                          onChange={() => toggleCabinetSelection(cabinet.id)}
+                        />
+                      </TableCell>
+                      <TableCell>{cabinet.idexId}</TableCell>
+                      <TableCell>{cabinet.login}</TableCell>
+                      <TableCell>{cabinet._count.transactions}</TableCell>
+                      <TableCell>{formatCurrency(cabinet.totals.amountRub, 'RUB')}</TableCell>
+
+                      <TableCell>{formatCurrency(cabinet.totals.totalUsdt, 'USDT')}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="light"
+                            onClick={() => window.location.href = `/idex-cabinets/${cabinet.id}/transactions`}
+                          >
+                            Детали
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="light"
+                            color="secondary"
+                            onClick={() => handleSyncCabinet(cabinet.id)}
+                          >
+                            Синхронизировать
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              
+              {/* Overall Totals */}
+              <div className="bg-gray-50 dark:bg-gray-800/40 p-4 rounded-lg mb-4">
+                <h4 className="text-md font-medium mb-2 dark:text-gray-200">Общие итоги по всем кабинетам на странице</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Amount (RUB)</div>
+                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.amountRub, 'RUB')}</div>
+                  </div>
+
+
+                  <div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Total (USDT)</div>
+                    <div className="font-semibold dark:text-gray-200">{formatCurrency(cabinetsData.overallTotals.totalUsdt, 'USDT')}</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Pagination */}
+              <div className="flex justify-center">
+                <Pagination
+                  total={cabinetsData.totalPages}
+                  initialPage={page}
+                  onChange={(newPage) => setPage(newPage)}
+                />
+              </div>
+            </>
           ) : (
             <div className="text-center py-10 text-gray-500">
               <Globe className="w-16 h-16 mx-auto text-gray-400 mb-2" />
-              <p>Нет доступных IDEX кабинетов</p>
-              <Button
-                variant="flat"
-                color="primary"
-                size="sm"
-                className="mt-2"
-                onClick={handleOpenAddModal}
-              >
-                Добавить кабинет
-              </Button>
+              <p>Нет доступных IDEX кабинетов или по выбранным датам нет данных</p>
             </div>
           )}
         </CardBody>
       </Card>
       
-      {/* Модальное окно добавления кабинета */}
-      <Modal isOpen={isAddModalOpen} onClose={handleCloseAddModal}>
-        <ModalContent>
-          <form onSubmit={handleSubmit(onAddCabinet)}>
-            <ModalHeader>Добавление IDEX кабинета</ModalHeader>
-            <ModalBody>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">ID кабинета в IDEX</label>
-                  <Input
-                    type="number"
-                    {...register("idexId", { 
-                      required: "Это поле обязательно", 
-                      min: { value: 1, message: "ID должен быть положительным числом" } 
-                    })}
-                    isInvalid={!!errors.idexId}
-                    errorMessage={errors.idexId?.message}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Логин</label>
-                  <Input
-                    type="text"
-                    {...register("login", { required: "Это поле обязательно" })}
-                    isInvalid={!!errors.login}
-                    errorMessage={errors.login?.message}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Пароль</label>
-                  <Input
-                    type="password"
-                    {...register("password", { required: "Это поле обязательно" })}
-                    isInvalid={!!errors.password}
-                    errorMessage={errors.password?.message}
-                  />
-                </div>
-              </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button
-                variant="flat"
-                onClick={handleCloseAddModal}
-              >
-                Отмена
-              </Button>
-              <Button
-                color="primary"
-                type="submit"
-                isLoading={addCabinetMutation.status === "pending"}
-              >
-                Добавить
-              </Button>
-            </ModalFooter>
-          </form>
-        </ModalContent>
-      </Modal>
-      
-      {/* Модальное окно синхронизации */}
+      {/* Synchronization Modal */}
       <Modal isOpen={isSyncModalOpen} onClose={() => !isSyncing && setIsSyncModalOpen(false)}>
         <ModalContent>
           <ModalHeader>
@@ -397,7 +476,7 @@ export default function IdexCabinetsPage() {
         </ModalContent>
       </Modal>
       
-      {/* Модальное окно для истории синхронизаций */}
+      {/* Sync History Modal */}
       <IdexSyncOrdersModal 
         isOpen={isSyncOrdersModalOpen} 
         onClose={() => setIsSyncOrdersModalOpen(false)} 

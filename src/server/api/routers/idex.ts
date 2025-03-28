@@ -119,6 +119,157 @@ export const idexRouter = createTRPCRouter({
         };
       }
     }),
+
+  // Add this to your idexRouter in the existing file
+
+getCabinetsWithTotals: publicProcedure
+.input(z.object({
+  page: z.number().int().positive().default(1),
+  perPage: z.number().int().positive().default(10),
+  startDate: z.string().optional(),
+  endDate: z.string().optional()
+}))
+.query(async ({ input, ctx }: { input: { page: number; perPage: number; startDate?: string; endDate?: string }; ctx: Context }) => {
+  try {
+    const { page, perPage, startDate, endDate } = input;
+    const skip = (page - 1) * perPage;
+    
+    // Convert dates with timezone consideration
+    const startDateTime = startDate ? dayjs(startDate).utc().add(3, 'hour').toISOString() : undefined;
+    const endDateTime = endDate ? dayjs(endDate).utc().add(3, 'hour').toISOString() : undefined;
+    
+    let where = {};
+    
+    // Add date filter if both dates are provided
+    if (startDate && endDate) {
+      where = {
+        transactions: {
+          some: {
+            approvedAt: {
+              gte: startDateTime,
+              lte: endDateTime
+            }
+          }
+        }
+      };
+    }
+    
+    // Get cabinets with pagination
+    const [cabinets, totalCount] = await Promise.all([
+      withRetry(() => ctx.db.idexCabinet.findMany({
+        where,
+        skip,
+        take: perPage,
+        orderBy: {
+          idexId: 'asc'
+        },
+        include: {
+          _count: {
+            select: {
+              transactions: {
+                where: startDate && endDate ? {
+                  approvedAt: {
+                    gte: startDateTime,
+                    lte: endDateTime
+                  }
+                } : undefined
+              }
+            }
+          }
+        }
+      })),
+      withRetry(() => ctx.db.idexCabinet.count({ where }))
+    ]);
+    
+    // Calculate totals for each cabinet
+    const cabinetsWithTotals = await Promise.all(
+      cabinets.map(async (cabinet) => {
+        // Get transactions for this cabinet with date filter
+        const transactions = await ctx.db.idexTransaction.findMany({
+          where: {
+            cabinetId: cabinet.id,
+            ...(startDate && endDate ? {
+              approvedAt: {
+                gte: startDateTime,
+                lte: endDateTime
+              }
+            } : {})
+          },
+          select: {
+            amount: true,
+            total: true
+          }
+        });
+        
+        // Calculate totals for this cabinet
+        const totals = transactions.reduce((acc: any, transaction: any) => {
+          try {
+            // Parse amount field
+            const amount = typeof transaction.amount === 'string' 
+              ? JSON.parse(transaction.amount) 
+              : transaction.amount;
+              
+            // Parse total field
+            const total = typeof transaction.total === 'string'
+              ? JSON.parse(transaction.total)
+              : transaction.total;
+              
+            // Extract values
+            const amountRub = amount?.trader?.["643"] || 0;
+            const amountUsdt = amount?.trader?.["000001"] || 0;
+            const totalRub = total?.trader?.["643"] || 0;
+            const totalUsdt = total?.trader?.["000001"] || 0;
+            
+            return {
+              amountRub: acc.amountRub + parseFloat(amountRub),
+              amountUsdt: acc.amountUsdt + parseFloat(amountUsdt),
+              totalRub: acc.totalRub + parseFloat(totalRub),
+              totalUsdt: acc.totalUsdt + parseFloat(totalUsdt)
+            };
+          } catch (e) {
+            console.error("Error parsing transaction fields:", e);
+            return acc;
+          }
+        }, { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 });
+        
+        return {
+          ...cabinet,
+          totals
+        };
+      })
+    );
+    
+    // Calculate overall totals for all cabinets
+    const overallTotals = cabinetsWithTotals.reduce((acc, cabinet) => {
+      return {
+        amountRub: acc.amountRub + cabinet.totals.amountRub,
+        amountUsdt: acc.amountUsdt + cabinet.totals.amountUsdt,
+        totalRub: acc.totalRub + cabinet.totals.totalRub,
+        totalUsdt: acc.totalUsdt + cabinet.totals.totalUsdt
+      };
+    }, { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 });
+    
+    const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+    
+    return {
+      cabinets: cabinetsWithTotals,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      overallTotals
+    };
+  } catch (error) {
+    console.error("Error fetching cabinets with totals:", error);
+    return {
+      cabinets: [],
+      totalCount: 0,
+      totalPages: 1,
+      currentPage: 1,
+      overallTotals: { amountRub: 0, amountUsdt: 0, totalRub: 0, totalUsdt: 0 },
+      error: "Failed to fetch cabinets with totals. Database connection error."
+    };
+  }
+}),
   
   // Получение конкретного кабинета по ID
   getCabinetById: publicProcedure
