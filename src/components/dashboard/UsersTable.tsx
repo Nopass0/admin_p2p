@@ -8,7 +8,8 @@ import { Button } from "@heroui/button";
 import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/table";
 import { Badge } from "@heroui/badge";
 import { Skeleton } from "@heroui/skeleton";
-import { Edit, UserCheck, UserX } from "lucide-react";
+
+import { Edit, Trash, UserCheck, UserX } from "lucide-react";
 
 interface UsersTableProps {
   limit?: number;
@@ -28,6 +29,13 @@ export function UsersTable({ limit }: UsersTableProps) {
     { page, pageSize },
     { refetchOnWindowFocus: false }
   );
+
+  const { mutate: deleteUser } = api.users.deleteUser.useMutation({
+    onSuccess: () => {
+      // Обновляем данные после удаления
+      void refetch();
+    }
+  });
   
   // Мутация для изменения статуса активности пользователя
   const setActiveStatus = api.users.setUserActiveStatus.useMutation({
@@ -148,6 +156,21 @@ export function UsersTable({ limit }: UsersTableProps) {
                     <UserCheck className="h-4 w-4" />
                   )}
                 </Button>
+<Button 
+  variant="flat" 
+  color="danger"
+  size="sm" 
+  className="w-8 h-8 p-0"
+  onClick={() => {
+    if (confirm(`Вы уверены, что хотите удалить пользователя ${user.name}?`)) {
+      deleteUser({ userId: user.id });
+    }
+  }}
+>
+  <Trash className="h-4 w-4" />
+</Button>
+
+
               </TableCell>
             </TableRow>
           ))}

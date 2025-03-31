@@ -39,6 +39,8 @@ export const workSessionsRouter = createTRPCRouter({
           where,
           include: {
             idexCabinets: true,
+            user: true,
+
           },
           orderBy: { startTime: 'desc' },
           skip: (page - 1) * pageSize,

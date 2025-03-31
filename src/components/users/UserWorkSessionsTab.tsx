@@ -188,6 +188,7 @@ export function UserWorkSessionsTab({ userId }: UserWorkSessionsTabProps) {
               <TableColumn>Длительность</TableColumn>
               <TableColumn>Кабинеты IDEX</TableColumn>
               <TableColumn>Статус</TableColumn>
+              <TableColumn>Комментарий</TableColumn>
             </TableHeader>
             <TableBody>
               {workSessions.map((session) => (
@@ -226,6 +227,7 @@ export function UserWorkSessionsTab({ userId }: UserWorkSessionsTabProps) {
                       </Badge>
                     )}
                   </TableCell>
+                  <TableCell>{session.comment || "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -7,6 +7,8 @@ import { matchRouter } from "@/server/api/routers/match";
 import { salaryRouter } from "@/server/api/routers/salary";
 import { workSessionsRouter } from "@/server/api/routers/workSessions";
 import { bybitTransactionsRouter } from "@/server/api/routers/bybitTransactionsRouter";
+import { cardsRouter } from "@/server/api/routers/cards";
+import { sectionsRouter } from "@/server/api/routers/sections";
 
 /**
  * This is the primary router for your server.
@@ -22,6 +24,8 @@ export const appRouter = createTRPCRouter({
   salary: salaryRouter,
   workSessions: workSessionsRouter,
   bybitTransactions: bybitTransactionsRouter,
+  cards: cardsRouter,
+  sections: sectionsRouter,
 });
 
 // export type definition of API

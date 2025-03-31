@@ -287,3 +287,156 @@ model IdexSyncOrder {
   endSyncAt   DateTime?
   pages       Int[]
 }
+
+// constructor table
+
+// Модель раздела (страницы)
+model Section {
+  id          Int       @id @default(autoincrement())
+  name        String    // Название раздела
+  description String?   // Описание раздела
+  slug        String    @unique // URL-идентификатор
+  isActive    Boolean   @default(true)
+  order       Int       @default(0) // Порядок отображения
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tables      Table[]   // Таблицы в разделе
+}
+
+// Модель таблицы
+model Table {
+  id              Int       @id @default(autoincrement())
+  name            String    // Название таблицы
+  description     String?   // Описание таблицы
+  sectionId       Int       // Связь с разделом
+  section         Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  isSearchable    Boolean   @default(true) // Включен ли поиск
+  hasPagination   Boolean   @default(true) // Включена ли пагинация
+  pageSize        Int       @default(10)   // Размер страницы
+  order           Int       @default(0)    // Порядок отображения
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  columns         Column[]  // Столбцы таблицы
+  rows            Row[]     // Строки таблицы
+  filters         Filter[]  // Фильтры таблицы
+}
+
+// Типы данных для столбцов
+enum ColumnType {
+  TEXT        // Текст
+  NUMBER      // Число
+  DATE        // Дата
+  DATETIME    // Дата и время
+  BOOLEAN     // Логическое значение
+  SELECT      // Выбор из списка
+  BUTTON      // Кнопка
+  CALCULATED  // Вычисляемое значение
+  CURRENCY    // Валюта
+  LINK        // Ссылка
+  COMMENT     // Комментарий с историей
+}
+
+// Модель столбца таблицы
+model Column {
+  id              Int         @id @default(autoincrement())
+  name            String      // Название столбца
+  type            ColumnType  // Тип данных столбца
+  tableId         Int         // Связь с таблицей
+  table           Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  width           Int?        // Ширина столбца
+  isRequired      Boolean     @default(false) // Обязательное ли поле
+  isFilterable    Boolean     @default(false) // Можно ли фильтровать
+  isSummable      Boolean     @default(false) // Нужна ли сумма в итогах
+  defaultValue    String?     // Значение по умолчанию
+  format          String?     // Формат отображения
+  order           Int         // Порядок отображения
+  options         Json?       // Опции для типов select, calculated и т.д.
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  cells           Cell[]      // Ячейки с данными
+  filters         Filter[]    @relation("ColumnFilters") // Связь с фильтрами
+}
+
+// Модель строки таблицы
+model Row {
+  id              Int         @id @default(autoincrement())
+  tableId         Int         // Связь с таблицей
+  table           Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  order           Int         // Порядок отображения
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  cells           Cell[]      // Ячейки строки
+}
+
+// Модель ячейки таблицы
+model Cell {
+  id              Int         @id @default(autoincrement())
+  rowId           Int         // Связь со строкой
+  row             Row         @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  columnId        Int         // Связь со столбцом
+  column          Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  value           String?     // Значение ячейки
+  displayValue    String?     // Отображаемое значение (форматированное)
+  calculatedValue String?     // Вычисленное значение (для формул)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  comments        Comment[]   // Комментарии к ячейке
+
+  @@unique([rowId, columnId]) // Ячейка должна быть уникальной для комбинации строки и столбца
+}
+
+// Модель комментария к ячейке
+model Comment {
+  id              Int         @id @default(autoincrement())
+  cellId          Int         // Связь с ячейкой
+  cell            Cell        @relation(fields: [cellId], references: [id], onDelete: Cascade)
+  text            String      // Текст комментария
+  author          String?     // Автор комментария
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+// Тип оператора для фильтрации
+enum FilterOperator {
+  EQUALS              // Равно
+  NOT_EQUALS          // Не равно
+  GREATER_THAN        // Больше
+  LESS_THAN           // Меньше
+  GREATER_OR_EQUAL    // Больше или равно
+  LESS_OR_EQUAL       // Меньше или равно
+  CONTAINS            // Содержит
+  NOT_CONTAINS        // Не содержит
+  STARTS_WITH         // Начинается с
+  ENDS_WITH           // Заканчивается на
+  BETWEEN             // Между
+  IN_LIST             // В списке
+}
+
+// Модель фильтра
+model Filter {
+  id              Int             @id @default(autoincrement())
+  name            String          // Название фильтра
+  tableId         Int             // Связь с таблицей
+  table           Table           @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  columnId        Int             // Связь со столбцом
+  column          Column          @relation("ColumnFilters", fields: [columnId], references: [id], onDelete: Cascade)
+  operator        FilterOperator  // Оператор фильтрации
+  value           String?         // Значение для фильтрации
+  secondValue     String?         // Второе значение (для оператора BETWEEN)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+// Модель импорта/экспорта
+model ImportExport {
+  id              Int         @id @default(autoincrement())
+  tableId         Int         // Связь с таблицей
+  name            String      // Название шаблона
+  type            String      // тип: import/export
+  mappings        Json        // Сопоставление столбцов таблицы с CSV/Excel
+  options         Json?       // Дополнительные опции
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}

@@ -68,6 +68,11 @@ const navigationItems = [
     href: "/cards",
     icon: CreditCard
   },
+  {
+    title: "Конструктор",
+    href: "/constructor",
+    icon: Menu
+  },
 ];
 
 export function AppSidebar() {
