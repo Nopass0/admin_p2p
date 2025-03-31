@@ -91,11 +91,11 @@ const navigationSections = [
         href: "/cards",
         icon: CreditCard
       },
-      {
-        title: "Конструктор",
-        href: "/constructor",
-        icon: Menu
-      }
+      // {
+      //   title: "Конструктор",
+      //   href: "/constructor",
+      //   icon: Menu
+      // }
     ]
   }
 ];
