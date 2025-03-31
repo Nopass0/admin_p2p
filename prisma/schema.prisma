@@ -227,7 +227,7 @@ model Card {
   phoneNumber String
   appPin      Int
   terminalPin String
-  balances    CardBalance[]
+  // balances    CardBalance[]
   pourings    CardPouring[] // Связь с проливами
 
   comment     String
