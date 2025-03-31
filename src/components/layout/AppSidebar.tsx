@@ -24,7 +24,8 @@ import {
   Moon,
   LogOut,
   User,
-  Menu
+  Menu,
+  ChevronDown
 } from "lucide-react";
 
 // Zustand store для состояния сайдбара
@@ -34,6 +35,12 @@ const useSidebarStore = create(
       isCollapsed: false,
       setIsCollapsed: (value) => set({ isCollapsed: value }),
       toggleCollapsed: () => set((state) => ({ isCollapsed: !state.isCollapsed })),
+      expandedSections: ["payments", "tractor"],
+      toggleSection: (section) => set((state) => ({
+        expandedSections: state.expandedSections.includes(section)
+          ? state.expandedSections.filter(s => s !== section)
+          : [...state.expandedSections, section]
+      }))
     }),
     {
       name: 'sidebar-storage',
@@ -41,38 +48,50 @@ const useSidebarStore = create(
   )
 );
 
-// Элементы навигации
-const navigationItems = [
+// Разделы навигации
+const navigationSections = [
   {
-    title: "Сопоставления",
-    href: "/matches",
-    icon: ArrowRightLeft,
+    id: "payments",
+    title: "Выплаты",
+    items: [
+      {
+        title: "Сопоставления",
+        href: "/matches",
+        icon: ArrowRightLeft,
+      },
+      {
+        title: "Пользователи",
+        href: "/users",
+        icon: Users,
+      },
+      {
+        title: "IDEX Кабинеты",
+        href: "/idex-cabinets",
+        icon: Globe,
+      },
+      {
+        title: "Зарплаты",
+        href: "/salary",
+        icon: Banknote
+      },
+    ]
   },
   {
-    title: "Пользователи",
-    href: "/users",
-    icon: Users,
-  },
-  {
-    title: "IDEX Кабинеты",
-    href: "/idex-cabinets",
-    icon: Globe,
-  },
-  {
-    title: "Зарплаты",
-    href: "/salary",
-    icon: Banknote
-  },
-  {
-    title: "Карты",
-    href: "/cards",
-    icon: CreditCard
-  },
-  {
-    title: "Конструктор",
-    href: "/constructor",
-    icon: Menu
-  },
+    id: "tractor",
+    title: "Трактор",
+    items: [
+      {
+        title: "Карты",
+        href: "/cards",
+        icon: CreditCard
+      },
+      {
+        title: "Конструктор",
+        href: "/constructor",
+        icon: Menu
+      },
+    ]
+  }
 ];
 
 export function AppSidebar() {
@@ -81,7 +100,7 @@ export function AppSidebar() {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
   const router = useRouter();
-  const { isCollapsed, toggleCollapsed } = useSidebarStore();
+  const { isCollapsed, toggleCollapsed, expandedSections, toggleSection } = useSidebarStore();
 
   // Определение мобильного устройства
   useEffect(() => {
@@ -108,11 +127,14 @@ export function AppSidebar() {
     setTheme(theme === "light" ? "dark" : "light");
   };
 
+  // Получить все элементы навигации для мобильного вида
+  const allNavigationItems = navigationSections.flatMap(section => section.items);
+
   if (isMobile) {
     return (
       <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-800 z-50">
         <div className="flex justify-around items-center h-16">
-          {navigationItems.slice(0, 5).map((item) => {
+          {allNavigationItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
             
@@ -140,7 +162,7 @@ export function AppSidebar() {
               </button>
             </DropdownTrigger>
             <DropdownMenu className="bg-white dark:bg-zinc-800 shadow-lg rounded-t-lg p-2">
-              {navigationItems.slice(5).map((item) => {
+              {allNavigationItems.slice(5).map((item) => {
                 const Icon = item.icon;
                 return (
                   <DropdownItem key={item.href} className="p-2">
@@ -208,29 +230,56 @@ export function AppSidebar() {
         
       {/* Middle section: Navigation */}
       <nav className="flex-grow px-2 py-4 overflow-y-auto">
-        <ul className="space-y-1">
-          {navigationItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
-              
+        <ul className="space-y-2">
+          {navigationSections.map((section) => {
+            const isSectionExpanded = expandedSections.includes(section.id);
+            
             return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  title={isCollapsed ? item.title : undefined}
-                  className={cn(
-                    "flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-gray-700 dark:text-gray-300",
-                    isCollapsed ? "justify-center" : "",
-                    isActive 
-                      ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium" 
-                      : "hover:text-gray-900 dark:hover:text-white"
-                  )}
-                >
-                  <Icon className={cn("w-5 h-5", !isCollapsed && "mr-3")} />
-                  {!isCollapsed && (
-                    <span className="text-sm">{item.title}</span>
-                  )}
-                </Link>
+              <li key={section.id} className="space-y-1">
+                {!isCollapsed ? (
+                  <button
+                    onClick={() => toggleSection(section.id)}
+                    className="flex items-center justify-between w-full p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  >
+                    <span className="font-medium text-sm">{section.title}</span>
+                    <ChevronDown className={cn(
+                      "w-4 h-4 transition-transform",
+                      isSectionExpanded ? "rotate-180" : ""
+                    )} />
+                  </button>
+                ) : (
+                  <div className="h-1 w-full border-t border-gray-200 dark:border-zinc-800 my-2" />
+                )}
+                
+                {(isSectionExpanded || isCollapsed) && (
+                  <ul className="space-y-1 pl-0">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
+                      
+                      return (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            title={isCollapsed ? item.title : undefined}
+                            className={cn(
+                              "flex items-center p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-gray-700 dark:text-gray-300",
+                              isCollapsed ? "justify-center" : "",
+                              isActive 
+                                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium" 
+                                : "hover:text-gray-900 dark:hover:text-white"
+                            )}
+                          >
+                            <Icon className={cn("w-5 h-5", !isCollapsed && "mr-3")} />
+                            {!isCollapsed && (
+                              <span className="text-sm">{item.title}</span>
+                            )}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             );
           })}
