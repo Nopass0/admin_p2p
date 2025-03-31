@@ -90,6 +90,11 @@ const navigationSections = [
         href: "/constructor",
         icon: Menu
       },
+      {
+        title: "Финансы",
+        href: "/finances",
+        icon: CreditCard
+      }
     ]
   }
 ];
