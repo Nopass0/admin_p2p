@@ -9,6 +9,7 @@ import { workSessionsRouter } from "@/server/api/routers/workSessions";
 import { bybitTransactionsRouter } from "@/server/api/routers/bybitTransactionsRouter";
 import { cardsRouter } from "@/server/api/routers/cards";
 // import { sectionsRouter } from "@/server/api/routers/sections";
+import { financeRouter } from "@/server/api/routers/finance";
 
 /**
  * This is the primary router for your server.
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
   bybitTransactions: bybitTransactionsRouter,
   cards: cardsRouter,
   // sections: sectionsRouter,
+  finance: financeRouter,
 });
 
 // export type definition of API

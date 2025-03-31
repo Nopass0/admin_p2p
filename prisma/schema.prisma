@@ -200,11 +200,26 @@ model BybitMatch {
   @@unique([idexTransactionId, bybitTransactionId])
 }
 
+// Статус карты (перечисление)
+enum CardStatus {
+  ACTIVE
+  ON_HOLD
+  BLOCKED
+}
+
+// Статус пролива
+enum PouringStatus {
+  ACTIVE     // Зеленый - активный, используется
+  WARNING    // Желтый - требует внимания
+  BLOCKED    // Красный - заблокирован, не использовать
+}
+
+// Обновление модели Card
 model Card {
-  id         Int      @id @default(autoincrement())
-  externalId Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          Int           @id @default(autoincrement())
+  externalId  Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   provider    String
   cardNumber  String
@@ -213,25 +228,55 @@ model Card {
   appPin      Int
   terminalPin String
   balances    CardBalance[]
+  pourings    CardPouring[] // Связь с проливами
 
-  comment String
-  status  String
-  picachu String
+  comment     String
+  status      String        // Можно заменить на CardStatus
+  picachu     String
 }
 
-model CardBalance {
-  id           Int      @id @default(autoincrement())
-  cardId       Int
-  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  date         DateTime
-  startBalance Float
-  endBalance   Float
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([cardId, date])
+// Модель пролива карты
+model CardPouring {
+  id                Int           @id @default(autoincrement())
+  cardId            Int
+  card              Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  
+  // Основная информация о проливе
+  pouringDate       DateTime      // Дата пролива
+  initialAmount     Float         // Сумма на начало пролива
+  initialDate       DateTime      // Дата фиксации начальной суммы
+  finalAmount       Float         // Сумма на конец пролива
+  finalDate         DateTime?     // Дата фиксации конечной суммы (null если пролив еще в процессе)
+  
+  // Суммы и операции
+  pouringAmount     Float         // Сумма пролитого
+  withdrawalAmount  Float?        // Сумма снятого
+  withdrawalDate    DateTime?     // Дата снятия
+  collectorName     String?       // Имя инкассатора
+  
+  // Статус и метаданные
+  status            PouringStatus @default(ACTIVE) // Статус пролива
+  comment           String?       // Комментарий
+  
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 }
 
+model SalaryDebt {
+  id          Int      @id @default(autoincrement())
+  salaryId    Int      // Link to employee
+  amount      Float    // Debt amount
+  debtDate    DateTime // Date of the debt
+  description String?  // Optional description/reason for the debt
+  isPaid      Boolean  @default(false) // Whether the debt has been paid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+}
+
+// Update the Salary model to include the debts relation
 model Salary {
   id          Int             @id @default(autoincrement())
   fullName    String
@@ -244,26 +289,64 @@ model Salary {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   payments    SalaryPayment[]
+  debts       SalaryDebt[]    // New relation to debts
+  FinRow      FinRow[]
 }
 
 model SalaryPayment {
-  id          Int      @id @default(autoincrement())
-  salaryId    Int
-  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
-  amount      Float
-  paymentDate DateTime
-  comment     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           Int       @id @default(autoincrement())
+  salaryId     Int
+  amount       Float
+  // Новое поле для валюты зарплаты
+  currency     String    @default("RUB")  // "RUB" или "USDT"
+  paymentDate  DateTime
+  comment      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Связи
+  salary       Salary    @relation(fields: [salaryId], references: [id])
 }
 
-// model SalaryDep {
-//   id  Int @id @default(autoincrement())
-//   date DateTime
-//   amount  Float
+// Модель для финансовых записей (отчеты смен)
+model FinRow {
+  id           Int             @id @default(autoincrement())
+  date         DateTime
+  time         String
+  shift        String          // 'morning' или 'evening'
+  startBalance Float
+  endBalance   Float
+  employeeId   Int?
+  usdtAmount   Float           @default(0)
+  // Новое поле для валюты выплаты
+  currency     String          @default("RUB")  // "RUB" или "USDT"
+  comment      String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
-//   user  
-// }
+  // Связи
+  employee     Salary?         @relation(fields: [employeeId], references: [id])
+  expenses     FinRowExpense[]
+}
+
+// Обновленная модель FinRowExpense
+model FinRowExpense {
+  id           Int       @id @default(autoincrement())
+  finRowId     Int?
+  expenseType  String    // 'fixed' или 'variable'
+  amount       Float
+  // Новое поле для валюты расхода
+  currency     String    @default("RUB")  // "RUB" или "USDT"
+  date         DateTime
+  time         String
+  period       String?   // для постоянных расходов
+  description  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Связи
+  finRow       FinRow?   @relation(fields: [finRowId], references: [id])
+}
 
 enum IdexSyncOrderStatus {
   PENDING
@@ -292,151 +375,151 @@ model IdexSyncOrder {
 
 // Модель раздела (страницы)
 model Section {
-  id          Int       @id @default(autoincrement())
-  name        String    // Название раздела
-  description String?   // Описание раздела
-  slug        String    @unique // URL-идентификатор
-  isActive    Boolean   @default(true)
-  order       Int       @default(0) // Порядок отображения
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tables      Table[]   // Таблицы в разделе
+  id          Int      @id @default(autoincrement())
+  name        String // Название раздела
+  description String? // Описание раздела
+  slug        String   @unique // URL-идентификатор
+  isActive    Boolean  @default(true)
+  order       Int      @default(0) // Порядок отображения
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tables      Table[] // Таблицы в разделе
 }
 
 // Модель таблицы
 model Table {
-  id              Int       @id @default(autoincrement())
-  name            String    // Название таблицы
-  description     String?   // Описание таблицы
-  sectionId       Int       // Связь с разделом
-  section         Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  isSearchable    Boolean   @default(true) // Включен ли поиск
-  hasPagination   Boolean   @default(true) // Включена ли пагинация
-  pageSize        Int       @default(10)   // Размер страницы
-  order           Int       @default(0)    // Порядок отображения
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  columns         Column[]  // Столбцы таблицы
-  rows            Row[]     // Строки таблицы
-  filters         Filter[]  // Фильтры таблицы
+  id            Int      @id @default(autoincrement())
+  name          String // Название таблицы
+  description   String? // Описание таблицы
+  sectionId     Int // Связь с разделом
+  section       Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  isSearchable  Boolean  @default(true) // Включен ли поиск
+  hasPagination Boolean  @default(true) // Включена ли пагинация
+  pageSize      Int      @default(10) // Размер страницы
+  order         Int      @default(0) // Порядок отображения
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  columns       Column[] // Столбцы таблицы
+  rows          Row[] // Строки таблицы
+  filters       Filter[] // Фильтры таблицы
 }
 
 // Типы данных для столбцов
 enum ColumnType {
-  TEXT        // Текст
-  NUMBER      // Число
-  DATE        // Дата
-  DATETIME    // Дата и время
-  BOOLEAN     // Логическое значение
-  SELECT      // Выбор из списка
-  BUTTON      // Кнопка
-  CALCULATED  // Вычисляемое значение
-  CURRENCY    // Валюта
-  LINK        // Ссылка
-  COMMENT     // Комментарий с историей
+  TEXT // Текст
+  NUMBER // Число
+  DATE // Дата
+  DATETIME // Дата и время
+  BOOLEAN // Логическое значение
+  SELECT // Выбор из списка
+  BUTTON // Кнопка
+  CALCULATED // Вычисляемое значение
+  CURRENCY // Валюта
+  LINK // Ссылка
+  COMMENT // Комментарий с историей
 }
 
 // Модель столбца таблицы
 model Column {
-  id              Int         @id @default(autoincrement())
-  name            String      // Название столбца
-  type            ColumnType  // Тип данных столбца
-  tableId         Int         // Связь с таблицей
-  table           Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  width           Int?        // Ширина столбца
-  isRequired      Boolean     @default(false) // Обязательное ли поле
-  isFilterable    Boolean     @default(false) // Можно ли фильтровать
-  isSummable      Boolean     @default(false) // Нужна ли сумма в итогах
-  defaultValue    String?     // Значение по умолчанию
-  format          String?     // Формат отображения
-  order           Int         // Порядок отображения
-  options         Json?       // Опции для типов select, calculated и т.д.
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  cells           Cell[]      // Ячейки с данными
-  filters         Filter[]    @relation("ColumnFilters") // Связь с фильтрами
+  id           Int        @id @default(autoincrement())
+  name         String // Название столбца
+  type         ColumnType // Тип данных столбца
+  tableId      Int // Связь с таблицей
+  table        Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  width        Int? // Ширина столбца
+  isRequired   Boolean    @default(false) // Обязательное ли поле
+  isFilterable Boolean    @default(false) // Можно ли фильтровать
+  isSummable   Boolean    @default(false) // Нужна ли сумма в итогах
+  defaultValue String? // Значение по умолчанию
+  format       String? // Формат отображения
+  order        Int // Порядок отображения
+  options      Json? // Опции для типов select, calculated и т.д.
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  cells        Cell[] // Ячейки с данными
+  filters      Filter[]   @relation("ColumnFilters") // Связь с фильтрами
 }
 
 // Модель строки таблицы
 model Row {
-  id              Int         @id @default(autoincrement())
-  tableId         Int         // Связь с таблицей
-  table           Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  order           Int         // Порядок отображения
-  isActive        Boolean     @default(true)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  cells           Cell[]      // Ячейки строки
+  id        Int      @id @default(autoincrement())
+  tableId   Int // Связь с таблицей
+  table     Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  order     Int // Порядок отображения
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cells     Cell[] // Ячейки строки
 }
 
 // Модель ячейки таблицы
 model Cell {
-  id              Int         @id @default(autoincrement())
-  rowId           Int         // Связь со строкой
-  row             Row         @relation(fields: [rowId], references: [id], onDelete: Cascade)
-  columnId        Int         // Связь со столбцом
-  column          Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  value           String?     // Значение ячейки
-  displayValue    String?     // Отображаемое значение (форматированное)
-  calculatedValue String?     // Вычисленное значение (для формул)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  comments        Comment[]   // Комментарии к ячейке
+  id              Int       @id @default(autoincrement())
+  rowId           Int // Связь со строкой
+  row             Row       @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  columnId        Int // Связь со столбцом
+  column          Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  value           String? // Значение ячейки
+  displayValue    String? // Отображаемое значение (форматированное)
+  calculatedValue String? // Вычисленное значение (для формул)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  comments        Comment[] // Комментарии к ячейке
 
   @@unique([rowId, columnId]) // Ячейка должна быть уникальной для комбинации строки и столбца
 }
 
 // Модель комментария к ячейке
 model Comment {
-  id              Int         @id @default(autoincrement())
-  cellId          Int         // Связь с ячейкой
-  cell            Cell        @relation(fields: [cellId], references: [id], onDelete: Cascade)
-  text            String      // Текст комментария
-  author          String?     // Автор комментария
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id        Int      @id @default(autoincrement())
+  cellId    Int // Связь с ячейкой
+  cell      Cell     @relation(fields: [cellId], references: [id], onDelete: Cascade)
+  text      String // Текст комментария
+  author    String? // Автор комментария
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Тип оператора для фильтрации
 enum FilterOperator {
-  EQUALS              // Равно
-  NOT_EQUALS          // Не равно
-  GREATER_THAN        // Больше
-  LESS_THAN           // Меньше
-  GREATER_OR_EQUAL    // Больше или равно
-  LESS_OR_EQUAL       // Меньше или равно
-  CONTAINS            // Содержит
-  NOT_CONTAINS        // Не содержит
-  STARTS_WITH         // Начинается с
-  ENDS_WITH           // Заканчивается на
-  BETWEEN             // Между
-  IN_LIST             // В списке
+  EQUALS // Равно
+  NOT_EQUALS // Не равно
+  GREATER_THAN // Больше
+  LESS_THAN // Меньше
+  GREATER_OR_EQUAL // Больше или равно
+  LESS_OR_EQUAL // Меньше или равно
+  CONTAINS // Содержит
+  NOT_CONTAINS // Не содержит
+  STARTS_WITH // Начинается с
+  ENDS_WITH // Заканчивается на
+  BETWEEN // Между
+  IN_LIST // В списке
 }
 
 // Модель фильтра
 model Filter {
-  id              Int             @id @default(autoincrement())
-  name            String          // Название фильтра
-  tableId         Int             // Связь с таблицей
-  table           Table           @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  columnId        Int             // Связь со столбцом
-  column          Column          @relation("ColumnFilters", fields: [columnId], references: [id], onDelete: Cascade)
-  operator        FilterOperator  // Оператор фильтрации
-  value           String?         // Значение для фильтрации
-  secondValue     String?         // Второе значение (для оператора BETWEEN)
-  isActive        Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id          Int            @id @default(autoincrement())
+  name        String // Название фильтра
+  tableId     Int // Связь с таблицей
+  table       Table          @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  columnId    Int // Связь со столбцом
+  column      Column         @relation("ColumnFilters", fields: [columnId], references: [id], onDelete: Cascade)
+  operator    FilterOperator // Оператор фильтрации
+  value       String? // Значение для фильтрации
+  secondValue String? // Второе значение (для оператора BETWEEN)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 // Модель импорта/экспорта
 model ImportExport {
-  id              Int         @id @default(autoincrement())
-  tableId         Int         // Связь с таблицей
-  name            String      // Название шаблона
-  type            String      // тип: import/export
-  mappings        Json        // Сопоставление столбцов таблицы с CSV/Excel
-  options         Json?       // Дополнительные опции
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id        Int      @id @default(autoincrement())
+  tableId   Int // Связь с таблицей
+  name      String // Название шаблона
+  type      String // тип: import/export
+  mappings  Json // Сопоставление столбцов таблицы с CSV/Excel
+  options   Json? // Дополнительные опции
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

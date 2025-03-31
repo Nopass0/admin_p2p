@@ -74,6 +74,12 @@ const navigationSections = [
         href: "/salary",
         icon: Banknote
       },
+      ,
+      {
+        title: "Финансы",
+        href: "/finances",
+        icon: CreditCard
+      }
     ]
   },
   {
@@ -89,11 +95,6 @@ const navigationSections = [
         title: "Конструктор",
         href: "/constructor",
         icon: Menu
-      },
-      {
-        title: "Финансы",
-        href: "/finances",
-        icon: CreditCard
       }
     ]
   }
