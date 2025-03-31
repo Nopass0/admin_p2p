@@ -9,6 +9,10 @@ const config = {
       eslint: {
         ignoreDuringBuilds: true,
       },
+      images: {
+        disableStaticImages: true
+      },
+      
 };
 
 export default config;
