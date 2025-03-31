@@ -202,13 +202,6 @@ model BybitMatch {
 
 // Статус карты (перечисление)
 enum CardStatus {
-  ACTIVE
-  ON_HOLD
-  BLOCKED
-}
-
-// Статус пролива
-enum PouringStatus {
   ACTIVE     // Зеленый - активный, используется
   WARNING    // Желтый - требует внимания
   BLOCKED    // Красный - заблокирован, не использовать
@@ -227,12 +220,26 @@ model Card {
   phoneNumber String
   appPin      Int
   terminalPin String
-  // balances    CardBalance[]
+  balances    CardBalance[]
   pourings    CardPouring[] // Связь с проливами
 
-  comment     String
-  status      String        // Можно заменить на CardStatus
-  picachu     String
+  comment     String?
+  status      CardStatus    @default(ACTIVE)
+  picachu     String?
+}
+
+// Модель баланса карты
+model CardBalance {
+  id          Int      @id @default(autoincrement())
+  cardId      Int
+  card        Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  date        DateTime
+  startBalance Float
+  endBalance  Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([cardId, date])
 }
 
 // Модель пролива карты
@@ -245,7 +252,7 @@ model CardPouring {
   pouringDate       DateTime      // Дата пролива
   initialAmount     Float         // Сумма на начало пролива
   initialDate       DateTime      // Дата фиксации начальной суммы
-  finalAmount       Float         // Сумма на конец пролива
+  finalAmount       Float?        // Сумма на конец пролива
   finalDate         DateTime?     // Дата фиксации конечной суммы (null если пролив еще в процессе)
   
   // Суммы и операции
@@ -255,7 +262,7 @@ model CardPouring {
   collectorName     String?       // Имя инкассатора
   
   // Статус и метаданные
-  status            PouringStatus @default(ACTIVE) // Статус пролива
+  status            CardStatus    @default(ACTIVE) // Статус пролива
   comment           String?       // Комментарий
   
   createdAt         DateTime      @default(now())
