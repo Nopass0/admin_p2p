@@ -45,6 +45,14 @@ export default function Cards() {
   const [filterCollector, setFilterCollector] = useState("");
   const [filterPicachu, setFilterPicachu] = useState("");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+
+  // Safe filter options with fallbacks
+  const safeFilterOptions = {
+    providers: filterOptionsQuery.data?.providers || [],
+    banks: filterOptionsQuery.data?.banks || [],
+    collectorNames: filterOptionsQuery.data?.collectorNames || [],
+    picachus: filterOptionsQuery.data?.picachus || []
+  };
   
   // Modal and form state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -506,16 +514,17 @@ export default function Cards() {
                   )}
                 </Button>
               </DropdownTrigger>
-              <DropdownMenu aria-label="Filter options" className="w-80 p-4">
+              <DropdownMenu aria-label="Filter options" className="w-72 p-4">
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Поставщик</label>
                     <Select
                       value={filterProvider}
                       onChange={(e) => setFilterProvider(e.target.value)}
+                      className="w-full"
                     >
                       <SelectItem value="">Все</SelectItem>
-                      {filterOptionsQuery.data?.providers.map(provider => (
+                      {safeFilterOptions.providers.map(provider => (
                         <SelectItem key={provider} value={provider}>{provider}</SelectItem>
                       ))}
                     </Select>
@@ -526,9 +535,10 @@ export default function Cards() {
                     <Select
                       value={filterBank}
                       onChange={(e) => setFilterBank(e.target.value)}
+                      className="w-full"
                     >
                       <SelectItem value="">Все</SelectItem>
-                      {filterOptionsQuery.data?.banks.map(bank => (
+                      {safeFilterOptions.banks.map(bank => (
                         <SelectItem key={bank} value={bank}>{bank}</SelectItem>
                       ))}
                     </Select>
@@ -539,6 +549,7 @@ export default function Cards() {
                     <Select
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
+                      className="w-full"
                     >
                       <SelectItem value="">Все</SelectItem>
                       <SelectItem value="ACTIVE">Активна</SelectItem>
@@ -552,9 +563,10 @@ export default function Cards() {
                     <Select
                       value={filterCollector}
                       onChange={(e) => setFilterCollector(e.target.value)}
+                      className="w-full"
                     >
                       <SelectItem value="">Все</SelectItem>
-                      {filterOptionsQuery.data?.collectorNames.map(name => (
+                      {safeFilterOptions.collectorNames.map(name => (
                         <SelectItem key={name} value={name}>{name}</SelectItem>
                       ))}
                     </Select>
@@ -565,9 +577,10 @@ export default function Cards() {
                     <Select
                       value={filterPicachu}
                       onChange={(e) => setFilterPicachu(e.target.value)}
+                      className="w-full"
                     >
                       <SelectItem value="">Все</SelectItem>
-                      {filterOptionsQuery.data?.picachus.map(picachu => (
+                      {safeFilterOptions.picachus.map(picachu => (
                         <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
                       ))}
                     </Select>

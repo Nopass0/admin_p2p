@@ -3,6 +3,18 @@ import { createTRPCRouter, publicProcedure } from "../trpc";
 
 const CardStatusEnum = z.enum(["ACTIVE", "WARNING", "BLOCKED"]);
 
+// First, let's define a helper function to safely convert any date input to a Date object
+const parseDate = (date: string | Date | undefined): Date | undefined => {
+  if (!date) return undefined;
+  if (date instanceof Date) return date;
+  try {
+    return new Date(date);
+  } catch (error) {
+    console.error("Failed to parse date:", date, error);
+    return undefined;
+  }
+};
+
 export const cardsRouter = createTRPCRouter({
   getAll: publicProcedure
     .input(z.object({
@@ -170,7 +182,7 @@ export const cardsRouter = createTRPCRouter({
       // Initial pouring data if provided
       pouringAmount: z.number().optional(),
       initialAmount: z.number().optional(),
-      initialDate: z.date().optional(),
+      initialDate: z.string().optional(), // Accept string only, we'll parse it manually
       collectorName: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -202,12 +214,15 @@ export const cardsRouter = createTRPCRouter({
 
       // Create initial pouring if all required data is provided
       if (pouringAmount !== undefined && initialAmount !== undefined) {
+        // Safely parse the initialDate
+        const parsedInitialDate = initialDate ? parseDate(initialDate) : new Date();
+        
         await ctx.db.cardPouring.create({
           data: {
             cardId: card.id,
             pouringDate: new Date(),
             initialAmount,
-            initialDate: initialDate || new Date(),
+            initialDate: parsedInitialDate,
             pouringAmount,
             status: card.status,
             collectorName,
@@ -333,41 +348,60 @@ export const cardsRouter = createTRPCRouter({
   createPouring: publicProcedure
     .input(z.object({
       cardId: z.number().int(),
-      pouringDate: z.date(),
+      pouringDate: z.string(),
       initialAmount: z.number(),
-      initialDate: z.date(),
+      initialDate: z.string(),
       finalAmount: z.number().optional(),
-      finalDate: z.date().optional(),
+      finalDate: z.string().optional(),
       pouringAmount: z.number(),
       withdrawalAmount: z.number().optional(),
-      withdrawalDate: z.date().optional(),
+      withdrawalDate: z.string().optional(),
       collectorName: z.string().optional(),
       status: CardStatusEnum.default("ACTIVE"),
       comment: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Convert string dates to Date objects
+      const data = {
+        ...input,
+        pouringDate: parseDate(input.pouringDate),
+        initialDate: parseDate(input.initialDate),
+        finalDate: input.finalDate ? parseDate(input.finalDate) : undefined,
+        withdrawalDate: input.withdrawalDate ? parseDate(input.withdrawalDate) : undefined,
+      };
+      
       return ctx.db.cardPouring.create({
-        data: input
+        data
       });
     }),
 
   updatePouring: publicProcedure
     .input(z.object({
       id: z.number().int(),
-      pouringDate: z.date().optional(),
+      pouringDate: z.string().optional(),
       initialAmount: z.number().optional(),
-      initialDate: z.date().optional(),
+      initialDate: z.string().optional(),
       finalAmount: z.number().optional(),
-      finalDate: z.date().optional(),
+      finalDate: z.string().optional(),
       pouringAmount: z.number().optional(),
       withdrawalAmount: z.number().optional(),
-      withdrawalDate: z.date().optional(),
+      withdrawalDate: z.string().optional(),
       collectorName: z.string().optional(),
       status: CardStatusEnum.optional(),
       comment: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, ...updateData } = input;
+      
+      // Convert any string dates to Date objects
+      const data = {
+        ...updateData,
+        pouringDate: updateData.pouringDate ? parseDate(updateData.pouringDate) : undefined,
+        initialDate: updateData.initialDate ? parseDate(updateData.initialDate) : undefined,
+        finalDate: updateData.finalDate ? parseDate(updateData.finalDate) : undefined,
+        withdrawalDate: updateData.withdrawalDate ? parseDate(updateData.withdrawalDate) : undefined,
+      };
+      
       return ctx.db.cardPouring.update({
         where: { id },
         data,
@@ -387,32 +421,54 @@ export const cardsRouter = createTRPCRouter({
   // Get unique values for filters
   getFilterOptions: publicProcedure
     .query(async ({ ctx }) => {
-      const [providers, banks, collectorNames, picachus] = await Promise.all([
-        ctx.db.card.findMany({
-          select: { provider: true },
-          distinct: ['provider'],
-        }),
-        ctx.db.card.findMany({
-          select: { bank: true },
-          distinct: ['bank'],
-        }),
-        ctx.db.cardPouring.findMany({
-          where: { collectorName: { not: null } },
-          select: { collectorName: true },
-          distinct: ['collectorName'],
-        }),
-        ctx.db.card.findMany({
-          where: { picachu: { not: null } },
-          select: { picachu: true },
-          distinct: ['picachu'],
-        }),
-      ]);
+      try {
+        const [providers, banks, collectorNames, picachus] = await Promise.all([
+          ctx.db.card.findMany({
+            select: { provider: true },
+            distinct: ['provider'],
+            where: { provider: { not: "" } }
+          }),
+          ctx.db.card.findMany({
+            select: { bank: true },
+            distinct: ['bank'],
+            where: { bank: { not: "" } }
+          }),
+          ctx.db.cardPouring.findMany({
+            where: { 
+              collectorName: { 
+                not: null,
+                not: ""
+              } 
+            },
+            select: { collectorName: true },
+            distinct: ['collectorName'],
+          }),
+          ctx.db.card.findMany({
+            where: { 
+              picachu: { 
+                not: null,
+                not: ""
+              } 
+            },
+            select: { picachu: true },
+            distinct: ['picachu'],
+          }),
+        ]);
 
-      return {
-        providers: providers.map(p => p.provider),
-        banks: banks.map(b => b.bank),
-        collectorNames: collectorNames.map(c => c.collectorName).filter(Boolean),
-        picachus: picachus.map(p => p.picachu).filter(Boolean),
-      };
+        return {
+          providers: providers.map(p => p.provider),
+          banks: banks.map(b => b.bank),
+          collectorNames: collectorNames.map(c => c.collectorName).filter(Boolean),
+          picachus: picachus.map(p => p.picachu).filter(Boolean),
+        };
+      } catch (error) {
+        console.error("Error fetching filter options:", error);
+        return {
+          providers: [],
+          banks: [],
+          collectorNames: [],
+          picachus: [],
+        };
+      }
     }),
 });
