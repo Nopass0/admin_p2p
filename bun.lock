@@ -4,7 +4,6 @@
     "": {
       "name": "admin_p2p",
       "dependencies": {
-        "@google/generative-ai": "^0.24.0",
         "@heroui/react": "^2.7.5",
         "@prisma/client": "^5.14.0",
         "@t3-oss/env-nextjs": "^0.10.1",
@@ -74,8 +73,6 @@
     "@formatjs/icu-skeleton-parser": ["@formatjs/icu-skeleton-parser@1.8.13", "", { "dependencies": { "@formatjs/ecma402-abstract": "2.3.3", "tslib": "2" } }, "sha512-N/LIdTvVc1TpJmMt2jVg0Fr1F7Q1qJPdZSCs19unMskCmVQ/sa0H9L8PWt13vq+gLdLg1+pPsvBLydL1Apahjg=="],
 
     "@formatjs/intl-localematcher": ["@formatjs/intl-localematcher@0.6.0", "", { "dependencies": { "tslib": "2" } }, "sha512-4rB4g+3hESy1bHSBG3tDFaMY2CH67iT7yne1e+0CLTsGLDcmoEWWpJjjpWVaYgYfYuohIRuo0E+N536gd2ZHZA=="],
-
-    "@google/generative-ai": ["@google/generative-ai@0.24.0", "", {}, "sha512-fnEITCGEB7NdX0BhoYZ/cq/7WPZ1QS5IzJJfC3Tg/OwkvBetMiVJciyaan297OvE4B9Jg1xvo0zIazX/9sGu1Q=="],
 
     "@heroui/accordion": ["@heroui/accordion@2.2.13", "", { "dependencies": { "@heroui/aria-utils": "2.2.13", "@heroui/divider": "2.2.11", "@heroui/dom-animation": "2.1.6", "@heroui/framer-utils": "2.1.12", "@heroui/react-utils": "2.1.8", "@heroui/shared-icons": "2.1.6", "@heroui/shared-utils": "2.1.7", "@heroui/use-aria-accordion": "2.2.8", "@react-aria/button": "3.12.0", "@react-aria/focus": "3.20.0", "@react-aria/interactions": "3.24.0", "@react-aria/utils": "3.28.0", "@react-stately/tree": "3.8.8", "@react-types/accordion": "3.0.0-alpha.26", "@react-types/shared": "3.28.0" }, "peerDependencies": { "@heroui/system": ">=2.4.7", "@heroui/theme": ">=2.4.6", "framer-motion": ">=11.5.6 || >=12.0.0-alpha.1", "react": ">=18 || >=19.0.0-rc.0", "react-dom": ">=18 || >=19.0.0-rc.0" } }, "sha512-0y+eOwc4CV6dGP9LBoXPpPza6ZUxoyUajbzaTA3NTADvqnIV6+TB/G6nbKtYJf4F4omMZwRGoLQ5vr/dKLCGCA=="],
 
