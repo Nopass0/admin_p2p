@@ -217,25 +217,16 @@ export const salaryRouter = createTRPCRouter({
       payday: z.number().int().min(1).max(31),
       paydayMonth: z.number().int().min(1).max(12).nullish(),
       fixedSalary: z.number().positive().nullish(),
-      isActive: z.boolean()
+      isActive: z.boolean().default(true)
     }))
     .mutation(async ({ ctx, input }) => {
       try {
+        const { id, ...data } = input;
+        
+        // Обновляем данные сотрудника
         const updatedEmployee = await ctx.db.salary.update({
-          where: { id: input.id },
-          data: {
-            fullName: input.fullName,
-            position: input.position,
-            startDate: input.startDate,
-            payday: input.payday,
-            paydayMonth: input.paydayMonth,
-            fixedSalary: input.fixedSalary,
-            isActive: input.isActive
-          },
-          include: { 
-            payments: true,
-            debts: true
-          }
+          where: { id },
+          data
         });
 
         return { 
@@ -247,7 +238,40 @@ export const salaryRouter = createTRPCRouter({
         console.error("Ошибка при обновлении данных сотрудника:", error);
         return { 
           success: false, 
-          message: "Произошла ошибка при обновлении данных сотрудника", 
+          message: "Произошла ошибка при обновлении данных сотрудника" 
+        };
+      }
+    }),
+
+  // Удаление сотрудника
+  deleteEmployee: publicProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Обновляем данные сотрудника перед удалением
+        await ctx.db.salary.update({
+          where: { id: input.id },
+          data: { isActive: false }
+        });
+
+        // Удаляем сотрудника
+        const deletedEmployee = await ctx.db.salary.delete({
+          where: { id: input.id },
+          include: { 
+            payments: true,
+            debts: true
+          }
+        });
+        return { 
+          success: true, 
+          message: "Сотрудник успешно удален", 
+          employee: deletedEmployee 
+        };
+      } catch (error) {
+        console.error("Ошибка при удалении сотрудника:", error);
+        return { 
+          success: false, 
+          message: "Произошла ошибка при удалении сотрудника", 
           employee: null 
         };
       }

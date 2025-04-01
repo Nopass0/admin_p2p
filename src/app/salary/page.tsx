@@ -91,6 +91,12 @@ export default function SalaryPage() {
     onClose: closeAddEmployeeDialog 
   } = useDisclosure();
   
+  const { 
+    isOpen: isEditEmployeeDialogOpen, 
+    onOpen: openEditEmployeeDialog, 
+    onClose: closeEditEmployeeDialog 
+  } = useDisclosure();
+  
   // Состояния для дат фильтрации
   const [dateFilter, setDateFilter] = useState({
     startDate: "",
@@ -203,6 +209,37 @@ export default function SalaryPage() {
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при добавлении сотрудника: ${error.message}`, "danger");
     },
+  });
+
+  const updateEmployeeMutation = api.salary.updateEmployee.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Данные сотрудника успешно обновлены", "success");
+      closeEditEmployeeDialog();
+      employeesQuery.refetch();
+      // Сбросить форму
+      setEmployeeForm({
+        fullName: "",
+        position: "",
+        startDate: dayjs().format("YYYY-MM-DD"),
+        payday: 10,
+        paydayMonth: "",
+        fixedSalary: ""
+      });
+      setEmployeeErrors({});
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при редактировании сотрудника: ${error.message}`, "danger");
+    }
+  });
+
+  const deleteEmployeeMutation = api.salary.deleteEmployee.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Сотрудник успешно удален", "success");
+      employeesQuery.refetch();
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при удалении сотрудника: ${error.message}`, "danger");
+    }
   });
 
   const addPaymentMutation = api.salary.addPayment.useMutation({
@@ -543,6 +580,21 @@ export default function SalaryPage() {
     openDebtDialog();
   };
 
+  // Открытие модального окна редактирования сотрудника
+  const handleEditEmployee = (employee) => {
+    setSelectedEmployee(employee.id);
+    // Заполняем форму данными сотрудника
+    setEmployeeForm({
+      fullName: employee.fullName,
+      position: employee.position,
+      startDate: dayjs(employee.startDate).format("YYYY-MM-DD"),
+      payday: employee.payday,
+      paydayMonth: employee.paydayMonth ? employee.paydayMonth.toString() : "",
+      fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : ""
+    });
+    openEditEmployeeDialog();
+  };
+
   // Обработка пагинации
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -824,8 +876,19 @@ export default function SalaryPage() {
                           </DropdownItem>
                           <DropdownItem 
                             startContent={<Edit className="w-4 h-4 mr-2" />}
+                            onClick={() => handleEditEmployee(employee)}
                           >
                             Редактировать сотрудника
+                          </DropdownItem>
+                          <DropdownItem 
+                            startContent={<Trash2 className="w-4 h-4 mr-2" />}
+                            onClick={() => {
+                              if (confirm("Вы уверены, что хотите удалить этого сотрудника?")) {
+                                deleteEmployeeMutation.mutate({ id: employee.id });
+                              }
+                            }}
+                          >
+                            Удалить сотрудника
                           </DropdownItem>
                         </DropdownMenu>
                       </Dropdown>
@@ -871,9 +934,7 @@ export default function SalaryPage() {
         <ModalContent>
           <ModalHeader>
             <div className="flex flex-col">
-              <h3 className="text-lg font-medium mb-1">
-                Управление выплатами и долгами
-              </h3>
+              <h3 className="text-lg font-medium">Управление выплатами и долгами</h3>
               {employeeDetailsQuery.data?.employee && (
                 <div className="space-y-1">
                   <p className="text-sm text-gray-700 font-medium">
@@ -1441,6 +1502,149 @@ export default function SalaryPage() {
               startIcon={<Plus className="w-4 h-4" />}
             >
               Добавить сотрудника
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Модальное окно редактирования сотрудника */}
+      <Modal 
+        isOpen={isEditEmployeeDialogOpen} 
+        onClose={closeEditEmployeeDialog}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <h3 className="text-lg font-medium">Редактировать сотрудника</h3>
+            <p className="text-sm text-gray-500">
+              Измените информацию о сотруднике
+            </p>
+          </ModalHeader>
+          <ModalBody>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!validateEmployeeForm()) {
+                return;
+              }
+              updateEmployeeMutation.mutate({
+                id: selectedEmployee,
+                fullName: employeeForm.fullName,
+                position: employeeForm.position,
+                startDate: new Date(employeeForm.startDate),
+                payday: parseInt(employeeForm.payday),
+                paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
+                fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
+              });
+            }} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">ФИО сотрудника</label>
+                <Input
+                  placeholder="Иванов Иван Иванович"
+                  value={employeeForm.fullName}
+                  onChange={(e) => handleEmployeeFormChange('fullName', e.target.value)}
+                  isInvalid={!!employeeErrors.fullName}
+                  errorMessage={employeeErrors.fullName}
+                  aria-label="ФИО сотрудника"
+                  startContent={<User className="w-4 h-4 text-gray-400" />}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Должность</label>
+                <Input
+                  placeholder="Менеджер"
+                  value={employeeForm.position}
+                  onChange={(e) => handleEmployeeFormChange('position', e.target.value)}
+                  isInvalid={!!employeeErrors.position}
+                  errorMessage={employeeErrors.position}
+                  aria-label="Должность"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Дата начала работы</label>
+                <Input
+                  type="date"
+                  value={employeeForm.startDate}
+                  onChange={(e) => handleEmployeeFormChange('startDate', e.target.value)}
+                  isInvalid={!!employeeErrors.startDate}
+                  errorMessage={employeeErrors.startDate}
+                  startContent={<Calendar className="w-4 h-4 text-gray-400" />}
+                  aria-label="Дата начала работы"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">День выплаты зарплаты</label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={employeeForm.payday}
+                  onChange={(e) => handleEmployeeFormChange('payday', e.target.value)}
+                  isInvalid={!!employeeErrors.payday}
+                  errorMessage={employeeErrors.payday}
+                  aria-label="День выплаты зарплаты"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Месяц выплаты (если не каждый месяц)</label>
+                <Select
+                  placeholder="Выберите месяц (опционально)"
+                  selectedKeys={employeeForm.paydayMonth ? [employeeForm.paydayMonth.toString()] : []}
+                  onChange={(e) => handleEmployeeFormChange('paydayMonth', e.target.value)}
+                  aria-label="Месяц выплаты"
+                >
+                  <SelectItem key="" value="">Ежемесячно</SelectItem>
+                  <SelectItem key="1" value="1">Январь</SelectItem>
+                  <SelectItem key="2" value="2">Февраль</SelectItem>
+                  <SelectItem key="3" value="3">Март</SelectItem>
+                  <SelectItem key="4" value="4">Апрель</SelectItem>
+                  <SelectItem key="5" value="5">Май</SelectItem>
+                  <SelectItem key="6" value="6">Июнь</SelectItem>
+                  <SelectItem key="7" value="7">Июль</SelectItem>
+                  <SelectItem key="8" value="8">Август</SelectItem>
+                  <SelectItem key="9" value="9">Сентябрь</SelectItem>
+                  <SelectItem key="10" value="10">Октябрь</SelectItem>
+                  <SelectItem key="11" value="11">Ноябрь</SelectItem>
+                  <SelectItem key="12" value="12">Декабрь</SelectItem>
+                </Select>
+                {employeeErrors.paydayMonth && (
+                  <p className="text-xs text-red-500 mt-1">{employeeErrors.paydayMonth}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Фиксированная зарплата (если есть)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Оставьте пустым, если нет фиксированной зарплаты"
+                  value={employeeForm.fixedSalary}
+                  onChange={(e) => handleEmployeeFormChange('fixedSalary', e.target.value)}
+                  isInvalid={!!employeeErrors.fixedSalary}
+                  errorMessage={employeeErrors.fixedSalary}
+                  aria-label="Фиксированная зарплата"
+                  startContent={<DollarSign className="w-4 h-4 text-gray-400" />}
+                />
+              </div>
+            </form>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              color="default"
+              onClick={closeEditEmployeeDialog}
+            >
+              Отмена
+            </Button>
+            <Button
+              color="primary"
+              isLoading={updateEmployeeMutation.isLoading}
+              startIcon={<Save className="w-4 h-4" />}
+            >
+              Редактировать сотрудника
             </Button>
           </ModalFooter>
         </ModalContent>
