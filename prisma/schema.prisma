@@ -202,17 +202,17 @@ model BybitMatch {
 
 // Статус карты (перечисление)
 enum CardStatus {
-  ACTIVE     // Зеленый - активный, используется
-  WARNING    // Желтый - требует внимания
-  BLOCKED    // Красный - заблокирован, не использовать
+  ACTIVE // Зеленый - активный, используется
+  WARNING // Желтый - требует внимания
+  BLOCKED // Красный - заблокирован, не использовать
 }
 
 // Обновление модели Card
 model Card {
-  id          Int           @id @default(autoincrement())
-  externalId  Int
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id         Int      @id @default(autoincrement())
+  externalId Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   provider    String
   cardNumber  String
@@ -223,64 +223,64 @@ model Card {
   balances    CardBalance[]
   pourings    CardPouring[] // Связь с проливами
 
-  comment     String?
-  status      CardStatus    @default(ACTIVE)
-  picachu     String?
+  comment String?
+  status  CardStatus @default(ACTIVE)
+  picachu String?
 }
 
 // Модель баланса карты
 model CardBalance {
-  id          Int      @id @default(autoincrement())
-  cardId      Int
-  card        Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  date        DateTime
+  id           Int      @id @default(autoincrement())
+  cardId       Int
+  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  date         DateTime
   startBalance Float
-  endBalance  Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  endBalance   Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([cardId, date])
 }
 
 // Модель пролива карты
 model CardPouring {
-  id                Int           @id @default(autoincrement())
-  cardId            Int
-  card              Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  
+  id     Int  @id @default(autoincrement())
+  cardId Int
+  card   Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
   // Основная информация о проливе
-  pouringDate       DateTime      // Дата пролива
-  initialAmount     Float         // Сумма на начало пролива
-  initialDate       DateTime      // Дата фиксации начальной суммы
-  finalAmount       Float?        // Сумма на конец пролива
-  finalDate         DateTime?     // Дата фиксации конечной суммы (null если пролив еще в процессе)
-  
+  pouringDate   DateTime // Дата пролива
+  initialAmount Float // Сумма на начало пролива
+  initialDate   DateTime // Дата фиксации начальной суммы
+  finalAmount   Float? // Сумма на конец пролива
+  finalDate     DateTime? // Дата фиксации конечной суммы (null если пролив еще в процессе)
+
   // Суммы и операции
-  pouringAmount     Float         // Сумма пролитого
-  withdrawalAmount  Float?        // Сумма снятого
-  withdrawalDate    DateTime?     // Дата снятия
-  collectorName     String?       // Имя инкассатора
-  
+  pouringAmount    Float // Сумма пролитого
+  withdrawalAmount Float? // Сумма снятого
+  withdrawalDate   DateTime? // Дата снятия
+  collectorName    String? // Имя инкассатора
+
   // Статус и метаданные
-  status            CardStatus    @default(ACTIVE) // Статус пролива
-  comment           String?       // Комментарий
-  
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  status  CardStatus @default(ACTIVE) // Статус пролива
+  comment String? // Комментарий
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SalaryDebt {
   id          Int      @id @default(autoincrement())
-  salaryId    Int      // Link to employee
-  amount      Float    // Debt amount
+  salaryId    Int // Link to employee
+  amount      Float // Debt amount
   debtDate    DateTime // Date of the debt
-  description String?  // Optional description/reason for the debt
+  description String? // Optional description/reason for the debt
   isPaid      Boolean  @default(false) // Whether the debt has been paid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   // Relations
-  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+  salary Salary @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }
 
 // Update the Salary model to include the debts relation
@@ -296,63 +296,102 @@ model Salary {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   payments    SalaryPayment[]
-  debts       SalaryDebt[]    // New relation to debts
+  debts       SalaryDebt[] // New relation to debts
   FinRow      FinRow[]
+  ShiftReport ShiftReport[]
 }
 
 model SalaryPayment {
-  id           Int       @id @default(autoincrement())
-  salaryId     Int
-  amount       Float
+  id          Int      @id @default(autoincrement())
+  salaryId    Int
+  amount      Float
   // Новое поле для валюты зарплаты
-  currency     String    @default("RUB")  // "RUB" или "USDT"
-  paymentDate  DateTime
-  comment      String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  currency    String   @default("RUB") // "RUB" или "USDT"
+  paymentDate DateTime
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Связи
-  salary       Salary    @relation(fields: [salaryId], references: [id])
+  salary Salary @relation(fields: [salaryId], references: [id])
 }
 
 // Модель для финансовых записей (отчеты смен)
 model FinRow {
-  id           Int             @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   date         DateTime
   time         String
-  shift        String          // 'morning' или 'evening'
+  shift        String // 'morning' или 'evening'
   startBalance Float
   endBalance   Float
   employeeId   Int?
-  usdtAmount   Float           @default(0)
+  usdtAmount   Float    @default(0)
   // Новое поле для валюты выплаты
-  currency     String          @default("RUB")  // "RUB" или "USDT"
+  currency     String   @default("RUB") // "RUB" или "USDT"
   comment      String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Связи
-  employee     Salary?         @relation(fields: [employeeId], references: [id])
-  expenses     FinRowExpense[]
+  employee Salary?         @relation(fields: [employeeId], references: [id])
+  expenses FinRowExpense[]
 }
 
 // Обновленная модель FinRowExpense
 model FinRowExpense {
-  id           Int       @id @default(autoincrement())
-  finRowId     Int?
-  expenseType  String    // 'fixed' или 'variable'
-  amount       Float
+  id          Int      @id @default(autoincrement())
+  finRowId    Int?
+  expenseType String // 'fixed' или 'variable'
+  amount      Float
   // Новое поле для валюты расхода
-  currency     String    @default("RUB")  // "RUB" или "USDT"
-  date         DateTime
-  time         String
-  period       String?   // для постоянных расходов
-  description  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  currency    String   @default("RUB") // "RUB" или "USDT"
+  date        DateTime
+  time        String
+  period      String? // для постоянных расходов
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Связи
-  finRow       FinRow?   @relation(fields: [finRowId], references: [id])
+  finRow FinRow? @relation(fields: [finRowId], references: [id])
+}
+
+// Модель для финансовых записей (отчеты смен)
+model ShiftReport {
+  id           Int      @id @default(autoincrement())
+  date         DateTime
+  time         String
+  shift        String // 'morning' или 'evening'
+  startBalance Float
+  endBalance   Float
+  employeeId   Int?
+  usdtAmount   Float    @default(0)
+  currency     String   @default("RUB") // "RUB" или "USDT"
+  comment      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Связи
+  employee Salary?              @relation(fields: [employeeId], references: [id])
+  expenses ShiftReportExpense[]
+}
+
+// Обновленная модель для расходов
+model ShiftReportExpense {
+  id            Int      @id @default(autoincrement())
+  shiftReportId Int?
+  expenseType   String // 'fixed' или 'variable'
+  amount        Float
+  currency      String   @default("RUB") // "RUB" или "USDT"
+  date          DateTime
+  time          String
+  period        String? // для постоянных расходов
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Связи
+  shiftReport ShiftReport? @relation(fields: [shiftReportId], references: [id])
 }
 
 enum IdexSyncOrderStatus {

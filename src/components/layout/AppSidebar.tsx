@@ -25,7 +25,8 @@ import {
   LogOut,
   User,
   Menu,
-  ChevronDown
+  ChevronDown,
+  FileText
 } from "lucide-react";
 
 // Zustand store для состояния сайдбара
@@ -91,11 +92,17 @@ const navigationSections = [
         href: "/cards",
         icon: CreditCard
       },
-      // {
-      //   title: "Конструктор",
-      //   href: "/constructor",
-      //   icon: Menu
-      // }
+      {
+        title: "Финансы",
+        href: "/finances-tractor",
+        icon: CreditCard
+      },
+
+      {
+        title: "Таблицы",
+        href: "/tables",
+        icon: FileText
+      }
     ]
   }
 ];

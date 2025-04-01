@@ -46,6 +46,9 @@ export default function Cards() {
   const [filterPicachu, setFilterPicachu] = useState("");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
+  // Fetch filter options
+  const filterOptionsQuery = api.cards.getFilterOptions.useQuery();
+
   // Safe filter options with fallbacks
   const safeFilterOptions = {
     providers: filterOptionsQuery.data?.providers || [],
@@ -119,8 +122,7 @@ export default function Cards() {
     picachu: filterPicachu || undefined,
   });
 
-  // Fetch filter options
-  const filterOptionsQuery = api.cards.getFilterOptions.useQuery();
+
 
   // Card mutations
   const createCardMutation = api.cards.create.useMutation({
