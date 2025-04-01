@@ -217,7 +217,8 @@ export const salaryRouter = createTRPCRouter({
       payday: z.number().int().min(1).max(31),
       paydayMonth: z.number().int().min(1).max(12).nullish(),
       fixedSalary: z.number().positive().nullish(),
-      isActive: z.boolean().default(true)
+      isActive: z.boolean().default(true),
+      comment: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
       try {

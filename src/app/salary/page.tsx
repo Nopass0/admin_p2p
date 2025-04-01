@@ -110,7 +110,8 @@ export default function SalaryPage() {
     startDate: dayjs().format("YYYY-MM-DD"),
     payday: 10,
     paydayMonth: "",
-    fixedSalary: ""
+    fixedSalary: "",
+    comment: ""
   });
   
   const [paymentForm, setPaymentForm] = useState({
@@ -202,7 +203,8 @@ export default function SalaryPage() {
         startDate: dayjs().format("YYYY-MM-DD"),
         payday: 10,
         paydayMonth: "",
-        fixedSalary: ""
+        fixedSalary: "",
+        comment: ""
       });
       setEmployeeErrors({});
     },
@@ -223,7 +225,8 @@ export default function SalaryPage() {
         startDate: dayjs().format("YYYY-MM-DD"),
         payday: 10,
         paydayMonth: "",
-        fixedSalary: ""
+        fixedSalary: "",
+        comment: ""
       });
       setEmployeeErrors({});
     },
@@ -423,6 +426,7 @@ export default function SalaryPage() {
       payday: parseInt(employeeForm.payday),
       paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
       fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
+      comment: employeeForm.comment
     });
   };
 
@@ -590,7 +594,8 @@ export default function SalaryPage() {
       startDate: dayjs(employee.startDate).format("YYYY-MM-DD"),
       payday: employee.payday,
       paydayMonth: employee.paydayMonth ? employee.paydayMonth.toString() : "",
-      fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : ""
+      fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : "",
+      comment: employee.comment
     });
     openEditEmployeeDialog();
   };
@@ -1485,6 +1490,18 @@ export default function SalaryPage() {
                   startContent={<DollarSign className="w-4 h-4 text-gray-400" />}
                 />
               </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Комментарий</label>
+                <Textarea
+                  placeholder="Добавьте комментарий о сотруднике (необязательно)"
+                  value={employeeForm.comment}
+                  onChange={(e) => handleEmployeeFormChange('comment', e.target.value)}
+                  aria-label="Комментарий о сотруднике"
+                  size="sm"
+                  rows={2}
+                />
+              </div>
             </form>
           </ModalBody>
           <ModalFooter>
@@ -1534,6 +1551,7 @@ export default function SalaryPage() {
                 payday: parseInt(employeeForm.payday),
                 paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
                 fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
+                comment: employeeForm.comment
               });
             }} className="space-y-4">
               <div className="space-y-2">
@@ -1629,6 +1647,18 @@ export default function SalaryPage() {
                   startContent={<DollarSign className="w-4 h-4 text-gray-400" />}
                 />
               </div>
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Комментарий</label>
+                <Textarea
+                  placeholder="Добавьте комментарий о сотруднике (необязательно)"
+                  value={employeeForm.comment}
+                  onChange={(e) => handleEmployeeFormChange('comment', e.target.value)}
+                  aria-label="Комментарий о сотруднике"
+                  size="sm"
+                  rows={2}
+                />
+              </div>
             </form>
           </ModalBody>
           <ModalFooter>
@@ -1641,6 +1671,7 @@ export default function SalaryPage() {
             </Button>
             <Button
               color="primary"
+              type="submit"
               isLoading={updateEmployeeMutation.isLoading}
               startIcon={<Save className="w-4 h-4" />}
             >
