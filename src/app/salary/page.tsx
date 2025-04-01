@@ -1671,7 +1671,22 @@ export default function SalaryPage() {
             </Button>
             <Button
               color="primary"
-              type="submit"
+              onClick={(e) => {
+                e.preventDefault();
+                if (!validateEmployeeForm()) {
+                  return;
+                }
+                updateEmployeeMutation.mutate({
+                  id: selectedEmployee,
+                  fullName: employeeForm.fullName,
+                  position: employeeForm.position,
+                  startDate: new Date(employeeForm.startDate),
+                  payday: parseInt(employeeForm.payday),
+                  paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
+                  fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
+                  comment: employeeForm.comment
+                });
+              }}
               isLoading={updateEmployeeMutation.isLoading}
               startIcon={<Save className="w-4 h-4" />}
             >
