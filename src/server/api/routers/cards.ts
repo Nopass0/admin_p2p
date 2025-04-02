@@ -101,6 +101,9 @@ export const cardsRouter = createTRPCRouter({
             cards: [],
             totalPages: 0,
             totalCount: 0,
+            totalCardPrice: 0,
+            paidCardsSum: 0,
+            unpaidCardsSum: 0
           };
         }
       }
@@ -137,10 +140,44 @@ export const cardsRouter = createTRPCRouter({
         }),
       ]);
 
+      // Calculate financial summaries
+      const [totalPriceResult, paidResult, unpaidResult] = await Promise.all([
+        // Total price of all cards matching the filter
+        ctx.db.card.aggregate({
+          where: whereClause,
+          _sum: {
+            cardPrice: true
+          }
+        }),
+        // Sum of paid cards
+        ctx.db.card.aggregate({
+          where: {
+            ...whereClause,
+            isPaid: true
+          },
+          _sum: {
+            cardPrice: true
+          }
+        }),
+        // Sum of unpaid cards
+        ctx.db.card.aggregate({
+          where: {
+            ...whereClause,
+            isPaid: false
+          },
+          _sum: {
+            cardPrice: true
+          }
+        })
+      ]);
+
       return {
         cards,
         totalPages: Math.ceil(totalCount / pageSize),
         totalCount,
+        totalCardPrice: totalPriceResult._sum.cardPrice || 0,
+        paidCardsSum: paidResult._sum.cardPrice || 0,
+        unpaidCardsSum: unpaidResult._sum.cardPrice || 0
       };
     }),
 
@@ -184,6 +221,8 @@ export const cardsRouter = createTRPCRouter({
       initialAmount: z.number().optional(),
       initialDate: z.string().optional(), // Accept string only, we'll parse it manually
       collectorName: z.string().optional(),
+      cardPrice: z.number().optional(),
+      isPaid: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { 
@@ -192,12 +231,18 @@ export const cardsRouter = createTRPCRouter({
         initialAmount, 
         initialDate, 
         collectorName,
+        cardPrice,
+        isPaid,
         ...cardData 
       } = input;
       
       // Create the card
       const card = await ctx.db.card.create({
-        data: cardData,
+        data: {
+          ...cardData,
+          cardPrice,
+          isPaid
+        },
       });
 
       // Create initial balance if provided
@@ -246,12 +291,18 @@ export const cardsRouter = createTRPCRouter({
       comment: z.string().optional(),
       status: CardStatusEnum.optional(),
       picachu: z.string().optional(),
+      cardPrice: z.string().optional(),
+      isPaid: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.card.update({
         where: { id },
-        data,
+        data: {
+          ...data,
+          cardPrice: data.cardPrice ? parseFloat(data.cardPrice) : null,
+          isPaid: data.isPaid
+        },
       });
     }),
 

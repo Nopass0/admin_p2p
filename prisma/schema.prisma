@@ -565,3 +565,17 @@ enum UserRole {
   USER
   USERCARDS
 }
+
+
+// Раздел "Пароли"
+
+model Password {
+  id        Int      @id @default(autoincrement())
+  name      String
+  login     String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comment   String?
+}

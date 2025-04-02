@@ -586,11 +586,12 @@ export const tablesRouter = createTRPCRouter({
       sortColumn: z.number().int().optional(), // ID колонки для сортировки
       sortDirection: z.enum(['asc', 'desc']).default('asc'),
       filters: z.array(z.object({
+        id: z.number().int().optional(),
         columnId: z.number().int().positive(),
         operator: filterOperatorSchema,
         value: z.string().optional(),
         secondValue: z.string().optional()
-      })).optional(),
+      })).optional().nullable(),
       searchText: z.string().optional() // Глобальный поиск по всем колонкам
     }))
     .query(async ({ ctx, input }) => {
@@ -600,7 +601,8 @@ export const tablesRouter = createTRPCRouter({
           where: { id: input.tableId },
           select: {
             hasPagination: true,
-            pageSize: true
+            pageSize: true,
+            isSearchable: true
           }
         });
         
@@ -615,37 +617,154 @@ export const tablesRouter = createTRPCRouter({
         });
         
         // Базовый фильтр по таблице и активным строкам
-        let where: Prisma.RowWhereInput = {
+        let whereConditions: Prisma.RowWhereInput = {
           tableId: input.tableId,
           isActive: true
         };
         
+        // Переменная для хранения всех условий
+        let whereConditionsArray: Prisma.RowWhereInput[] = [whereConditions];
+        
         // Применяем фильтры, если они есть
         if (input.filters && input.filters.length > 0) {
-          // Формируем сложные условия для фильтрации по ячейкам
-          // Это требует более сложной логики с Prisma и может потребовать кастомных запросов
-          // Для демонстрации пропустим детали реализации фильтров
+          const filterConditions = [];
+          
+          for (const filter of input.filters) {
+            const column = columns.find(col => col.id === filter.columnId);
+            if (!column) continue;
+            
+            // Базовое условие для поиска ячейки с нужным columnId
+            const cellCondition: Prisma.CellWhereInput = {
+              columnId: filter.columnId
+            };
+            
+            // Добавляем условие в зависимости от оператора
+            switch (filter.operator) {
+              case 'EQUALS':
+                cellCondition.value = filter.value;
+                break;
+              case 'NOT_EQUALS':
+                cellCondition.NOT = { value: filter.value };
+                break;
+              case 'GREATER_THAN':
+                if (column.type === 'NUMBER' || column.type === 'CURRENCY') {
+                  // Для числовых типов сравниваем как числа
+                  cellCondition.value = { gt: filter.value };
+                } else {
+                  // Для остальных типов как строки
+                  cellCondition.value = { gt: filter.value };
+                }
+                break;
+              case 'LESS_THAN':
+                cellCondition.value = { lt: filter.value };
+                break;
+              case 'GREATER_OR_EQUAL':
+                cellCondition.value = { gte: filter.value };
+                break;
+              case 'LESS_OR_EQUAL':
+                cellCondition.value = { lte: filter.value };
+                break;
+              case 'CONTAINS':
+                cellCondition.value = { contains: filter.value };
+                break;
+              case 'NOT_CONTAINS':
+                cellCondition.NOT = { value: { contains: filter.value } };
+                break;
+              case 'STARTS_WITH':
+                cellCondition.value = { startsWith: filter.value };
+                break;
+              case 'ENDS_WITH':
+                cellCondition.value = { endsWith: filter.value };
+                break;
+              case 'BETWEEN':
+                if (filter.value && filter.secondValue) {
+                  cellCondition.AND = [
+                    { value: { gte: filter.value } },
+                    { value: { lte: filter.secondValue } }
+                  ];
+                }
+                break;
+              case 'IN_LIST':
+                if (filter.value) {
+                  // Разбиваем строку значений, разделенных запятой
+                  const values = filter.value.split(',').map(v => v.trim());
+                  cellCondition.value = { in: values };
+                }
+                break;
+            }
+            
+            // Добавляем условие для ячейки
+            filterConditions.push({
+              cells: {
+                some: cellCondition
+              }
+            });
+          }
+          
+          // Добавляем все условия фильтров
+          if (filterConditions.length > 0) {
+            whereConditionsArray.push({
+              AND: filterConditions
+            });
+          }
         }
         
-        // Применяем глобальный поиск, если он задан
-        if (input.searchText && input.searchText.trim() !== '') {
-          // Добавляем условие поиска по всем колонкам через Cell
+        // Применяем глобальный поиск, если он задан и таблица поддерживает поиск
+        if (input.searchText && input.searchText.trim() !== '' && table.isSearchable) {
+          const searchText = input.searchText.trim();
+          
+          // Создаем условия для поиска по всем ячейкам
+          const searchCondition: Prisma.RowWhereInput = {
+            cells: {
+              some: {
+                value: {
+                  contains: searchText,
+                  mode: 'insensitive' // Поиск без учета регистра
+                }
+              }
+            }
+          };
+          
+          // Добавляем условие поиска к общим условиям
+          whereConditionsArray.push(searchCondition);
         }
+        
+        // Объединяем все условия через AND
+        const finalWhereCondition: Prisma.RowWhereInput = {
+          AND: whereConditionsArray
+        };
         
         // Получаем общее количество строк для пагинации
-        const totalRows = await ctx.db.row.count({ where });
+        const totalRows = await ctx.db.row.count({ where: finalWhereCondition });
+        
+        // Настройки сортировки
+        let orderBy: any = { order: 'asc' }; // По умолчанию сортируем по полю order
+        
+        // Если указана колонка для сортировки
+        if (input.sortColumn) {
+          // Более сложная сортировка по значению ячейки
+          // Это упрощенный вариант, в реальном приложении нужно учитывать типы данных
+          orderBy = {
+            cells: {
+              where: {
+                columnId: input.sortColumn
+              },
+              orderBy: {
+                value: input.sortDirection
+              }
+            }
+          };
+        }
         
         // Применяем пагинацию, если она включена в настройках таблицы
         const usePagination = table.hasPagination;
         const pageSize = usePagination ? (input.pageSize || table.pageSize) : totalRows;
         const skip = usePagination ? (input.page - 1) * pageSize : 0;
         
-        // Получаем строки с пагинацией и сортировкой
+        // Получаем строки с фильтрацией, пагинацией и сортировкой
         const rows = await ctx.db.row.findMany({
-          where,
-          orderBy: input.sortColumn 
-            ? { cells: { some: { columnId: input.sortColumn, value: input.sortDirection } } } 
-            : { order: 'asc' },
+          where: finalWhereCondition,
+          orderBy: orderBy,
           include: {
             cells: {
               include: {
@@ -666,10 +785,23 @@ export const tablesRouter = createTRPCRouter({
         let summaries = null;
         if (summableColumns.length > 0) {
           // В реальном приложении здесь будет логика вычисления итогов
-          // Для демонстрации создадим заглушку
           summaries = {};
+          
+          // Для каждой суммируемой колонки
           for (const col of summableColumns) {
-            summaries[col.id] = 0; // Здесь должна быть сумма значений
+            // Получаем все значения ячеек для этой колонки в текущем наборе строк
+            const cellValues = rows
+              .map(row => {
+                const cell = row.cells.find(c => c.columnId === col.id);
+                if (!cell || !cell.value) return 0;
+                
+                // Преобразуем значение в число
+                const numValue = parseFloat(cell.value);
+                return isNaN(numValue) ? 0 : numValue;
+              });
+              
+            // Суммируем значения
+            summaries[col.id] = cellValues.reduce((sum, val) => sum + val, 0);
           }
         }
         
@@ -779,7 +911,7 @@ export const tablesRouter = createTRPCRouter({
           // Получаем значение для ячейки (или используем значение по умолчанию)
           const value = cellInput.value !== null ? cellInput.value : (column.defaultValue || null);
           
-          // Форматируем значение для отображения (в реальном приложении здесь будет логика форматирования)
+          // Форматируем значение для отображения
           let displayValue = value;
           
           // Для типа DATE форматируем дату
@@ -906,8 +1038,38 @@ export const tablesRouter = createTRPCRouter({
           // Получаем значение для ячейки
           const value = cellInput.value !== null ? cellInput.value : (column.defaultValue || null);
           
-          // Форматируем значение для отображения (как в createRow)
+          // Форматируем значение для отображения
           let displayValue = value;
+          
+          // Для типа DATE форматируем дату
+          if (column.type === 'DATE' && value) {
+            try {
+              displayValue = new Date(value).toLocaleDateString('ru-RU');
+            } catch (e) {
+              displayValue = value;
+            }
+          }
+          
+          // Для типа DATETIME форматируем дату и время
+          if (column.type === 'DATETIME' && value) {
+            try {
+              displayValue = new Date(value).toLocaleString('ru-RU');
+            } catch (e) {
+              displayValue = value;
+            }
+          }
+          
+          // Для типа CURRENCY форматируем как валюту
+          if (column.type === 'CURRENCY' && value) {
+            try {
+              displayValue = new Intl.NumberFormat('ru-RU', { 
+                style: 'currency', 
+                currency: 'RUB' 
+              }).format(parseFloat(value));
+            } catch (e) {
+              displayValue = value;
+            }
+          }
           
           // Обновляем или создаем ячейку
           if (existingCell) {
