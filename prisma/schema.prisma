@@ -270,6 +270,13 @@ model SalaryDebt {
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }
 
+enum PeriodType {
+  TWICE_MONTH
+  THRICE_MONTH
+  ONCE_MONTH
+
+}
+
 model Salary {
   id          Int             @id @default(autoincrement())
   fullName    String
@@ -277,6 +284,7 @@ model Salary {
   startDate   DateTime
   payday      Int
   paydayMonth Int?
+  periodic    PeriodType @default(ONCE_MONTH)
   fixedSalary Float?
   isActive    Boolean         @default(true)
   createdAt   DateTime        @default(now())
@@ -566,6 +574,14 @@ enum UserRole {
   USERCARDS
 }
 
+enum PaymentPeriodType {
+  NONE
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
 
 // Раздел "Пароли"
 

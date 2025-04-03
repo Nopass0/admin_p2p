@@ -111,7 +111,8 @@ export default function SalaryPage() {
     payday: 10,
     paydayMonth: "",
     fixedSalary: "",
-    comment: ""
+    comment: "",
+    periodic: "ONCE_MONTH"
   });
   
   const [paymentForm, setPaymentForm] = useState({
@@ -204,7 +205,8 @@ export default function SalaryPage() {
         payday: 10,
         paydayMonth: "",
         fixedSalary: "",
-        comment: ""
+        comment: "",
+        periodic: "ONCE_MONTH"
       });
       setEmployeeErrors({});
     },
@@ -226,7 +228,8 @@ export default function SalaryPage() {
         payday: 10,
         paydayMonth: "",
         fixedSalary: "",
-        comment: ""
+        comment: "",
+        periodic: "ONCE_MONTH"
       });
       setEmployeeErrors({});
     },
@@ -426,7 +429,8 @@ export default function SalaryPage() {
       payday: parseInt(employeeForm.payday),
       paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
       fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
-      comment: employeeForm.comment
+      comment: employeeForm.comment,
+      periodic: employeeForm.periodic
     });
   };
 
@@ -595,7 +599,8 @@ export default function SalaryPage() {
       payday: employee.payday,
       paydayMonth: employee.paydayMonth ? employee.paydayMonth.toString() : "",
       fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : "",
-      comment: employee.comment
+      comment: employee.comment,
+      periodic: employee.periodic
     });
     openEditEmployeeDialog();
   };
@@ -1492,6 +1497,20 @@ export default function SalaryPage() {
               </div>
               
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Периодичность оплаты</label>
+                <Select
+                  placeholder="Выберите периодичность"
+                  selectedKeys={[employeeForm.periodic]}
+                  onChange={(e) => handleEmployeeFormChange('periodic', e.target.value)}
+                  aria-label="Периодичность оплаты"
+                >
+                  <SelectItem key="ONCE_MONTH" value="ONCE_MONTH">Раз в месяц</SelectItem>
+                  <SelectItem key="TWICE_MONTH" value="TWICE_MONTH">Два раза в месяц</SelectItem>
+                  <SelectItem key="THRICE_MONTH" value="THRICE_MONTH">Три раза в месяц</SelectItem>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Комментарий</label>
                 <Textarea
                   placeholder="Добавьте комментарий о сотруднике (необязательно)"
@@ -1551,7 +1570,8 @@ export default function SalaryPage() {
                 payday: parseInt(employeeForm.payday),
                 paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
                 fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
-                comment: employeeForm.comment
+                comment: employeeForm.comment,
+                periodic: employeeForm.periodic
               });
             }} className="space-y-4">
               <div className="space-y-2">
@@ -1649,6 +1669,20 @@ export default function SalaryPage() {
               </div>
               
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Периодичность оплаты</label>
+                <Select
+                  placeholder="Выберите периодичность"
+                  selectedKeys={[employeeForm.periodic]}
+                  onChange={(e) => handleEmployeeFormChange('periodic', e.target.value)}
+                  aria-label="Периодичность оплаты"
+                >
+                  <SelectItem key="ONCE_MONTH" value="ONCE_MONTH">Раз в месяц</SelectItem>
+                  <SelectItem key="TWICE_MONTH" value="TWICE_MONTH">Два раза в месяц</SelectItem>
+                  <SelectItem key="THRICE_MONTH" value="THRICE_MONTH">Три раза в месяц</SelectItem>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Комментарий</label>
                 <Textarea
                   placeholder="Добавьте комментарий о сотруднике (необязательно)"
@@ -1684,7 +1718,8 @@ export default function SalaryPage() {
                   payday: parseInt(employeeForm.payday),
                   paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
                   fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
-                  comment: employeeForm.comment
+                  comment: employeeForm.comment,
+                  periodic: employeeForm.periodic
                 });
               }}
               isLoading={updateEmployeeMutation.isLoading}

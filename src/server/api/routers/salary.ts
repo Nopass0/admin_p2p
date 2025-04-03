@@ -1,6 +1,6 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, PeriodType } from "@prisma/client";
 
 export const salaryRouter = createTRPCRouter({
   // Получение списка всех сотрудников с пагинацией и суммами за период
@@ -176,6 +176,9 @@ export const salaryRouter = createTRPCRouter({
       payday: z.number().int().min(1).max(31),
       paydayMonth: z.number().int().min(1).max(12).nullish(),
       fixedSalary: z.number().positive().nullish(),
+      isActive: z.boolean().default(true),
+      comment: z.string().nullish(),
+      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -188,7 +191,9 @@ export const salaryRouter = createTRPCRouter({
             payday: input.payday,
             paydayMonth: input.paydayMonth,
             fixedSalary: input.fixedSalary,
-            isActive: true
+            isActive: input.isActive,
+            comment: input.comment,
+            periodic: input.periodic,
           },
         });
 
@@ -218,16 +223,17 @@ export const salaryRouter = createTRPCRouter({
       paydayMonth: z.number().int().min(1).max(12).nullish(),
       fixedSalary: z.number().positive().nullish(),
       isActive: z.boolean().default(true),
-      comment: z.string().optional()
+      comment: z.string().nullish(),
+      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
     }))
     .mutation(async ({ ctx, input }) => {
       try {
-        const { id, ...data } = input;
+        const { id, ...updateData } = input;
         
         // Обновляем данные сотрудника
         const updatedEmployee = await ctx.db.salary.update({
           where: { id },
-          data
+          data: updateData
         });
 
         return { 
