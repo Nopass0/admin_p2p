@@ -84,6 +84,8 @@ export default function Cards() {
     initialAmount: 0,
     initialDate: new Date().toISOString().split('T')[0],
     collectorName: "",
+    cardPrice: 0,
+    isPaid: false
   });
   
   const [pouringFormData, setPouringFormData] = useState({
@@ -483,7 +485,7 @@ export default function Cards() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full mx-auto px-4 py-8">
       <Card className="w-full">
         <CardHeader className="flex justify-between items-center">
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -501,110 +503,116 @@ export default function Cards() {
               />
             </div>
             
-            <Dropdown>
-              <DropdownTrigger>
-                <Button
-                  variant="flat"
-                  startContent={<Filter size={18} />}
-                >
-                  Фильтры
-                  {(filterProvider || filterBank || filterStatus || filterCollector || filterPicachu) && (
-                    <Chip size="sm" className="ml-2">
-                      {[filterProvider, filterBank, filterStatus, filterCollector, filterPicachu]
-                        .filter(Boolean).length}
-                    </Chip>
-                  )}
-                </Button>
-              </DropdownTrigger>
-              <DropdownMenu aria-label="Filter options" className="w-72 p-4">
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Поставщик</label>
-                    <Select
-                      value={filterProvider}
-                      onChange={(e) => setFilterProvider(e.target.value)}
-                      className="w-full"
-                    >
-                      <SelectItem value="">Все</SelectItem>
-                      {safeFilterOptions.providers.map(provider => (
-                        <SelectItem key={provider} value={provider}>{provider}</SelectItem>
-                      ))}
-                    </Select>
+            <Button
+              variant="flat"
+              startContent={<Filter size={18} />}
+              onClick={() => setIsFilterMenuOpen(true)}
+            >
+              Фильтры
+              {(filterProvider || filterBank || filterStatus || filterCollector || filterPicachu) && (
+                <Chip size="sm" className="ml-2">
+                  {[filterProvider, filterBank, filterStatus, filterCollector, filterPicachu]
+                    .filter(Boolean).length}
+                </Chip>
+              )}
+            </Button>
+            
+            <Modal 
+              isOpen={isFilterMenuOpen} 
+              onClose={() => setIsFilterMenuOpen(false)}
+              size="sm"
+            >
+              <ModalContent>
+                <ModalHeader>Фильтры</ModalHeader>
+                <ModalBody>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Поставщик</label>
+                      <Select
+                        value={filterProvider}
+                        onChange={(e) => setFilterProvider(e.target.value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="">Все</SelectItem>
+                        {(Array.isArray(safeFilterOptions.providers) ? safeFilterOptions.providers : []).map(provider => (
+                          <SelectItem key={provider} value={provider}>{provider}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Банк</label>
+                      <Select
+                        value={filterBank}
+                        onChange={(e) => setFilterBank(e.target.value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="">Все</SelectItem>
+                        {(Array.isArray(safeFilterOptions.banks) ? safeFilterOptions.banks : []).map(bank => (
+                          <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Статус</label>
+                      <Select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="">Все</SelectItem>
+                        <SelectItem value="ACTIVE">Активна</SelectItem>
+                        <SelectItem value="WARNING">Внимание</SelectItem>
+                        <SelectItem value="BLOCKED">Заблокирована</SelectItem>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Инкассатор</label>
+                      <Select
+                        value={filterCollector}
+                        onChange={(e) => setFilterCollector(e.target.value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="">Все</SelectItem>
+                        {(Array.isArray(safeFilterOptions.collectorNames) ? safeFilterOptions.collectorNames : []).map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Пикачу</label>
+                      <Select
+                        value={filterPicachu}
+                        onChange={(e) => setFilterPicachu(e.target.value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="">Все</SelectItem>
+                        {(Array.isArray(safeFilterOptions.picachus) ? safeFilterOptions.picachus : []).map(picachu => (
+                          <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Банк</label>
-                    <Select
-                      value={filterBank}
-                      onChange={(e) => setFilterBank(e.target.value)}
-                      className="w-full"
-                    >
-                      <SelectItem value="">Все</SelectItem>
-                      {safeFilterOptions.banks.map(bank => (
-                        <SelectItem key={bank} value={bank}>{bank}</SelectItem>
-                      ))}
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Статус</label>
-                    <Select
-                      value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
-                      className="w-full"
-                    >
-                      <SelectItem value="">Все</SelectItem>
-                      <SelectItem value="ACTIVE">Активна</SelectItem>
-                      <SelectItem value="WARNING">Внимание</SelectItem>
-                      <SelectItem value="BLOCKED">Заблокирована</SelectItem>
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Инкассатор</label>
-                    <Select
-                      value={filterCollector}
-                      onChange={(e) => setFilterCollector(e.target.value)}
-                      className="w-full"
-                    >
-                      <SelectItem value="">Все</SelectItem>
-                      {safeFilterOptions.collectorNames.map(name => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                      ))}
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Пикачу</label>
-                    <Select
-                      value={filterPicachu}
-                      onChange={(e) => setFilterPicachu(e.target.value)}
-                      className="w-full"
-                    >
-                      <SelectItem value="">Все</SelectItem>
-                      {safeFilterOptions.picachus.map(picachu => (
-                        <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
-                      ))}
-                    </Select>
-                  </div>
-                  
-                  <div className="flex justify-between mt-2">
-                    <Button
-                      variant="flat"
-                      onClick={clearFilters}
-                    >
-                      Сбросить
-                    </Button>
-                    <Button
-                      color="primary"
-                      onClick={() => setIsFilterMenuOpen(false)}
-                    >
-                      Применить
-                    </Button>
-                  </div>
-                </div>
-              </DropdownMenu>
-            </Dropdown>
+                </ModalBody>
+                <ModalFooter>
+                  <Button
+                    variant="flat"
+                    onClick={clearFilters}
+                  >
+                    Сбросить
+                  </Button>
+                  <Button
+                    color="primary"
+                    onClick={() => setIsFilterMenuOpen(false)}
+                  >
+                    Применить
+                  </Button>
+                </ModalFooter>
+              </ModalContent>
+            </Modal>
             
             <Button
               color="primary"
@@ -656,6 +664,8 @@ export default function Cards() {
                   <TableColumn className="cursor-pointer" onClick={() => handleSort("status")}>
                     Статус {sortBy === "status" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableColumn>
+                  <TableColumn>Цена</TableColumn>
+                  <TableColumn>Оплачена</TableColumn>
                   <TableColumn>Действия</TableColumn>
                 </TableHeader>
                 <TableBody>
@@ -680,6 +690,7 @@ export default function Cards() {
                           <TableCell>{card.cardNumber}</TableCell>
                           <TableCell>{card.phoneNumber}</TableCell>
                           <TableCell>{card.appPin}</TableCell>
+
                           <TableCell>{card.terminalPin}</TableCell>
                           <TableCell>
                             {latestPouring ? (
@@ -709,9 +720,12 @@ export default function Cards() {
                           </TableCell>
                           <TableCell>{latestPouring?.collectorName || "—"}</TableCell>
                           <TableCell>{card.picachu || "—"}</TableCell>
+                          
                           <TableCell>
                             <StatusBadge status={card.status} />
                           </TableCell>
+                          <TableCell>{card.cardPrice}</TableCell>
+                          <TableCell>{card.isPaid ? "Да" : "Нет"}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Tooltip content="Редактировать карту">
@@ -808,6 +822,53 @@ export default function Cards() {
         </CardBody>
       </Card>
 
+      {/* общая стоимость */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+  <Card className="bg-blue-50 dark:bg-blue-900/20 shadow-sm">
+    <CardBody className="p-4">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая стоимость</span>
+        <DollarSign className="w-4 h-4 text-blue-500" />
+      </div>
+      <div className="flex items-center">
+        <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          {cardsQuery.data?.totalCardPrice || 0}
+        </span>
+        <span className="text-xs ml-1 text-gray-500">₽</span>
+      </div>
+    </CardBody>
+  </Card>
+
+  <Card className="bg-green-50 dark:bg-green-900/20 shadow-sm">
+    <CardBody className="p-4">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Оплаченные карты</span>
+        <CheckCircle className="w-4 h-4 text-green-500" />
+      </div>
+      <div className="flex items-center">
+        <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+          {cardsQuery.data?.paidCardsSum || 0}
+        </span>
+        <span className="text-xs ml-1 text-gray-500">₽</span>
+      </div>
+    </CardBody>
+  </Card>
+
+  <Card className="bg-amber-50 dark:bg-amber-900/20 shadow-sm">
+    <CardBody className="p-4">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Неоплаченные карты</span>
+        <AlertCircle className="w-4 h-4 text-amber-500" />
+      </div>
+      <div className="flex items-center">
+        <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+          {cardsQuery.data?.unpaidCardsSum || 0}
+        </span>
+        <span className="text-xs ml-1 text-gray-500">₽</span>
+      </div>
+    </CardBody>
+  </Card>
+</div>
       {/* Create Card Modal */}
       <Modal 
         isOpen={isCreateModalOpen} 
@@ -1083,7 +1144,39 @@ export default function Cards() {
                     onChange={handleCardFormChange}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Цена карты</label>
+                  <Input
+                    name="cardPrice"
+                    type="text"
+                    value={String(cardFormData.cardPrice)}
+                    onChange={handleCardFormChange}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Оплачена</label>
+                  <div className="flex items-center mt-2">
+                    <input
+                      type="checkbox"
+                      id="isPaid"
+                      name="isPaid"
+                      checked={cardFormData.isPaid}
+                      onChange={(e) => {
+                        setCardFormData({
+                          ...cardFormData,
+                          isPaid: e.target.checked
+                        });
+                      }}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                    />
+                    <label htmlFor="isPaid" className="ml-2 text-sm text-gray-700">
+                      Карта оплачена
+                    </label>
+                  </div>
+                </div>
+
               </div>
+
             </ModalBody>
             <ModalFooter>
               <Button variant="flat" onClick={() => setIsEditModalOpen(false)}>

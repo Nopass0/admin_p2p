@@ -26,7 +26,8 @@ import {
   User,
   Menu,
   ChevronDown,
-  FileText
+  FileText,
+  LockKeyhole
 } from "lucide-react";
 
 // Zustand store для состояния сайдбара
@@ -102,6 +103,11 @@ const navigationSections = [
         title: "Таблицы",
         href: "/tables",
         icon: FileText
+      },
+      {
+        title: "Пароли",
+        href: "/passwords",
+        icon: LockKeyhole
       }
     ]
   }
