@@ -1454,32 +1454,7 @@ export default function SalaryPage() {
                 />
               </div>
               
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Месяц выплаты (если не каждый месяц)</label>
-                <Select
-                  placeholder="Выберите месяц (опционально)"
-                  selectedKeys={employeeForm.paydayMonth ? [employeeForm.paydayMonth.toString()] : []}
-                  onChange={(e) => handleEmployeeFormChange('paydayMonth', e.target.value)}
-                  aria-label="Месяц выплаты"
-                >
-                  <SelectItem key="" value="">Ежемесячно</SelectItem>
-                  <SelectItem key="1" value="1">Январь</SelectItem>
-                  <SelectItem key="2" value="2">Февраль</SelectItem>
-                  <SelectItem key="3" value="3">Март</SelectItem>
-                  <SelectItem key="4" value="4">Апрель</SelectItem>
-                  <SelectItem key="5" value="5">Май</SelectItem>
-                  <SelectItem key="6" value="6">Июнь</SelectItem>
-                  <SelectItem key="7" value="7">Июль</SelectItem>
-                  <SelectItem key="8" value="8">Август</SelectItem>
-                  <SelectItem key="9" value="9">Сентябрь</SelectItem>
-                  <SelectItem key="10" value="10">Октябрь</SelectItem>
-                  <SelectItem key="11" value="11">Ноябрь</SelectItem>
-                  <SelectItem key="12" value="12">Декабрь</SelectItem>
-                </Select>
-                {employeeErrors.paydayMonth && (
-                  <p className="text-xs text-red-500 mt-1">{employeeErrors.paydayMonth}</p>
-                )}
-              </div>
+
               
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Фиксированная зарплата (если есть)</label>
@@ -1625,33 +1600,7 @@ export default function SalaryPage() {
                   aria-label="День выплаты зарплаты"
                 />
               </div>
-              
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Месяц выплаты (если не каждый месяц)</label>
-                <Select
-                  placeholder="Выберите месяц (опционально)"
-                  selectedKeys={employeeForm.paydayMonth ? [employeeForm.paydayMonth.toString()] : []}
-                  onChange={(e) => handleEmployeeFormChange('paydayMonth', e.target.value)}
-                  aria-label="Месяц выплаты"
-                >
-                  <SelectItem key="" value="">Ежемесячно</SelectItem>
-                  <SelectItem key="1" value="1">Январь</SelectItem>
-                  <SelectItem key="2" value="2">Февраль</SelectItem>
-                  <SelectItem key="3" value="3">Март</SelectItem>
-                  <SelectItem key="4" value="4">Апрель</SelectItem>
-                  <SelectItem key="5" value="5">Май</SelectItem>
-                  <SelectItem key="6" value="6">Июнь</SelectItem>
-                  <SelectItem key="7" value="7">Июль</SelectItem>
-                  <SelectItem key="8" value="8">Август</SelectItem>
-                  <SelectItem key="9" value="9">Сентябрь</SelectItem>
-                  <SelectItem key="10" value="10">Октябрь</SelectItem>
-                  <SelectItem key="11" value="11">Ноябрь</SelectItem>
-                  <SelectItem key="12" value="12">Декабрь</SelectItem>
-                </Select>
-                {employeeErrors.paydayMonth && (
-                  <p className="text-xs text-red-500 mt-1">{employeeErrors.paydayMonth}</p>
-                )}
-              </div>
+
               
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Фиксированная зарплата (если есть)</label>
