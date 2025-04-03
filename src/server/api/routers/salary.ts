@@ -249,12 +249,11 @@ export const salaryRouter = createTRPCRouter({
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        // Обновляем данные сотрудника перед удалением
-        await ctx.db.salary.update({
-          where: { id: input.id },
-          data: { isActive: false }
+        // Сначала удаляем связанные платежи
+        await ctx.db.salaryPayment.deleteMany({
+          where: { salaryId: input.id }
         });
-
+        
         // Удаляем сотрудника
         const deletedEmployee = await ctx.db.salary.delete({
           where: { id: input.id },
