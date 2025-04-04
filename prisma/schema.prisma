@@ -201,27 +201,28 @@ model BybitMatch {
 }
 
 model Card {
-  id          Int           @id @default(autoincrement())
-  externalId  Int
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  provider    String
-  cardNumber  String
-  bank        String
-  phoneNumber String
-  appPin      Int
-  terminalPin String
-  comment     String?
-  picachu     String?
-  status      CardStatus    @default(ACTIVE)
-  cardPrice   Float?
-  isPaid      Boolean       @default(false)
-  letterCode  String?
-  actor       String?
-  inWork      Boolean       @default(false)
-  AuditLog    AuditLog[]
-  balances    CardBalance[]
-  pourings    CardPouring[]
+  id                  Int           @id @default(autoincrement())
+  externalId          Int
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  provider            String
+  cardNumber          String
+  bank                String
+  phoneNumber         String
+  appPin              Int
+  terminalPin         String
+  comment             String?
+  picachu             String?
+  status              CardStatus    @default(ACTIVE)
+  cardPrice           Float?
+  isPaid              Boolean       @default(false)
+  letterCode          String?
+  actor               String?
+  inWork              Boolean       @default(false)
+  activePaymentMethod String?       @default("c2c")
+  AuditLog            AuditLog[]
+  balances            CardBalance[]
+  pourings            CardPouring[]
 }
 
 model CardBalance {
@@ -271,20 +272,12 @@ model SalaryDebt {
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }
 
-//разделы
-enum SalarySection {
-  PAYMENTS
-  TRACTOR
-}
-
 model Salary {
   id          Int             @id @default(autoincrement())
   fullName    String
   position    String
   startDate   DateTime
   payday      Int
-  //раздел
-  section     SalarySection @default(PAYMENTS)
   paydayMonth Int?
   fixedSalary Float?
   isActive    Boolean         @default(true)
@@ -294,6 +287,7 @@ model Salary {
   periodic    PeriodType      @default(ONCE_MONTH)
   payday2     Int?
   payday3     Int?
+  section     SalarySection   @default(PAYMENTS)
   FinRow      FinRow[]
   debts       SalaryDebt[]
   earnings    SalaryEarning[]
@@ -555,6 +549,11 @@ model SalaryEarning {
   updatedAt   DateTime @updatedAt
   salaryId    Int
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+}
+
+enum SalarySection {
+  PAYMENTS
+  TRACTOR
 }
 
 enum PeriodType {

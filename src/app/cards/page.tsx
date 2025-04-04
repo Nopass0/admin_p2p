@@ -5,10 +5,15 @@ import { api } from "@/trpc/react";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
-import { Pagination } from "@heroui/pagination";
 import { Spinner } from "@heroui/spinner";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import { Select, SelectItem } from "@heroui/select";
+import { Tooltip } from "@heroui/tooltip";
+import { Tabs, Tab } from "@heroui/tabs";
+import { Chip } from "@heroui/chip";
+import { Switch } from "@heroui/switch";
+import { Badge } from "@heroui/badge";
+import { Pagination } from "@heroui/pagination";
 import { 
   PlusIcon, 
   Search, 
@@ -21,14 +26,11 @@ import {
   CheckCircle, 
   XCircle, 
   Calendar, 
-  DollarSign
+  DollarSign,
+  Info,
+  Eye,
+  ArrowUpDown
 } from "lucide-react";
-import { Badge } from "@heroui/badge";
-import { Select, SelectItem } from "@heroui/select";
-import { Tooltip } from "@heroui/tooltip";
-import { Tabs, Tab } from "@heroui/tabs";
-import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/dropdown";
-import { Chip } from "@heroui/chip";
 
 export default function Cards() {
   // Pagination and sorting state
@@ -37,36 +39,32 @@ export default function Cards() {
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState("desc");
   
+  // Detailed view toggle
+  const [showDetailedView, setShowDetailedView] = useState(false);
+  
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterProvider, setFilterProvider] = useState("");
   const [filterBank, setFilterBank] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterCollector, setFilterCollector] = useState("");
+  const [filterInWork, setFilterInWork] = useState(""); // Новый фильтр "В работе"
+  const [filterActor, setFilterActor] = useState("");   // Новый фильтр "Актер"
   const [filterPicachu, setFilterPicachu] = useState("");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
-  // Fetch filter options
-  const filterOptionsQuery = api.cards.getFilterOptions.useQuery();
-
-  // Safe filter options with fallbacks
-  const safeFilterOptions = {
-    providers: filterOptionsQuery.data?.providers || [],
-    banks: filterOptionsQuery.data?.banks || [],
-    collectorNames: filterOptionsQuery.data?.collectorNames || [],
-    picachus: filterOptionsQuery.data?.picachus || []
-  };
-  
-  // Modal and form state
+  // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPouringModalOpen, setIsPouringModalOpen] = useState(false);
   const [isViewPouringsModalOpen, setIsViewPouringsModalOpen] = useState(false);
   const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false);
   const [isViewBalancesModalOpen, setIsViewBalancesModalOpen] = useState(false);
+
+  // Selected data state
   const [selectedCard, setSelectedCard] = useState(null);
   const [selectedPouring, setSelectedPouring] = useState(null);
   const [selectedBalance, setSelectedBalance] = useState(null);
+
+  // Form state
   const [cardFormData, setCardFormData] = useState({
     externalId: 0,
     provider: "",
@@ -78,16 +76,19 @@ export default function Cards() {
     comment: "",
     status: "ACTIVE",
     picachu: "",
+    cardPrice: 0,
+    isPaid: false,
+    inWork: false,
+    actor: "",
+    // Initial data
     initialBalance: 0,
-    // Pouring data
     pouringAmount: 0,
     initialAmount: 0,
     initialDate: new Date().toISOString().split('T')[0],
-    collectorName: "",
-    cardPrice: 0,
-    isPaid: false
+    collectorName: ""
   });
-  
+
+  // Form state for pouring
   const [pouringFormData, setPouringFormData] = useState({
     cardId: 0,
     pouringDate: new Date().toISOString().split('T')[0],
@@ -102,15 +103,27 @@ export default function Cards() {
     status: "ACTIVE",
     comment: "",
   });
-  
+
+  // Form state for balance
   const [balanceFormData, setBalanceFormData] = useState({
     cardId: 0,
     date: new Date().toISOString().split('T')[0],
     startBalance: 0,
-    endBalance: 0
+    endBalance: 0,
+    comment: ""
   });
 
-  // Fetch cards with filters
+  // Конвертировать строку в boolean для фильтра inWork
+  const convertInWorkFilter = (value) => {
+    if (value === "yes") return true;
+    if (value === "no") return false;
+    return undefined;
+  };
+
+  // API Queries
+  const filterOptionsQuery = api.cards.getFilterOptions.useQuery();
+  const statsQuery = api.cards.getStats.useQuery();
+  
   const cardsQuery = api.cards.getAll.useQuery({
     page,
     pageSize,
@@ -119,66 +132,15 @@ export default function Cards() {
     sortDirection,
     provider: filterProvider || undefined,
     bank: filterBank || undefined,
-    status: filterStatus || undefined,
-    collectorName: filterCollector || undefined,
+    inWork: convertInWorkFilter(filterInWork),
+    actor: filterActor || undefined,
     picachu: filterPicachu || undefined,
   });
 
-
-
-  // Card mutations
-  const createCardMutation = api.cards.create.useMutation({
-    onSuccess: () => {
-      cardsQuery.refetch();
-      setIsCreateModalOpen(false);
-      resetCardForm();
-    },
-  });
-
-  const updateCardMutation = api.cards.update.useMutation({
-    onSuccess: () => {
-      cardsQuery.refetch();
-      setIsEditModalOpen(false);
-    },
-  });
-
-  const deleteCardMutation = api.cards.delete.useMutation({
-    onSuccess: () => {
-      cardsQuery.refetch();
-    },
-  });
-
-  // Pouring mutations
-  const createPouringMutation = api.cards.createPouring.useMutation({
-    onSuccess: () => {
-      cardsQuery.refetch();
-      setIsPouringModalOpen(false);
-      resetPouringForm();
-    },
-  });
-
-  const updatePouringMutation = api.cards.updatePouring.useMutation({
-    onSuccess: () => {
-      cardsQuery.refetch();
-      setIsPouringModalOpen(false);
-    },
-  });
-
-  const deletePouringMutation = api.cards.deletePouring.useMutation({
-    onSuccess: () => {
-      if (isViewPouringsModalOpen && selectedCard) {
-        // Refetch card details to update pourings list
-        cardDetailsQuery.refetch();
-      } else {
-        cardsQuery.refetch();
-      }
-    },
-  });
-
-  // Card details query for viewing pourings
+  // Card details query for viewing pourings/balances
   const cardDetailsQuery = api.cards.getById.useQuery(
     { id: selectedCard?.id || 0 },
-    { enabled: !!selectedCard && (isViewPouringsModalOpen || isViewBalancesModalOpen) }
+    { enabled: !!selectedCard && (isViewPouringsModalOpen || isViewBalancesModalOpen || isPouringModalOpen || isBalanceModalOpen) }
   );
   
   // Get card balances
@@ -187,6 +149,76 @@ export default function Cards() {
     { enabled: !!selectedCard && isViewBalancesModalOpen }
   );
   
+  // Get card pourings
+  const cardPouringsQuery = api.cards.getCardPourings.useQuery(
+    { cardId: selectedCard?.id || 0 },
+    { enabled: !!selectedCard && isViewPouringsModalOpen }
+  );
+
+  // Safe filter options with fallbacks
+  const safeFilterOptions = {
+    providers: filterOptionsQuery.data?.providers || [],
+    banks: filterOptionsQuery.data?.banks || [],
+    collectorNames: filterOptionsQuery.data?.collectorNames || [],
+    picachus: filterOptionsQuery.data?.picachus || [],
+    actors: filterOptionsQuery.data?.actors || [],
+  };
+
+  // Mutations
+  const createCardMutation = api.cards.create.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      statsQuery.refetch();
+      setIsCreateModalOpen(false);
+      resetCardForm();
+    },
+  });
+
+  const updateCardMutation = api.cards.update.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      statsQuery.refetch();
+      setIsEditModalOpen(false);
+    },
+  });
+
+  const deleteCardMutation = api.cards.delete.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      statsQuery.refetch();
+    },
+  });
+
+  // Pouring mutations
+  const createPouringMutation = api.cards.createPouring.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      cardPouringsQuery.refetch();
+      statsQuery.refetch();
+      setIsPouringModalOpen(false);
+      resetPouringForm();
+    },
+  });
+
+  const updatePouringMutation = api.cards.updatePouring.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      cardPouringsQuery.refetch();
+      statsQuery.refetch();
+      setIsPouringModalOpen(false);
+    },
+  });
+
+  const deletePouringMutation = api.cards.deletePouring.useMutation({
+    onSuccess: () => {
+      cardsQuery.refetch();
+      if (isViewPouringsModalOpen) {
+        cardPouringsQuery.refetch();
+      }
+      statsQuery.refetch();
+    },
+  });
+
   // Balance mutations
   const createBalanceMutation = api.cards.createBalance.useMutation({
     onSuccess: () => {
@@ -194,6 +226,7 @@ export default function Cards() {
       if (isViewBalancesModalOpen) {
         cardBalancesQuery.refetch();
       }
+      statsQuery.refetch();
       setIsBalanceModalOpen(false);
       resetBalanceForm();
     },
@@ -205,6 +238,7 @@ export default function Cards() {
       if (isViewBalancesModalOpen) {
         cardBalancesQuery.refetch();
       }
+      statsQuery.refetch();
       setIsBalanceModalOpen(false);
     },
   });
@@ -215,59 +249,22 @@ export default function Cards() {
       if (isViewBalancesModalOpen) {
         cardBalancesQuery.refetch();
       }
+      statsQuery.refetch();
     },
   });
 
-  // Reset form functions
-  const resetCardForm = () => {
-    setCardFormData({
-      externalId: 0,
-      provider: "",
-      cardNumber: "",
-      bank: "",
-      phoneNumber: "",
-      appPin: 0,
-      terminalPin: "",
-      comment: "",
-      status: "ACTIVE",
-      picachu: "",
-      initialBalance: 0,
-      pouringAmount: 0,
-      initialAmount: 0,
-      initialDate: new Date().toISOString().split('T')[0],
-      collectorName: "",
-    });
-  };
-
-  const resetPouringForm = () => {
-    setPouringFormData({
-      cardId: selectedCard?.id || 0,
-      pouringDate: new Date().toISOString().split('T')[0],
-      initialAmount: 0,
-      initialDate: new Date().toISOString().split('T')[0],
-      finalAmount: null,
-      finalDate: null,
-      pouringAmount: 0,
-      withdrawalAmount: null,
-      withdrawalDate: null,
-      collectorName: "",
-      status: "ACTIVE",
-      comment: "",
-    });
-  };
-  
-  const resetBalanceForm = () => {
-    setBalanceFormData({
-      cardId: selectedCard?.id || 0,
-      date: new Date().toISOString().split('T')[0],
-      startBalance: 0,
-      endBalance: 0
-    });
-  };
-
-  // Form change handlers
+  // Form handlers
   const handleCardFormChange = (e) => {
-    const { name, value, type } = e.target;
+    const { name, value, type, checked } = e.target;
+    
+    // Обработка чекбоксов
+    if (type === "checkbox") {
+      setCardFormData({
+        ...cardFormData,
+        [name]: checked
+      });
+      return;
+    }
     
     setCardFormData({
       ...cardFormData,
@@ -276,16 +273,32 @@ export default function Cards() {
   };
 
   const handlePouringFormChange = (e) => {
-    const { name, value, type } = e.target;
+    const { name, value, type, checked } = e.target;
+    
+    if (type === "checkbox") {
+      setPouringFormData({
+        ...pouringFormData,
+        [name]: checked
+      });
+      return;
+    }
     
     setPouringFormData({
       ...pouringFormData,
       [name]: type === "number" ? Number(value) : value,
     });
   };
-  
+
   const handleBalanceFormChange = (e) => {
-    const { name, value, type } = e.target;
+    const { name, value, type, checked } = e.target;
+    
+    if (type === "checkbox") {
+      setBalanceFormData({
+        ...balanceFormData,
+        [name]: checked
+      });
+      return;
+    }
     
     setBalanceFormData({
       ...balanceFormData,
@@ -293,7 +306,6 @@ export default function Cards() {
     });
   };
 
-  // Form submit handlers
   const handleCreateCardSubmit = (e) => {
     e.preventDefault();
     createCardMutation.mutate(cardFormData);
@@ -322,7 +334,7 @@ export default function Cards() {
       ...pouringFormData,
     });
   };
-  
+
   const handleCreateBalanceSubmit = (e) => {
     e.preventDefault();
     createBalanceMutation.mutate({
@@ -330,12 +342,97 @@ export default function Cards() {
       cardId: selectedCard.id,
     });
   };
-  
+
   const handleUpdateBalanceSubmit = (e) => {
     e.preventDefault();
     updateBalanceMutation.mutate({
       ...balanceFormData,
     });
+  };
+
+  // Utility functions
+  const resetCardForm = () => {
+    setCardFormData({
+      externalId: 0,
+      provider: "",
+      cardNumber: "",
+      bank: "",
+      phoneNumber: "",
+      appPin: 0,
+      terminalPin: "",
+      comment: "",
+      status: "ACTIVE",
+      picachu: "",
+      cardPrice: 0,
+      isPaid: false,
+      inWork: false,
+      actor: "",
+      initialBalance: 0,
+      pouringAmount: 0,
+      initialAmount: 0,
+      initialDate: new Date().toISOString().split('T')[0],
+      collectorName: ""
+    });
+  };
+
+  const resetPouringForm = () => {
+    setPouringFormData({
+      cardId: selectedCard?.id || 0,
+      pouringDate: new Date().toISOString().split('T')[0],
+      initialAmount: 0,
+      initialDate: new Date().toISOString().split('T')[0],
+      finalAmount: null,
+      finalDate: null,
+      pouringAmount: 0,
+      withdrawalAmount: null,
+      withdrawalDate: null,
+      collectorName: "",
+      status: "ACTIVE",
+      comment: "",
+    });
+  };
+
+  const resetBalanceForm = () => {
+    setBalanceFormData({
+      cardId: selectedCard?.id || 0,
+      date: new Date().toISOString().split('T')[0],
+      startBalance: 0,
+      endBalance: 0,
+      comment: ""
+    });
+  };
+
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString('ru-RU');
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleString('ru-RU');
+  };
+
+  const formatNumber = (number, decimals = 2) => {
+    if (number === null || number === undefined) return "—";
+    return number.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+  };
+
+  const clearFilters = () => {
+    setFilterProvider("");
+    setFilterBank("");
+    setFilterInWork("");  // Очистка нового фильтра
+    setFilterActor("");   // Очистка нового фильтра
+    setFilterPicachu("");
+    setSearchQuery("");
   };
 
   // Click handlers
@@ -352,6 +449,10 @@ export default function Cards() {
       comment: card.comment || "",
       status: card.status,
       picachu: card.picachu || "",
+      cardPrice: card.cardPrice || 0,
+      isPaid: card.isPaid || false,
+      inWork: card.inWork || false,
+      actor: card.actor || ""
     });
     setIsEditModalOpen(true);
   };
@@ -397,91 +498,65 @@ export default function Cards() {
       deletePouringMutation.mutate({ id });
     }
   };
-  
+
   const handleAddBalanceClick = (card) => {
     setSelectedCard(card);
     resetBalanceForm();
     setIsBalanceModalOpen(true);
   };
-  
+
   const handleViewBalancesClick = (card) => {
     setSelectedCard(card);
     setIsViewBalancesModalOpen(true);
   };
-  
+
   const handleEditBalanceClick = (balance) => {
     setSelectedBalance(balance);
     setBalanceFormData({
       cardId: balance.cardId,
       date: new Date(balance.date).toISOString().split('T')[0],
       startBalance: balance.startBalance,
-      endBalance: balance.endBalance
+      endBalance: balance.endBalance,
+      comment: balance.comment || ""
     });
     setIsBalanceModalOpen(true);
   };
-  
+
   const handleDeleteBalanceClick = (id) => {
     if (confirm("Вы уверены, что хотите удалить эту запись баланса? Это действие нельзя отменить.")) {
       deleteBalanceMutation.mutate({ id });
     }
   };
 
-  // Utility functions
-  const handleSort = (column) => {
-    if (sortBy === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+  // Render payment method (C2C/СБП)
+  const renderPaymentMethod = (card) => {
+    const hasCardNumber = card.cardNumber && card.cardNumber.trim() !== "";
+    const hasPhoneNumber = card.phoneNumber && card.phoneNumber.trim() !== "";
+    
+    if (hasCardNumber && hasPhoneNumber) {
+      return (
+        <div className="flex flex-col space-y-1">
+          <div className="text-green-600">C2C: {card.cardNumber}</div>
+          <div className="text-red-600">СБП: {card.phoneNumber}</div>
+        </div>
+      );
+    } else if (hasCardNumber) {
+      return <div className="text-green-600">C2C: {card.cardNumber}</div>;
+    } else if (hasPhoneNumber) {
+      return <div className="text-red-600">СБП: {card.phoneNumber}</div>;
     } else {
-      setSortBy(column);
-      setSortDirection("asc");
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const clearFilters = () => {
-    setFilterProvider("");
-    setFilterBank("");
-    setFilterStatus("");
-    setFilterCollector("");
-    setFilterPicachu("");
-    setSearchQuery("");
-  };
-
-  // Status badge component
-  const StatusBadge = ({ status }) => {
-    switch (status) {
-      case "ACTIVE":
-        return (
-          <Badge color="success" className="flex items-center gap-1">
-            <CheckCircle size={14} />
-            Активна
-          </Badge>
-        );
-      case "WARNING":
-        return (
-          <Badge color="warning" className="flex items-center gap-1">
-            <AlertCircle size={14} />
-            Внимание
-          </Badge>
-        );
-      case "BLOCKED":
-        return (
-          <Badge color="danger" className="flex items-center gap-1">
-            <XCircle size={14} />
-            Заблокирована
-          </Badge>
-        );
-      default:
-        return <Badge>{status}</Badge>;
+      return "—";
     }
   };
 
   // Get the latest pouring for a card
   const getLatestPouring = (card) => {
     return card.pourings && card.pourings.length > 0 ? card.pourings[0] : null;
+  };
+
+  // Get the latest balance for a card
+  const getLatestBalance = (card) => {
+    return card.balances && card.balances.length > 0 ? card.balances[0] : null;
   };
 
   return (
@@ -503,121 +578,32 @@ export default function Cards() {
               />
             </div>
             
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={showDetailedView}
+                onChange={(e) => setShowDetailedView(e.target.checked)}
+              />
+              <span className="text-sm">Детализированный просмотр</span>
+            </div>
+            
             <Button
               variant="flat"
               startContent={<Filter size={18} />}
-              onClick={() => setIsFilterMenuOpen(true)}
+              onPress={() => setIsFilterMenuOpen(true)}
             >
               Фильтры
-              {(filterProvider || filterBank || filterStatus || filterCollector || filterPicachu) && (
+              {(filterProvider || filterBank || filterInWork || filterActor || filterPicachu) && (
                 <Chip size="sm" className="ml-2">
-                  {[filterProvider, filterBank, filterStatus, filterCollector, filterPicachu]
+                  {[filterProvider, filterBank, filterInWork, filterActor, filterPicachu]
                     .filter(Boolean).length}
                 </Chip>
               )}
             </Button>
             
-            <Modal 
-              isOpen={isFilterMenuOpen} 
-              onClose={() => setIsFilterMenuOpen(false)}
-              size="sm"
-            >
-              <ModalContent>
-                <ModalHeader>Фильтры</ModalHeader>
-                <ModalBody>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Поставщик</label>
-                      <Select
-                        value={filterProvider}
-                        onChange={(e) => setFilterProvider(e.target.value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="">Все</SelectItem>
-                        {(Array.isArray(safeFilterOptions.providers) ? safeFilterOptions.providers : []).map(provider => (
-                          <SelectItem key={provider} value={provider}>{provider}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Банк</label>
-                      <Select
-                        value={filterBank}
-                        onChange={(e) => setFilterBank(e.target.value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="">Все</SelectItem>
-                        {(Array.isArray(safeFilterOptions.banks) ? safeFilterOptions.banks : []).map(bank => (
-                          <SelectItem key={bank} value={bank}>{bank}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Статус</label>
-                      <Select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="">Все</SelectItem>
-                        <SelectItem value="ACTIVE">Активна</SelectItem>
-                        <SelectItem value="WARNING">Внимание</SelectItem>
-                        <SelectItem value="BLOCKED">Заблокирована</SelectItem>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Инкассатор</label>
-                      <Select
-                        value={filterCollector}
-                        onChange={(e) => setFilterCollector(e.target.value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="">Все</SelectItem>
-                        {(Array.isArray(safeFilterOptions.collectorNames) ? safeFilterOptions.collectorNames : []).map(name => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Пикачу</label>
-                      <Select
-                        value={filterPicachu}
-                        onChange={(e) => setFilterPicachu(e.target.value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="">Все</SelectItem>
-                        {(Array.isArray(safeFilterOptions.picachus) ? safeFilterOptions.picachus : []).map(picachu => (
-                          <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-                </ModalBody>
-                <ModalFooter>
-                  <Button
-                    variant="flat"
-                    onClick={clearFilters}
-                  >
-                    Сбросить
-                  </Button>
-                  <Button
-                    color="primary"
-                    onClick={() => setIsFilterMenuOpen(false)}
-                  >
-                    Применить
-                  </Button>
-                </ModalFooter>
-              </ModalContent>
-            </Modal>
-            
             <Button
               color="primary"
               startContent={<PlusIcon size={18} />}
-              onClick={() => setIsCreateModalOpen(true)}
+              onPress={() => setIsCreateModalOpen(true)}
             >
               Добавить карту
             </Button>
@@ -625,187 +611,340 @@ export default function Cards() {
             <Button
               isIconOnly
               variant="light"
-              onClick={() => cardsQuery.refetch()}
+              onPress={() => {
+                cardsQuery.refetch();
+                statsQuery.refetch();
+              }}
             >
               <RefreshCw size={18} />
             </Button>
           </div>
         </CardHeader>
         <CardBody>
+          {/* Statistics cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <Card className="bg-blue-50 dark:bg-blue-900/20 shadow-sm">
+              <CardBody className="p-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая стоимость карт</span>
+                  <DollarSign className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {formatNumber(statsQuery.data?.totalCardPrice || 0, 0)}
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card className="bg-green-50 dark:bg-green-900/20 shadow-sm">
+              <CardBody className="p-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая сумма балансов</span>
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {formatNumber(statsQuery.data?.totalInitialBalance || 0, 0)}
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card className="bg-amber-50 dark:bg-amber-900/20 shadow-sm">
+              <CardBody className="p-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая сумма пролитого</span>
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                    {formatNumber(statsQuery.data?.totalPouredAmount || 0, 0)}
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card className="bg-purple-50 dark:bg-purple-900/20 shadow-sm">
+              <CardBody className="p-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Сумма всех выплат</span>
+                  <DollarSign className="w-4 h-4 text-purple-500" />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {formatNumber(statsQuery.data?.totalWithdrawalAmount || 0, 0)}
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+          </div>
+
           {cardsQuery.isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner size="lg" />
             </div>
           ) : (
-            <>
-              <Table aria-label="Cards table">
-                <TableHeader>
-                  <TableColumn className="cursor-pointer" onClick={() => handleSort("externalId")}>
-                    ID {sortBy === "externalId" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableColumn>
-                  <TableColumn className="cursor-pointer" onClick={() => handleSort("provider")}>
-                    Поставщик {sortBy === "provider" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableColumn>
-                  <TableColumn className="cursor-pointer" onClick={() => handleSort("bank")}>
-                    Банк {sortBy === "bank" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableColumn>
-                  <TableColumn className="cursor-pointer" onClick={() => handleSort("cardNumber")}>
-                    Номер карты {sortBy === "cardNumber" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableColumn>
-                  <TableColumn>Тел. номер</TableColumn>
-                  <TableColumn>PIN приложения</TableColumn>
-                  <TableColumn>PIN терминала</TableColumn>
-                  <TableColumn>Начальная сумма</TableColumn>
-                  <TableColumn>Сумма пролитого</TableColumn>
-                  <TableColumn>Конечная сумма</TableColumn>
-                  <TableColumn>Снятие</TableColumn>
-                  <TableColumn>Инкассатор</TableColumn>
-                  <TableColumn>Пикачу</TableColumn>
-                  <TableColumn className="cursor-pointer" onClick={() => handleSort("status")}>
-                    Статус {sortBy === "status" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableColumn>
-                  <TableColumn>Цена</TableColumn>
-                  <TableColumn>Оплачена</TableColumn>
-                  <TableColumn>Действия</TableColumn>
-                </TableHeader>
-                <TableBody>
-                  {cardsQuery.data?.cards.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={15} className="text-center py-6">
-                        Нет данных для отображения
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    cardsQuery.data?.cards.map((card) => {
-                      const latestPouring = getLatestPouring(card);
-                      const latestBalance = card.balances && card.balances.length > 0 
-                        ? card.balances[0] 
-                        : null;
+            <div>
+              {/* Используем простую HTML таблицу вместо компонента Table из HeroUI */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort("id")}
+                      >
+                        <div className="flex items-center">
+                          ID
+                          <ArrowUpDown size={14} className="ml-1" />
+                          {sortBy === "id" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                        </div>
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort("bank")}
+                      >
+                        <div className="flex items-center">
+                          Банк
+                          <ArrowUpDown size={14} className="ml-1" />
+                          {sortBy === "bank" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        C2C / СБП
+                      </th>
+                      {showDetailedView && (
+                        <th 
+                          scope="col" 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                          onClick={() => handleSort("provider")}
+                        >
+                          <div className="flex items-center">
+                            Поставщик
+                            <ArrowUpDown size={14} className="ml-1" />
+                            {sortBy === "provider" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          </div>
+                        </th>
+                      )}
+                      <th 
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort("cardPrice")}
+                      >
+                        <div className="flex items-center">
+                          Стоимость
+                          <ArrowUpDown size={14} className="ml-1" />
+                          {sortBy === "cardPrice" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                        </div>
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort("isPaid")}
+                      >
+                        <div className="flex items-center">
+                          Оплата
+                          <ArrowUpDown size={14} className="ml-1" />
+                          {sortBy === "isPaid" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                        </div>
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort("inWork")}
+                      >
+                        <div className="flex items-center">
+                          В работе
+                          <ArrowUpDown size={14} className="ml-1" />
+                          {sortBy === "inWork" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="flex items-center justify-end">
+                          Баланс на начало
+                          <Tooltip content="Баланс на начало пролива">
+                            <Info size={14} className="ml-1" />
+                          </Tooltip>
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="flex items-center justify-end">
+                          Баланс на конец
+                          <Tooltip content="Баланс на конец пролива">
+                            <Info size={14} className="ml-1" />
+                          </Tooltip>
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="flex items-center justify-end">
+                          Пролито
+                          <Tooltip content="Разница балансов">
+                            <Info size={14} className="ml-1" />
+                          </Tooltip>
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="flex items-center justify-end">
+                          Сумма выплат
+                          <Tooltip content="Общая сумма выплат">
+                            <Info size={14} className="ml-1" />
+                          </Tooltip>
+                        </div>
+                      </th>
+                      {showDetailedView && (
+                        <th 
+                          scope="col" 
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                          onClick={() => handleSort("actor")}
+                        >
+                          <div className="flex items-center">
+                            Актер
+                            <ArrowUpDown size={14} className="ml-1" />
+                            {sortBy === "actor" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          </div>
+                        </th>
+                      )}
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Действия
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {!cardsQuery.data?.cards || cardsQuery.data.cards.length === 0 ? (
+                      <tr>
+                        <td colSpan={showDetailedView ? 13 : 11} className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                          Нет данных для отображения
+                        </td>
+                      </tr>
+                    ) : (
+                      cardsQuery.data.cards.map((card) => {
+                        const latestPouring = getLatestPouring(card);
+                        const latestBalance = getLatestBalance(card);
                         
-                      return (
-                        <TableRow key={card.id}>
-                          <TableCell>{card.externalId}</TableCell>
-                          <TableCell>{card.provider}</TableCell>
-                          <TableCell>{card.bank}</TableCell>
-                          <TableCell>{card.cardNumber}</TableCell>
-                          <TableCell>{card.phoneNumber}</TableCell>
-                          <TableCell>{card.appPin}</TableCell>
-
-                          <TableCell>{card.terminalPin}</TableCell>
-                          <TableCell>
-                            {latestPouring ? (
-                              <Tooltip content={`Дата: ${formatDate(latestPouring.initialDate)}`}>
-                                <span>{latestPouring.initialAmount.toFixed(2)} ₽</span>
-                              </Tooltip>
-                            ) : (
-                              latestBalance ? latestBalance.startBalance.toFixed(2) + " ₽" : "—"
+                        return (
+                          <tr key={card.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.id}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.bank}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">{renderPaymentMethod(card)}</td>
+                            
+                            {showDetailedView && (
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.provider}</td>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            {latestPouring ? latestPouring.pouringAmount.toFixed(2) + " ₽" : "—"}
-                          </TableCell>
-                          <TableCell>
-                            {latestPouring && latestPouring.finalAmount ? (
-                              <Tooltip content={`Дата: ${formatDate(latestPouring.finalDate)}`}>
-                                <span>{latestPouring.finalAmount.toFixed(2)} ₽</span>
-                              </Tooltip>
-                            ) : "—"}
-                          </TableCell>
-                          <TableCell>
-                            {latestPouring && latestPouring.withdrawalAmount ? (
-                              <Tooltip content={`Дата: ${formatDate(latestPouring.withdrawalDate)}`}>
-                                <span>{latestPouring.withdrawalAmount.toFixed(2)} ₽</span>
-                              </Tooltip>
-                            ) : "—"}
-                          </TableCell>
-                          <TableCell>{latestPouring?.collectorName || "—"}</TableCell>
-                          <TableCell>{card.picachu || "—"}</TableCell>
-                          
-                          <TableCell>
-                            <StatusBadge status={card.status} />
-                          </TableCell>
-                          <TableCell>{card.cardPrice}</TableCell>
-                          <TableCell>{card.isPaid ? "Да" : "Нет"}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Tooltip content="Редактировать карту">
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {card.cardPrice ? formatNumber(card.cardPrice, 0) : "—"}
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <Badge color={card.isPaid ? "success" : "warning"}>
+                                {card.isPaid ? "Оплачено" : "Не оплачено"}
+                              </Badge>
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <Badge color={card.inWork ? "primary" : "default"}>
+                                {card.inWork ? "Да" : "Нет"}
+                              </Badge>
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              {latestPouring ? formatNumber(latestPouring.initialAmount) : "—"}
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              {latestPouring && latestPouring.finalAmount ? formatNumber(latestPouring.finalAmount) : "—"}
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              {latestPouring ? formatNumber(latestPouring.pouringAmount) : "—"}
+                            </td>
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              {latestPouring && latestPouring.withdrawalAmount ? formatNumber(latestPouring.withdrawalAmount) : "—"}
+                            </td>
+                            
+                            {showDetailedView && (
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.actor || "—"}</td>
+                            )}
+                            
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex items-center justify-end gap-1">
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
-                                  onClick={() => handleEditCardClick(card)}
+                                  onPress={() => handleEditCardClick(card)}
+                                  title="Редактировать карту"
                                 >
                                   <Edit size={16} />
                                 </Button>
-                              </Tooltip>
-                              
-                              <Tooltip content="Добавить пролив">
+                                
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
                                   color="primary"
-                                  onClick={() => handleAddPouringClick(card)}
+                                  onPress={() => handleAddPouringClick(card)}
+                                  title="Добавить пролив"
                                 >
                                   <DollarSign size={16} />
                                 </Button>
-                              </Tooltip>
-                              
-                              <Tooltip content="История проливов">
+                                
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
                                   color="secondary"
-                                  onClick={() => handleViewPouringsClick(card)}
+                                  onPress={() => handleViewPouringsClick(card)}
+                                  title="История проливов"
                                 >
-                                  <Calendar size={16} />
+                                  <Eye size={16} />
                                 </Button>
-                              </Tooltip>
-                              
-                              <Tooltip content="Добавить баланс">
+                                
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
                                   color="success"
-                                  onClick={() => handleAddBalanceClick(card)}
+                                  onPress={() => handleAddBalanceClick(card)}
+                                  title="Добавить баланс"
                                 >
                                   <DollarSign size={16} />
                                 </Button>
-                              </Tooltip>
-                              
-                              <Tooltip content="История балансов">
+                                
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
                                   color="warning"
-                                  onClick={() => handleViewBalancesClick(card)}
+                                  onPress={() => handleViewBalancesClick(card)}
+                                  title="История балансов"
                                 >
-                                  <RefreshCw size={16} />
+                                  <Calendar size={16} />
                                 </Button>
-                              </Tooltip>
-                              
-                              <Tooltip content="Удалить карту">
+                                
                                 <Button
                                   isIconOnly
                                   size="sm"
                                   variant="light"
                                   color="danger"
-                                  onClick={() => handleDeleteCardClick(card.id)}
+                                  onPress={() => handleDeleteCardClick(card.id)}
+                                  title="Удалить карту"
                                 >
                                   <Trash size={16} />
                                 </Button>
-                              </Tooltip>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
               <div className="flex justify-between items-center mt-4">
                 <div className="text-sm text-gray-500">
@@ -817,58 +956,112 @@ export default function Cards() {
                   onChange={setPage}
                 />
               </div>
-            </>
+            </div>
           )}
         </CardBody>
       </Card>
 
-      {/* общая стоимость */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-  <Card className="bg-blue-50 dark:bg-blue-900/20 shadow-sm">
-    <CardBody className="p-4">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая стоимость</span>
-        <DollarSign className="w-4 h-4 text-blue-500" />
-      </div>
-      <div className="flex items-center">
-        <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-          {cardsQuery.data?.totalCardPrice || 0}
-        </span>
-        <span className="text-xs ml-1 text-gray-500">₽</span>
-      </div>
-    </CardBody>
-  </Card>
+      {/* Filter Modal */}
+      <Modal 
+        isOpen={isFilterMenuOpen} 
+        onClose={() => setIsFilterMenuOpen(false)}
+        size="sm"
+      >
+        <ModalContent>
+          <ModalHeader>Фильтры</ModalHeader>
+          <ModalBody>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Банк</label>
+                <Select
+                  value={filterBank}
+                  onChange={(e) => setFilterBank(e.target.value)}
+                  className="w-full"
+                >
+                  <SelectItem value="">Все</SelectItem>
+                  {(Array.isArray(safeFilterOptions.banks) ? safeFilterOptions.banks : []).map(bank => (
+                    <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                  ))}
+                </Select>
+              </div>
+              
+              {showDetailedView && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Поставщик</label>
+                  <Select
+                    value={filterProvider}
+                    onChange={(e) => setFilterProvider(e.target.value)}
+                    className="w-full"
+                  >
+                    <SelectItem value="">Все</SelectItem>
+                    {(Array.isArray(safeFilterOptions.providers) ? safeFilterOptions.providers : []).map(provider => (
+                      <SelectItem key={provider} value={provider}>{provider}</SelectItem>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">В работе</label>
+                <Select
+                  value={filterInWork}
+                  onChange={(e) => setFilterInWork(e.target.value)}
+                  className="w-full"
+                >
+                  <SelectItem value="">Все</SelectItem>
+                  <SelectItem value="yes">Да</SelectItem>
+                  <SelectItem value="no">Нет</SelectItem>
+                </Select>
+              </div>
+              
+              {showDetailedView && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Актер</label>
+                  <Select
+                    value={filterActor}
+                    onChange={(e) => setFilterActor(e.target.value)}
+                    className="w-full"
+                  >
+                    <SelectItem value="">Все</SelectItem>
+                    {(Array.isArray(safeFilterOptions.actors) ? safeFilterOptions.actors : []).map(actor => (
+                      <SelectItem key={actor} value={actor}>{actor}</SelectItem>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Пикачу</label>
+                <Select
+                  value={filterPicachu}
+                  onChange={(e) => setFilterPicachu(e.target.value)}
+                  className="w-full"
+                >
+                  <SelectItem value="">Все</SelectItem>
+                  {(Array.isArray(safeFilterOptions.picachus) ? safeFilterOptions.picachus : []).map(picachu => (
+                    <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              onPress={clearFilters}
+            >
+              Сбросить
+            </Button>
+            <Button
+              color="primary"
+              onPress={() => setIsFilterMenuOpen(false)}
+            >
+              Применить
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
-  <Card className="bg-green-50 dark:bg-green-900/20 shadow-sm">
-    <CardBody className="p-4">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Оплаченные карты</span>
-        <CheckCircle className="w-4 h-4 text-green-500" />
-      </div>
-      <div className="flex items-center">
-        <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-          {cardsQuery.data?.paidCardsSum || 0}
-        </span>
-        <span className="text-xs ml-1 text-gray-500">₽</span>
-      </div>
-    </CardBody>
-  </Card>
-
-  <Card className="bg-amber-50 dark:bg-amber-900/20 shadow-sm">
-    <CardBody className="p-4">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Неоплаченные карты</span>
-        <AlertCircle className="w-4 h-4 text-amber-500" />
-      </div>
-      <div className="flex items-center">
-        <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-          {cardsQuery.data?.unpaidCardsSum || 0}
-        </span>
-        <span className="text-xs ml-1 text-gray-500">₽</span>
-      </div>
-    </CardBody>
-  </Card>
-</div>
       {/* Create Card Modal */}
       <Modal 
         isOpen={isCreateModalOpen} 
@@ -902,7 +1095,7 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Номер карты</label>
+                      <label className="block text-sm font-medium mb-1">Номер карты (C2C)</label>
                       <Input
                         name="cardNumber"
                         value={cardFormData.cardNumber}
@@ -920,7 +1113,7 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Номер телефона</label>
+                      <label className="block text-sm font-medium mb-1">Номер телефона (СБП)</label>
                       <Input
                         name="phoneNumber"
                         value={cardFormData.phoneNumber}
@@ -968,13 +1161,55 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Начальный баланс</label>
+                      <label className="block text-sm font-medium mb-1">Актер</label>
                       <Input
-                        name="initialBalance"
-                        type="number"
-                        value={cardFormData.initialBalance}
+                        name="actor"
+                        value={cardFormData.actor}
                         onChange={handleCardFormChange}
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Стоимость карты</label>
+                      <Input
+                        name="cardPrice"
+                        type="number"
+                        value={cardFormData.cardPrice}
+                        onChange={handleCardFormChange}
+                      />
+                    </div>
+                    <div className="flex items-start pt-6">
+                      <div className="flex h-5 items-center">
+                        <input
+                          id="isPaid"
+                          name="isPaid"
+                          type="checkbox"
+                          checked={cardFormData.isPaid}
+                          onChange={handleCardFormChange}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                      </div>
+                      <div className="ml-3 text-sm">
+                        <label htmlFor="isPaid" className="font-medium text-gray-700">
+                          Карта оплачена
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex items-start pt-6">
+                      <div className="flex h-5 items-center">
+                        <input
+                          id="inWork"
+                          name="inWork"
+                          type="checkbox"
+                          checked={cardFormData.inWork}
+                          onChange={handleCardFormChange}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                      </div>
+                      <div className="ml-3 text-sm">
+                        <label htmlFor="inWork" className="font-medium text-gray-700">
+                          В работе
+                        </label>
+                      </div>
                     </div>
                     <div className="col-span-2">
                       <label className="block text-sm font-medium mb-1">Комментарий</label>
@@ -1028,7 +1263,7 @@ export default function Cards() {
               </Tabs>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onClick={() => setIsCreateModalOpen(false)}>
+              <Button variant="flat" onPress={() => setIsCreateModalOpen(false)}>
                 Отмена
               </Button>
               <Button color="primary" type="submit" isLoading={createCardMutation.isLoading}>
@@ -1070,7 +1305,7 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Номер карты</label>
+                  <label className="block text-sm font-medium mb-1">Номер карты (C2C)</label>
                   <Input
                     name="cardNumber"
                     value={cardFormData.cardNumber}
@@ -1088,7 +1323,7 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Номер телефона</label>
+                  <label className="block text-sm font-medium mb-1">Номер телефона (СБП)</label>
                   <Input
                     name="phoneNumber"
                     value={cardFormData.phoneNumber}
@@ -1136,6 +1371,57 @@ export default function Cards() {
                     onChange={handleCardFormChange}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Актер</label>
+                  <Input
+                    name="actor"
+                    value={cardFormData.actor}
+                    onChange={handleCardFormChange}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Цена карты</label>
+                  <Input
+                    name="cardPrice"
+                    type="number"
+                    value={cardFormData.cardPrice || ""}
+                    onChange={handleCardFormChange}
+                  />
+                </div>
+                <div className="flex items-start pt-6">
+                  <div className="flex h-5 items-center">
+                    <input
+                      id="isPaid"
+                      name="isPaid"
+                      type="checkbox"
+                      checked={cardFormData.isPaid}
+                      onChange={handleCardFormChange}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="isPaid" className="font-medium text-gray-700">
+                      Карта оплачена
+                    </label>
+                  </div>
+                </div>
+                <div className="flex items-start pt-6">
+                  <div className="flex h-5 items-center">
+                    <input
+                      id="inWork"
+                      name="inWork"
+                      type="checkbox"
+                      checked={cardFormData.inWork}
+                      onChange={handleCardFormChange}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="inWork" className="font-medium text-gray-700">
+                      В работе
+                    </label>
+                  </div>
+                </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium mb-1">Комментарий</label>
                   <Input
@@ -1144,42 +1430,10 @@ export default function Cards() {
                     onChange={handleCardFormChange}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Цена карты</label>
-                  <Input
-                    name="cardPrice"
-                    type="text"
-                    value={String(cardFormData.cardPrice)}
-                    onChange={handleCardFormChange}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Оплачена</label>
-                  <div className="flex items-center mt-2">
-                    <input
-                      type="checkbox"
-                      id="isPaid"
-                      name="isPaid"
-                      checked={cardFormData.isPaid}
-                      onChange={(e) => {
-                        setCardFormData({
-                          ...cardFormData,
-                          isPaid: e.target.checked
-                        });
-                      }}
-                      className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                    />
-                    <label htmlFor="isPaid" className="ml-2 text-sm text-gray-700">
-                      Карта оплачена
-                    </label>
-                  </div>
-                </div>
-
               </div>
-
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onClick={() => setIsEditModalOpen(false)}>
+              <Button variant="flat" onPress={() => setIsEditModalOpen(false)}>
                 Отмена
               </Button>
               <Button color="primary" type="submit" isLoading={updateCardMutation.isLoading}>
@@ -1190,7 +1444,108 @@ export default function Cards() {
         </ModalContent>
       </Modal>
 
-      {/* Create/Edit Pouring Modal */}
+      {/* View Pourings Modal */}
+      <Modal 
+        isOpen={isViewPouringsModalOpen} 
+        onClose={() => setIsViewPouringsModalOpen(false)}
+        size="4xl"
+      >
+        <ModalContent>
+          <ModalHeader>
+            История проливов для карты #{selectedCard?.id} ({selectedCard?.bank})
+          </ModalHeader>
+          <ModalBody>
+            {cardPouringsQuery.isLoading ? (
+              <div className="flex justify-center my-6">
+                <Spinner size="lg" />
+              </div>
+            ) : !cardPouringsQuery.data || cardPouringsQuery.data.length === 0 ? (
+              <div className="text-center py-6 text-gray-500">
+                Нет данных о проливах для этой карты
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата пролива</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Начальная сумма</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата начальной суммы</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Конечная сумма</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата конечной суммы</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Пролито</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Выплата</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата выплаты</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инкассатор</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {cardPouringsQuery.data.map((pouring) => (
+                      <tr key={pouring.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(pouring.pouringDate)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(pouring.initialAmount)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(pouring.initialDate)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{pouring.finalAmount ? formatNumber(pouring.finalAmount) : "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.finalDate ? formatDate(pouring.finalDate) : "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(pouring.pouringAmount)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{pouring.withdrawalAmount ? formatNumber(pouring.withdrawalAmount) : "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.withdrawalDate ? formatDate(pouring.withdrawalDate) : "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.collectorName || "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <Badge color={pouring.status === "ACTIVE" ? "success" : pouring.status === "WARNING" ? "warning" : "danger"}>
+                            {pouring.status === "ACTIVE" ? "Активно" : pouring.status === "WARNING" ? "Внимание" : "Заблокировано"}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => handleEditPouringClick(pouring)}
+                              title="Редактировать пролив"
+                            >
+                              <Edit size={16} />
+                            </Button>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              onPress={() => handleDeletePouringClick(pouring.id)}
+                              title="Удалить пролив"
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button 
+              color="primary" 
+              onPress={() => {
+                handleAddPouringClick(selectedCard);
+                setIsViewPouringsModalOpen(false);
+              }}
+            >
+              Добавить пролив
+            </Button>
+            <Button variant="flat" onPress={() => setIsViewPouringsModalOpen(false)}>
+              Закрыть
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Add/Edit Pouring Modal */}
       <Modal 
         isOpen={isPouringModalOpen} 
         onClose={() => setIsPouringModalOpen(false)}
@@ -1311,7 +1666,7 @@ export default function Cards() {
               </div>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onClick={() => setIsPouringModalOpen(false)}>
+              <Button variant="flat" onPress={() => setIsPouringModalOpen(false)}>
                 Отмена
               </Button>
               <Button 
@@ -1326,104 +1681,98 @@ export default function Cards() {
         </ModalContent>
       </Modal>
 
-      {/* View Pourings Modal */}
+      {/* View Balances Modal */}
       <Modal 
-        isOpen={isViewPouringsModalOpen} 
-        onClose={() => setIsViewPouringsModalOpen(false)}
+        isOpen={isViewBalancesModalOpen} 
+        onClose={() => setIsViewBalancesModalOpen(false)}
         size="3xl"
       >
         <ModalContent>
           <ModalHeader>
-            История проливов для карты {selectedCard?.cardNumber}
+            История балансов для карты #{selectedCard?.id} ({selectedCard?.bank})
           </ModalHeader>
           <ModalBody>
-            {cardDetailsQuery.isLoading ? (
-              <div className="flex justify-center py-8">
+            {cardBalancesQuery.isLoading ? (
+              <div className="flex justify-center my-6">
                 <Spinner size="lg" />
               </div>
-            ) : cardDetailsQuery.data?.pourings.length === 0 ? (
-              <div className="text-center py-6">
-                Нет проливов для отображения
+            ) : !cardBalancesQuery.data || cardBalancesQuery.data.length === 0 ? (
+              <div className="text-center py-6 text-gray-500">
+                Нет данных о балансах для этой карты
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableColumn>Дата</TableColumn>
-                  <TableColumn>Начальная сумма</TableColumn>
-                  <TableColumn>Сумма пролитого</TableColumn>
-                  <TableColumn>Конечная сумма</TableColumn>
-                  <TableColumn>Снятие</TableColumn>
-                  <TableColumn>Инкассатор</TableColumn>
-                  <TableColumn>Статус</TableColumn>
-                  <TableColumn>Действия</TableColumn>
-                </TableHeader>
-                <TableBody>
-                  {cardDetailsQuery.data?.pourings.map((pouring) => (
-                    <TableRow key={pouring.id}>
-                      <TableCell>{formatDate(pouring.pouringDate)}</TableCell>
-                      <TableCell>
-                        <Tooltip content={`Дата: ${formatDate(pouring.initialDate)}`}>
-                          <span>{pouring.initialAmount.toFixed(2)} ₽</span>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>{pouring.pouringAmount.toFixed(2)} ₽</TableCell>
-                      <TableCell>
-                        {pouring.finalAmount ? (
-                          <Tooltip content={`Дата: ${formatDate(pouring.finalDate)}`}>
-                            <span>{pouring.finalAmount.toFixed(2)} ₽</span>
-                          </Tooltip>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {pouring.withdrawalAmount ? (
-                          <Tooltip content={`Дата: ${formatDate(pouring.withdrawalDate)}`}>
-                            <span>{pouring.withdrawalAmount.toFixed(2)} ₽</span>
-                          </Tooltip>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell>{pouring.collectorName || "—"}</TableCell>
-                      <TableCell>
-                        <StatusBadge status={pouring.status} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            onClick={() => handleEditPouringClick(pouring)}
-                          >
-                            <Edit size={16} />
-                          </Button>
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            color="danger"
-                            onClick={() => handleDeletePouringClick(pouring.id)}
-                          >
-                            <Trash size={16} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Начальный баланс</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Конечный баланс</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Разница</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Комментарий</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {cardBalancesQuery.data.map((balance) => (
+                      <tr key={balance.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(balance.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.startBalance)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.endBalance)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.endBalance - balance.startBalance)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{balance.comment || "—"}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              onPress={() => handleEditBalanceClick(balance)}
+                              title="Редактировать баланс"
+                            >
+                              <Edit size={16} />
+                            </Button>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="light"
+                              color="danger"
+                              onPress={() => handleDeleteBalanceClick(balance.id)}
+                              title="Удалить баланс"
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </ModalBody>
           <ModalFooter>
-            <Button color="primary" onClick={() => setIsViewPouringsModalOpen(false)}>
+            <Button 
+              color="primary" 
+              onPress={() => {
+                handleAddBalanceClick(selectedCard);
+                setIsViewBalancesModalOpen(false);
+              }}
+            >
+              Добавить баланс
+            </Button>
+            <Button variant="flat" onPress={() => setIsViewBalancesModalOpen(false)}>
               Закрыть
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
-      
-      {/* Create/Edit Balance Modal */}
+
+      {/* Add/Edit Balance Modal */}
       <Modal 
         isOpen={isBalanceModalOpen} 
         onClose={() => setIsBalanceModalOpen(false)}
+        size="xl"
       >
         <ModalContent>
           <form onSubmit={selectedBalance ? handleUpdateBalanceSubmit : handleCreateBalanceSubmit}>
@@ -1462,10 +1811,18 @@ export default function Cards() {
                     required
                   />
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Комментарий</label>
+                  <Input
+                    name="comment"
+                    value={balanceFormData.comment}
+                    onChange={handleBalanceFormChange}
+                  />
+                </div>
               </div>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onClick={() => setIsBalanceModalOpen(false)}>
+              <Button variant="flat" onPress={() => setIsBalanceModalOpen(false)}>
                 Отмена
               </Button>
               <Button 
@@ -1477,76 +1834,6 @@ export default function Cards() {
               </Button>
             </ModalFooter>
           </form>
-        </ModalContent>
-      </Modal>
-
-      {/* View Balances Modal */}
-      <Modal 
-        isOpen={isViewBalancesModalOpen} 
-        onClose={() => setIsViewBalancesModalOpen(false)}
-        size="2xl"
-      >
-        <ModalContent>
-          <ModalHeader>
-            История балансов для карты {selectedCard?.cardNumber}
-          </ModalHeader>
-          <ModalBody>
-            {cardBalancesQuery.isLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner size="lg" />
-              </div>
-            ) : cardBalancesQuery.data?.length === 0 ? (
-              <div className="text-center py-6">
-                Нет записей балансов для отображения
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableColumn>Дата</TableColumn>
-                  <TableColumn>Начальный баланс</TableColumn>
-                  <TableColumn>Конечный баланс</TableColumn>
-                  <TableColumn>Разница</TableColumn>
-                  <TableColumn>Действия</TableColumn>
-                </TableHeader>
-                <TableBody>
-                  {cardBalancesQuery.data?.map((balance) => (
-                    <TableRow key={balance.id}>
-                      <TableCell>{formatDate(balance.date)}</TableCell>
-                      <TableCell>{balance.startBalance.toFixed(2)} ₽</TableCell>
-                      <TableCell>{balance.endBalance.toFixed(2)} ₽</TableCell>
-                      <TableCell>{(balance.endBalance - balance.startBalance).toFixed(2)} ₽</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            onClick={() => handleEditBalanceClick(balance)}
-                          >
-                            <Edit size={16} />
-                          </Button>
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            color="danger"
-                            onClick={() => handleDeleteBalanceClick(balance.id)}
-                          >
-                            <Trash size={16} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button color="primary" onClick={() => setIsViewBalancesModalOpen(false)}>
-              Закрыть
-            </Button>
-          </ModalFooter>
         </ModalContent>
       </Modal>
     </div>

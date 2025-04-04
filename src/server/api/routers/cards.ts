@@ -3,7 +3,7 @@ import { createTRPCRouter, publicProcedure } from "../trpc";
 
 const CardStatusEnum = z.enum(["ACTIVE", "WARNING", "BLOCKED"]);
 
-// First, let's define a helper function to safely convert any date input to a Date object
+// Helper function to safely convert any date input to a Date object
 const parseDate = (date: string | Date | undefined): Date | undefined => {
   if (!date) return undefined;
   if (date instanceof Date) return date;
@@ -29,6 +29,8 @@ export const cardsRouter = createTRPCRouter({
       status: CardStatusEnum.optional(),
       collectorName: z.string().optional(),
       picachu: z.string().optional(),
+      inWork: z.boolean().optional(), // Новый фильтр "В работе"
+      actor: z.string().optional(),   // Новый фильтр "Актер"
     }))
     .query(async ({ ctx, input }) => {
       const { 
@@ -41,7 +43,9 @@ export const cardsRouter = createTRPCRouter({
         bank,
         status,
         collectorName,
-        picachu
+        picachu,
+        inWork,     // Новое поле
+        actor       // Новое поле
       } = input;
       
       const skip = (page - 1) * pageSize;
@@ -59,6 +63,7 @@ export const cardsRouter = createTRPCRouter({
           { phoneNumber: { contains: searchQuery, mode: "insensitive" } },
           { terminalPin: { contains: searchQuery, mode: "insensitive" } },
           { picachu: { contains: searchQuery, mode: "insensitive" } },
+          { actor: { contains: searchQuery, mode: "insensitive" } }, // Поиск по новому полю
         ];
       }
 
@@ -77,6 +82,16 @@ export const cardsRouter = createTRPCRouter({
 
       if (picachu) {
         whereClause.picachu = { contains: picachu, mode: "insensitive" };
+      }
+      
+      // Новый фильтр по полю "В работе"
+      if (inWork !== undefined) {
+        whereClause.inWork = inWork;
+      }
+      
+      // Новый фильтр по полю "Актер"
+      if (actor) {
+        whereClause.actor = { contains: actor, mode: "insensitive" };
       }
 
       // Collector filter requires joining with pourings
@@ -203,6 +218,110 @@ export const cardsRouter = createTRPCRouter({
       });
     }),
 
+  getStats: publicProcedure
+    .query(async ({ ctx }) => {
+      try {
+        // Получение общего количества карт
+        const totalCardCount = await ctx.db.card.count();
+
+        // Получение суммы стоимости всех карт
+        const totalPriceResult = await ctx.db.card.aggregate({
+          _sum: {
+            cardPrice: true
+          }
+        });
+
+        // Получение суммы оплаченных карт
+        const paidCardsResult = await ctx.db.card.aggregate({
+          where: {
+            isPaid: true
+          },
+          _sum: {
+            cardPrice: true
+          }
+        });
+
+        // Получение суммы неоплаченных карт
+        const unpaidCardsResult = await ctx.db.card.aggregate({
+          where: {
+            isPaid: false
+          },
+          _sum: {
+            cardPrice: true
+          }
+        });
+
+        // Количество карт в работе
+        const inWorkCount = await ctx.db.card.count({
+          where: {
+            inWork: true
+          }
+        });
+
+        // НОВЫЕ РАСЧЕТЫ МЕТРИК -------------------------
+
+        // Сумма всех балансов на начало пролива
+        const initialBalancesResult = await ctx.db.cardPouring.aggregate({
+          _sum: {
+            initialAmount: true
+          }
+        });
+
+        // Сумма всех балансов на конец пролива
+        const finalBalancesResult = await ctx.db.cardPouring.aggregate({
+          where: {
+            finalAmount: { not: null }
+          },
+          _sum: {
+            finalAmount: true
+          }
+        });
+
+        // Общая сумма пролитого
+        const totalPouredResult = await ctx.db.cardPouring.aggregate({
+          _sum: {
+            pouringAmount: true
+          }
+        });
+
+        // Сумма всех выплат
+        const totalWithdrawalResult = await ctx.db.cardPouring.aggregate({
+          where: {
+            withdrawalAmount: { not: null }
+          },
+          _sum: {
+            withdrawalAmount: true
+          }
+        });
+
+        return {
+          totalCardCount,
+          totalCardPrice: totalPriceResult._sum.cardPrice || 0,
+          paidCardsSum: paidCardsResult._sum.cardPrice || 0,
+          unpaidCardsSum: unpaidCardsResult._sum.cardPrice || 0,
+          inWorkCount,
+          // Новые метрики
+          totalInitialBalance: initialBalancesResult._sum.initialAmount || 0,
+          totalFinalBalance: finalBalancesResult._sum.finalAmount || 0,
+          totalPouredAmount: totalPouredResult._sum.pouringAmount || 0,
+          totalWithdrawalAmount: totalWithdrawalResult._sum.withdrawalAmount || 0
+        };
+      } catch (error) {
+        console.error("Error fetching card stats:", error);
+        return {
+          totalCardCount: 0,
+          totalCardPrice: 0,
+          paidCardsSum: 0,
+          unpaidCardsSum: 0,
+          inWorkCount: 0,
+          totalInitialBalance: 0,
+          totalFinalBalance: 0,
+          totalPouredAmount: 0,
+          totalWithdrawalAmount: 0
+        };
+      }
+    }),
+
   create: publicProcedure
     .input(z.object({
       externalId: z.number().int(),
@@ -223,6 +342,8 @@ export const cardsRouter = createTRPCRouter({
       collectorName: z.string().optional(),
       cardPrice: z.number().optional(),
       isPaid: z.boolean().optional(),
+      inWork: z.boolean().optional(),   // Новое поле
+      actor: z.string().optional(),     // Новое поле
     }))
     .mutation(async ({ ctx, input }) => {
       const { 
@@ -233,6 +354,8 @@ export const cardsRouter = createTRPCRouter({
         collectorName,
         cardPrice,
         isPaid,
+        inWork,     // Новое поле
+        actor,      // Новое поле
         ...cardData 
       } = input;
       
@@ -241,7 +364,9 @@ export const cardsRouter = createTRPCRouter({
         data: {
           ...cardData,
           cardPrice,
-          isPaid
+          isPaid,
+          inWork: inWork ?? false,    // По умолчанию не в работе
+          actor,                      // Актер может быть null
         },
       });
 
@@ -293,6 +418,8 @@ export const cardsRouter = createTRPCRouter({
       picachu: z.string().optional(),
       cardPrice: z.string().optional(),
       isPaid: z.boolean().optional(),
+      inWork: z.boolean().optional(),   // Новое поле
+      actor: z.string().optional(),     // Новое поле
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
@@ -301,7 +428,9 @@ export const cardsRouter = createTRPCRouter({
         data: {
           ...data,
           cardPrice: data.cardPrice ? parseFloat(data.cardPrice) : null,
-          isPaid: data.isPaid
+          isPaid: data.isPaid,
+          inWork: data.inWork,       // Новое поле
+          actor: data.actor,         // Новое поле
         },
       });
     }),
@@ -377,7 +506,8 @@ export const cardsRouter = createTRPCRouter({
       cardId: z.number().int(),
       date: z.date(),
       startBalance: z.number(),
-      endBalance: z.number()
+      endBalance: z.number(),
+      comment: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.cardBalance.create({
@@ -469,11 +599,27 @@ export const cardsRouter = createTRPCRouter({
       });
     }),
     
+  // Get all pourings for a card
+  getCardPourings: publicProcedure
+    .input(z.object({
+      cardId: z.number().int(),
+    }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.cardPouring.findMany({
+        where: {
+          cardId: input.cardId
+        },
+        orderBy: {
+          pouringDate: "desc"
+        }
+      });
+    }),
+    
   // Get unique values for filters
   getFilterOptions: publicProcedure
     .query(async ({ ctx }) => {
       try {
-        const [providers, banks, collectorNames, picachus] = await Promise.all([
+        const [providers, banks, collectorNames, picachus, actors] = await Promise.all([
           ctx.db.card.findMany({
             select: { provider: true },
             distinct: ['provider'],
@@ -504,6 +650,17 @@ export const cardsRouter = createTRPCRouter({
             select: { picachu: true },
             distinct: ['picachu'],
           }),
+          // Получение уникальных значений для поля "Актер"
+          ctx.db.card.findMany({
+            where: { 
+              actor: { 
+                not: null,
+                not: ""
+              } 
+            },
+            select: { actor: true },
+            distinct: ['actor'],
+          }),
         ]);
 
         return {
@@ -511,6 +668,7 @@ export const cardsRouter = createTRPCRouter({
           banks: banks.map(b => b.bank),
           collectorNames: collectorNames.map(c => c.collectorName).filter(Boolean),
           picachus: picachus.map(p => p.picachu).filter(Boolean),
+          actors: actors.map(a => a.actor).filter(Boolean), // Добавление нового фильтра
         };
       } catch (error) {
         console.error("Error fetching filter options:", error);
@@ -519,6 +677,7 @@ export const cardsRouter = createTRPCRouter({
           banks: [],
           collectorNames: [],
           picachus: [],
+          actors: [], // Добавление нового фильтра
         };
       }
     }),

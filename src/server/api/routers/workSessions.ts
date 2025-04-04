@@ -38,7 +38,7 @@ export const workSessionsRouter = createTRPCRouter({
         const workSessions = await ctx.db.workSession.findMany({
           where,
           include: {
-            idexCabinets: true,
+            WorkSessionIdexCabinet: true,
             user: true,
 
           },
@@ -46,10 +46,21 @@ export const workSessionsRouter = createTRPCRouter({
           skip: (page - 1) * pageSize,
           take: pageSize,
         });
+
+        // Get all IDEX cabinets associated with the work sessions
+        const idexCabinetIds = workSessions
+          .flatMap(session => session.WorkSessionIdexCabinet)
+          .map(relation => relation.idexCabinetId);
+
+        const idexCabinets = await ctx.db.idexCabinet.findMany({
+          where: { id: { in: idexCabinetIds } },
+          select: { id: true, idexId: true, login: true }
+        });
         
         return {
           success: true,
           workSessions,
+          idexCabinets,
           pagination: {
             totalSessions,
             totalPages,

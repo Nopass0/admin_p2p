@@ -104,7 +104,7 @@ export function UserWorkSessionsTab({ userId }: UserWorkSessionsTabProps) {
     );
   }
 
-  const { workSessions, pagination } = data;
+  const { workSessions, pagination, idexCabinets } = data;
 
   return (
     <div className="space-y-4">
@@ -197,13 +197,16 @@ export function UserWorkSessionsTab({ userId }: UserWorkSessionsTabProps) {
                   <TableCell>{formatDate(session.endTime)}</TableCell>
                   <TableCell>{formatDuration(session.duration)}</TableCell>
                   <TableCell>
-                    {session.idexCabinets && session.idexCabinets.length > 0 ? (
+                    {session.WorkSessionIdexCabinet && session.WorkSessionIdexCabinet.length > 0 ? (
                       <div className="flex flex-col gap-1">
-                        {session.idexCabinets.map((cabinet) => (
-                          <Badge key={cabinet.id} color="secondary" variant="flat" size="sm" className="mr-1">
-                            IDEX #{cabinet.idexId}
-                          </Badge>
-                        ))}
+                        {session.WorkSessionIdexCabinet.map((cabinet) => {
+                          const idexCabinet = idexCabinets.find(c => c.id === cabinet.idexCabinetId);
+                          return (
+                            <Badge key={cabinet.idexCabinetId} color="secondary" variant="flat" size="sm" className="mr-1">
+                              IDEX {idexCabinet ? `(ID: ${idexCabinet.idexId})` : ''}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     ) : (
                       <span className="text-zinc-500 dark:text-zinc-400 text-sm">Нет кабинетов</span>
