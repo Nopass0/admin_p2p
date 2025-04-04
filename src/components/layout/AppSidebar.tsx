@@ -108,7 +108,12 @@ const navigationSections = [
         title: "Пароли",
         href: "/passwords",
         icon: LockKeyhole
-      }
+      },
+      {
+        title: "Зарплаты",
+        href: "/salary",
+        icon: Banknote
+      },
     ]
   }
 ];

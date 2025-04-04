@@ -70,7 +70,9 @@ export default function SalaryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState(null);
+  const [selectedEarning, setSelectedEarning] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isEarningEditMode, setIsEarningEditMode] = useState(false);
   
   // Использование useDisclosure для модальных окон
   const { 
@@ -83,6 +85,12 @@ export default function SalaryPage() {
     isOpen: isDebtDialogOpen, 
     onOpen: openDebtDialog, 
     onClose: closeDebtDialog 
+  } = useDisclosure();
+  
+  const { 
+    isOpen: isEarningDialogOpen, 
+    onOpen: openEarningDialog, 
+    onClose: closeEarningDialog 
   } = useDisclosure();
   
   const { 
@@ -109,6 +117,8 @@ export default function SalaryPage() {
     position: "",
     startDate: dayjs().format("YYYY-MM-DD"),
     payday: 10,
+    payday2: 20,  // Второй день выплаты (для TWICE_MONTH)
+    payday3: 30,  // Третий день выплаты (для THRICE_MONTH)
     paydayMonth: "",
     fixedSalary: "",
     comment: "",
@@ -127,10 +137,17 @@ export default function SalaryPage() {
     description: ""
   });
   
+  const [earningForm, setEarningForm] = useState({
+    amount: "",
+    earningDate: dayjs().format("YYYY-MM-DD"),
+    description: ""
+  });
+  
   // Состояния для валидации
   const [employeeErrors, setEmployeeErrors] = useState({});
   const [paymentErrors, setPaymentErrors] = useState({});
   const [debtErrors, setDebtErrors] = useState({});
+  const [earningErrors, setEarningErrors] = useState({});
   
   // Состояние для уведомлений
   const [alert, setAlert] = useState({
@@ -182,6 +199,16 @@ export default function SalaryPage() {
   // Получение долгов для выбранного сотрудника
   const debtsQuery = api.salary.getEmployeeDebts.useQuery(
     { employeeId: selectedEmployee || 0 },
+    { enabled: !!selectedEmployee }
+  );
+
+  // Получение заработков для выбранного сотрудника с учетом фильтра дат
+  const earningsQuery = api.salary.getEmployeeEarnings.useQuery(
+    { 
+      employeeId: selectedEmployee || 0,
+      startDate: dateFilter.startDate ? new Date(dateFilter.startDate) : undefined,
+      endDate: dateFilter.endDate ? new Date(dateFilter.endDate) : undefined
+    },
     { enabled: !!selectedEmployee }
   );
 
@@ -350,6 +377,63 @@ export default function SalaryPage() {
     },
   });
 
+  // Мутации для работы с заработками
+  const addEarningMutation = api.salary.addEarning.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Заработок успешно добавлен", "success");
+      if (selectedEmployee) {
+        earningsQuery.refetch();
+        employeesQuery.refetch();
+      }
+      // Сбросить форму
+      setEarningForm({
+        amount: "",
+        earningDate: dayjs().format("YYYY-MM-DD"),
+        description: ""
+      });
+      setEarningErrors({});
+      setIsEarningEditMode(false);
+      setSelectedEarning(null);
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при добавлении заработка: ${error.message}`, "danger");
+    },
+  });
+
+  const updateEarningMutation = api.salary.updateEarning.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Заработок успешно обновлен", "success");
+      if (selectedEmployee) {
+        earningsQuery.refetch();
+        employeesQuery.refetch();
+      }
+      setIsEarningEditMode(false);
+      setSelectedEarning(null);
+      // Сбросить форму
+      setEarningForm({
+        amount: "",
+        earningDate: dayjs().format("YYYY-MM-DD"),
+        description: ""
+      });
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при обновлении заработка: ${error.message}`, "danger");
+    },
+  });
+
+  const deleteEarningMutation = api.salary.deleteEarning.useMutation({
+    onSuccess: () => {
+      showAlert("Успешно", "Заработок успешно удален", "success");
+      if (selectedEmployee) {
+        earningsQuery.refetch();
+        employeesQuery.refetch();
+      }
+    },
+    onError: (error) => {
+      showAlert("Ошибка", `Ошибка при удалении заработка: ${error.message}`, "danger");
+    },
+  });
+
   // Валидация формы сотрудника
   const validateEmployeeForm = () => {
     const errors = {};
@@ -367,7 +451,19 @@ export default function SalaryPage() {
     }
     
     if (!employeeForm.payday || employeeForm.payday < 1 || employeeForm.payday > 31) {
-      errors.payday = "День выплаты должен быть от 1 до 31";
+      errors.payday = "Первый день выплаты должен быть от 1 до 31";
+    }
+    
+    // Проверка второго дня выплаты для TWICE_MONTH и THRICE_MONTH
+    if ((employeeForm.periodic === "TWICE_MONTH" || employeeForm.periodic === "THRICE_MONTH") && 
+        (!employeeForm.payday2 || employeeForm.payday2 < 1 || employeeForm.payday2 > 31)) {
+      errors.payday2 = "Второй день выплаты должен быть от 1 до 31";
+    }
+    
+    // Проверка третьего дня выплаты для THRICE_MONTH
+    if (employeeForm.periodic === "THRICE_MONTH" && 
+        (!employeeForm.payday3 || employeeForm.payday3 < 1 || employeeForm.payday3 > 31)) {
+      errors.payday3 = "Третий день выплаты должен быть от 1 до 31";
     }
     
     if (employeeForm.paydayMonth && (employeeForm.paydayMonth < 1 || employeeForm.paydayMonth > 12)) {
@@ -414,19 +510,37 @@ export default function SalaryPage() {
     return Object.keys(errors).length === 0;
   };
 
+  // Валидация формы заработка
+  const validateEarningForm = () => {
+    const errors = {};
+    
+    if (!earningForm.amount || parseFloat(earningForm.amount) <= 0) {
+      errors.amount = "Сумма заработка должна быть положительным числом";
+    }
+    
+    if (!earningForm.earningDate) {
+      errors.earningDate = "Укажите дату заработка";
+    }
+    
+    setEarningErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   // Обработчики форм
   const handleEmployeeSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!validateEmployeeForm()) {
       return;
     }
-    
+
     createEmployeeMutation.mutate({
       fullName: employeeForm.fullName,
       position: employeeForm.position,
       startDate: new Date(employeeForm.startDate),
       payday: parseInt(employeeForm.payday),
+      payday2: employeeForm.periodic !== "ONCE_MONTH" ? parseInt(employeeForm.payday2) : undefined,
+      payday3: employeeForm.periodic === "THRICE_MONTH" ? parseInt(employeeForm.payday3) : undefined,
       paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
       fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
       comment: employeeForm.comment,
@@ -479,6 +593,35 @@ export default function SalaryPage() {
     });
   };
 
+  // Обработчик формы заработка
+  const handleEarningSubmit = (e) => {
+    e.preventDefault();
+    
+    if (!validateEarningForm()) {
+      return;
+    }
+    
+    if (!selectedEmployee) return;
+    
+    if (isEarningEditMode && selectedEarning) {
+      // Обновляем существующий заработок
+      updateEarningMutation.mutate({
+        earningId: selectedEarning,
+        amount: parseFloat(earningForm.amount),
+        earningDate: new Date(earningForm.earningDate),
+        description: earningForm.description,
+      });
+    } else {
+      // Добавляем новый заработок
+      addEarningMutation.mutate({
+        salaryId: selectedEmployee,
+        amount: parseFloat(earningForm.amount),
+        earningDate: new Date(earningForm.earningDate),
+        description: earningForm.description,
+      });
+    }
+  };
+
   // Обработчик редактирования выплаты
   const handleEditPayment = (payment) => {
     setSelectedPayment(payment.id);
@@ -490,10 +633,28 @@ export default function SalaryPage() {
     setIsEditMode(true);
   };
 
+  // Обработчик редактирования заработка
+  const handleEditEarning = (earning) => {
+    setSelectedEarning(earning.id);
+    setEarningForm({
+      amount: earning.amount.toString(),
+      earningDate: dayjs(earning.earningDate).format("YYYY-MM-DD"),
+      description: earning.description || ""
+    });
+    setIsEarningEditMode(true);
+  };
+
   // Обработчик удаления выплаты
   const handleDeletePayment = (paymentId) => {
     if (confirm("Вы уверены, что хотите удалить эту выплату?")) {
       deletePaymentMutation.mutate({ paymentId });
+    }
+  };
+
+  // Обработчик удаления заработка
+  const handleDeleteEarning = (earningId) => {
+    if (confirm("Вы уверены, что хотите удалить этот заработок?")) {
+      deleteEarningMutation.mutate({ earningId });
     }
   };
 
@@ -505,6 +666,17 @@ export default function SalaryPage() {
       amount: "",
       paymentDate: dayjs().format("YYYY-MM-DD"),
       comment: ""
+    });
+  };
+
+  // Отмена редактирования заработка
+  const cancelEditEarning = () => {
+    setIsEarningEditMode(false);
+    setSelectedEarning(null);
+    setEarningForm({
+      amount: "",
+      earningDate: dayjs().format("YYYY-MM-DD"),
+      description: ""
     });
   };
 
@@ -545,6 +717,13 @@ export default function SalaryPage() {
     }));
   };
 
+  const handleEarningFormChange = (field, value) => {
+    setEarningForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
   // Обработка фильтра дат
   const handleDateFilterChange = (field, value) => {
     setDateFilter(prev => ({
@@ -558,6 +737,7 @@ export default function SalaryPage() {
     employeesQuery.refetch();
     if (selectedEmployee) {
       paymentsQuery.refetch();
+      earningsQuery.refetch();
     }
   };
 
@@ -571,6 +751,7 @@ export default function SalaryPage() {
     employeesQuery.refetch();
     if (selectedEmployee) {
       paymentsQuery.refetch();
+      earningsQuery.refetch();
     }
   };
 
@@ -588,6 +769,13 @@ export default function SalaryPage() {
     openDebtDialog();
   };
 
+  // Открытие модального окна заработков
+  const handleOpenEarningDialog = (employeeId) => {
+    setSelectedEmployee(employeeId);
+    setActiveTab("earnings");
+    openEarningDialog();
+  };
+
   // Открытие модального окна редактирования сотрудника
   const handleEditEmployee = (employee) => {
     setSelectedEmployee(employee.id);
@@ -597,9 +785,11 @@ export default function SalaryPage() {
       position: employee.position,
       startDate: dayjs(employee.startDate).format("YYYY-MM-DD"),
       payday: employee.payday,
+      payday2: employee.payday2 || 20, // Второй день выплаты (используем значение из БД или дефолтное)
+      payday3: employee.payday3 || 30, // Третий день выплаты (используем значение из БД или дефолтное)
       paydayMonth: employee.paydayMonth ? employee.paydayMonth.toString() : "",
       fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : "",
-      comment: employee.comment,
+      comment: employee.comment || "",
       periodic: employee.periodic
     });
     openEditEmployeeDialog();
@@ -780,12 +970,13 @@ export default function SalaryPage() {
               <TableColumn>Фиксированная зарплата</TableColumn>
               <TableColumn>Выплаты {getPeriodText()}</TableColumn>
               <TableColumn>Долги {getPeriodText()}</TableColumn>
+              <TableColumn>Заработки {getPeriodText()}</TableColumn>
               <TableColumn>Действия</TableColumn>
             </TableHeader>
             <TableBody>
               {employeesQuery.isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10">
+                  <TableCell colSpan={9} className="text-center py-10">
                     <div className="flex justify-center">
                       <Spinner size="lg" color="primary" />
                     </div>
@@ -793,7 +984,7 @@ export default function SalaryPage() {
                 </TableRow>
               ) : employeesQuery.data?.employees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10 text-gray-500">
+                  <TableCell colSpan={9} className="text-center py-10 text-gray-500">
                     Нет данных о сотрудниках
                   </TableCell>
                 </TableRow>
@@ -861,6 +1052,29 @@ export default function SalaryPage() {
                       </Button>
                     </TableCell>
                     <TableCell>
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => handleOpenEarningDialog(employee.id)}
+                        className="text-left w-full justify-start hover:bg-transparent hover:underline h-auto p-0"
+                      >
+                        {employee.totalEarning > 0 ? (
+                          <div>
+                            <div className="font-medium text-success">
+                              {formatCurrency(employee.totalEarning)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {employee.earningsCount} {
+                                employee.earningsCount === 1 ? "заработок" : 
+                                employee.earningsCount < 5 ? "заработка" : "заработков"
+                              }
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">Нет заработков</span>
+                        )}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
                       <Dropdown>
                         <DropdownTrigger>
                           <Button 
@@ -883,6 +1097,12 @@ export default function SalaryPage() {
                             onClick={() => handleOpenDebtDialog(employee.id)}
                           >
                             Долги
+                          </DropdownItem>
+                          <DropdownItem 
+                            startContent={<DollarSign className="w-4 h-4 mr-2" />}
+                            onClick={() => handleOpenEarningDialog(employee.id)}
+                          >
+                            Заработки
                           </DropdownItem>
                           <DropdownItem 
                             startContent={<Edit className="w-4 h-4 mr-2" />}
@@ -930,21 +1150,24 @@ export default function SalaryPage() {
         )}
       </Card>
 
-      {/* Объединенное модальное окно для выплат и долгов */}
+      {/* Объединенное модальное окно для выплат, долгов и заработков */}
       <Modal 
-        isOpen={isPaymentDialogOpen || isDebtDialogOpen} 
+        isOpen={isPaymentDialogOpen || isDebtDialogOpen || isEarningDialogOpen} 
         onClose={() => {
           if (isPaymentDialogOpen) closePaymentDialog();
           if (isDebtDialogOpen) closeDebtDialog();
+          if (isEarningDialogOpen) closeEarningDialog();
           setIsEditMode(false);
+          setIsEarningEditMode(false);
           setSelectedPayment(null);
+          setSelectedEarning(null);
         }}
         size="2xl" // Делаем диалог широким
       >
         <ModalContent>
           <ModalHeader>
             <div className="flex flex-col">
-              <h3 className="text-lg font-medium">Управление выплатами и долгами</h3>
+              <h3 className="text-lg font-medium">Управление выплатами, долгами и заработками</h3>
               {employeeDetailsQuery.data?.employee && (
                 <div className="space-y-1">
                   <p className="text-sm text-gray-700 font-medium">
@@ -972,6 +1195,7 @@ export default function SalaryPage() {
             >
               <Tab key="payments" title="Выплаты" />
               <Tab key="debts" title="Долги" />
+              <Tab key="earnings" title="Заработки" />
             </Tabs>
           </ModalHeader>
           <ModalBody>
@@ -1010,6 +1234,7 @@ export default function SalaryPage() {
                     if (selectedEmployee) {
                       paymentsQuery.refetch();
                       debtsQuery.refetch();
+                      earningsQuery.refetch();
                     }
                   }}
                   startIcon={<Filter className="w-4 h-4" />}
@@ -1028,6 +1253,7 @@ export default function SalaryPage() {
                     if (selectedEmployee) {
                       paymentsQuery.refetch();
                       debtsQuery.refetch();
+                      earningsQuery.refetch();
                     }
                   }}
                 >
@@ -1040,14 +1266,14 @@ export default function SalaryPage() {
               <div className="space-y-4">
                 {/* Общая информация о выплатах */}
                 {paymentsQuery.data?.totalSum > 0 && (
-                  <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                  <div className="bg-blue-50 dark:bg-zinc-800 p-4 rounded-lg mb-4">
                     <div className="flex items-center">
-                      <DollarSign className="w-5 h-5 text-blue-600 mr-2" />
+                      <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
                       <div>
-                        <p className="text-blue-600 font-medium">
+                        <p className="text-blue-600 dark:text-blue-400 font-medium">
                           Общая сумма выплат {getPeriodText()}: {formatCurrency(paymentsQuery.data.totalSum)}
                         </p>
-                        <p className="text-sm text-blue-500">
+                        <p className="text-sm text-blue-500 dark:text-zinc-400">
                           Количество выплат: {paymentsQuery.data.payments.length}
                         </p>
                       </div>
@@ -1057,23 +1283,6 @@ export default function SalaryPage() {
                 
                 <div className="flex justify-between items-center">
                   <h3 className="text-md font-medium">Список выплат</h3>
-                  <Button 
-                    size="sm" 
-                    color="primary"
-                    onClick={() => {
-                      setPaymentForm({
-                        amount: "",
-                        paymentDate: dayjs().format("YYYY-MM-DD"),
-                        comment: ""
-                      });
-                      setPaymentErrors({});
-                      setIsEditMode(false);
-                      setSelectedPayment(null);
-                    }}
-                    startIcon={<Plus className="w-4 h-4" />}
-                  >
-                    Добавить выплату
-                  </Button>
                 </div>
                 
                 {paymentsQuery.isLoading ? (
@@ -1081,13 +1290,13 @@ export default function SalaryPage() {
                     <Spinner size="lg" color="primary" />
                   </div>
                 ) : paymentsQuery.data?.payments.length === 0 ? (
-                  <div className="bg-gray-50 text-center py-8 rounded-lg">
+                  <div className="bg-gray-50 dark:bg-zinc-800 text-center py-8 rounded-lg">
                     <p className="text-gray-500">
                       Нет данных о выплатах{dateFilter.startDate || dateFilter.endDate ? " за выбранный период" : ""}
                     </p>
                   </div>
                 ) : (
-                  <div className="max-h-96 overflow-auto border rounded-lg">
+                  <div className="max-h-96 overflow-auto border dark:border-zinc-700 rounded-lg">
                     <Table>
                       <TableHeader>
                         <TableColumn>Дата</TableColumn>
@@ -1210,14 +1419,14 @@ export default function SalaryPage() {
               <div className="space-y-4">
                 {/* Общая информация о долгах */}
                 {debtsQuery.data?.totalDebt > 0 && (
-                  <div className="bg-red-50 p-4 rounded-lg mb-4">
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg mb-4">
                     <div className="flex items-center">
-                      <DollarSign className="w-5 h-5 text-red-600 mr-2" />
+                      <DollarSign className="w-5 h-5 text-red-600 dark:text-red-400 mr-2" />
                       <div>
-                        <p className="text-red-600 font-medium">
+                        <p className="text-red-600 dark:text-red-400 font-medium">
                           Общая сумма долгов: {formatCurrency(debtsQuery.data.totalDebt)}
                         </p>
-                        <p className="text-sm text-red-500">
+                        <p className="text-sm text-red-500 dark:text-red-400">
                           Неоплаченных долгов: {debtsQuery.data.debts.filter(d => !d.isPaid).length}
                         </p>
                       </div>
@@ -1227,21 +1436,6 @@ export default function SalaryPage() {
                 
                 <div className="flex justify-between items-center">
                   <h3 className="text-md font-medium">Список долгов</h3>
-                  <Button 
-                    size="sm" 
-                    color="primary"
-                    onClick={() => {
-                      setDebtForm({
-                        amount: "",
-                        debtDate: dayjs().format("YYYY-MM-DD"),
-                        description: ""
-                      });
-                      setDebtErrors({});
-                    }}
-                    startIcon={<Plus className="w-4 h-4" />}
-                  >
-                    Добавить долг
-                  </Button>
                 </div>
                 
                 {debtsQuery.isLoading ? (
@@ -1249,7 +1443,7 @@ export default function SalaryPage() {
                     <Spinner size="lg" color="primary" />
                   </div>
                 ) : debtsQuery.data?.debts.length === 0 ? (
-                  <div className="bg-gray-50 text-center py-8 rounded-lg">
+                  <div className="bg-gray-50 dark:bg-gray-900/20 text-center py-8 rounded-lg">
                     <p className="text-gray-500">
                       Нет данных о долгах
                     </p>
@@ -1369,6 +1563,160 @@ export default function SalaryPage() {
                 </form>
               </div>
             )}
+            
+            {/* Вкладка заработков */}
+            {activeTab === "earnings" && (
+              <div className="space-y-4">
+                {/* Общая информация о заработках */}
+                {earningsQuery.data?.totalSum > 0 && (
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mb-4">
+                    <div className="flex items-center">
+                      <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400 mr-2" />
+                      <div>
+                        <p className="text-green-600 dark:text-green-400 font-medium">
+                          Общая сумма заработков {getPeriodText()}: {formatCurrency(earningsQuery.data.totalSum)}
+                        </p>
+                        <p className="text-sm text-green-500 dark:text-green-400">
+                          Количество заработков: {earningsQuery.data.earnings.length}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center">
+                  <h3 className="text-md font-medium">Список заработков</h3>
+                </div>
+                
+                {earningsQuery.isLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Spinner size="lg" color="primary" />
+                  </div>
+                ) : earningsQuery.data?.earnings.length === 0 ? (
+                  <div className="bg-gray-50 dark:bg-gray-900/20 text-center py-8 rounded-lg">
+                    <p className="text-gray-500">
+                      Нет данных о заработках{dateFilter.startDate || dateFilter.endDate ? " за выбранный период" : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-96 overflow-auto border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableColumn>Дата</TableColumn>
+                        <TableColumn>Сумма</TableColumn>
+                        <TableColumn>Описание</TableColumn>
+                        <TableColumn width={120}>Действия</TableColumn>
+                      </TableHeader>
+                      <TableBody>
+                        {earningsQuery.data?.earnings.map((earning) => (
+                          <TableRow key={earning.id}>
+                            <TableCell>{formatDate(earning.earningDate)}</TableCell>
+                            <TableCell>
+                              <span className="font-medium">{formatCurrency(earning.amount)}</span>
+                            </TableCell>
+                            <TableCell>{earning.description || "—"}</TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Tooltip content="Редактировать">
+                                  <Button 
+                                    size="sm" 
+                                    isIconOnly
+                                    variant="flat"
+                                    onClick={() => handleEditEarning(earning)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                </Tooltip>
+                                <Tooltip content="Удалить">
+                                  <Button 
+                                    size="sm" 
+                                    isIconOnly
+                                    variant="flat"
+                                    color="danger"
+                                    onClick={() => handleDeleteEarning(earning.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </Tooltip>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                
+                <Divider className="my-4" />
+                
+                <form onSubmit={handleEarningSubmit} className="space-y-4 pt-2">
+                  <h3 className="text-md font-medium">
+                    {isEarningEditMode ? "Редактировать заработок" : "Добавить заработок"}
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Сумма заработка</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={earningForm.amount}
+                        onChange={(e) => handleEarningFormChange('amount', e.target.value)}
+                        isInvalid={!!earningErrors.amount}
+                        errorMessage={earningErrors.amount}
+                        aria-label="Сумма заработка"
+                        startContent={<DollarSign className="w-4 h-4 text-gray-400" />}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Дата заработка</label>
+                      <Input
+                        type="date"
+                        value={earningForm.earningDate}
+                        onChange={(e) => handleEarningFormChange('earningDate', e.target.value)}
+                        isInvalid={!!earningErrors.earningDate}
+                        errorMessage={earningErrors.earningDate}
+                        startContent={<Calendar className="w-4 h-4 text-gray-400" />}
+                        aria-label="Дата заработка"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Описание</label>
+                    <Textarea
+                      placeholder="Добавьте описание заработка (необязательно)"
+                      value={earningForm.description}
+                      onChange={(e) => handleEarningFormChange('description', e.target.value)}
+                      aria-label="Описание заработка"
+                      size="sm"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4">
+                    {isEarningEditMode && (
+                      <Button
+                        variant="flat"
+                        onClick={cancelEditEarning}
+                        startIcon={<X className="w-4 h-4" />}
+                      >
+                        Отменить
+                      </Button>
+                    )}
+                    <Button
+                      color="primary"
+                      type="submit"
+                      isLoading={addEarningMutation.isLoading || updateEarningMutation.isLoading}
+                      startIcon={isEarningEditMode ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    >
+                      {isEarningEditMode ? "Сохранить изменения" : "Добавить заработок"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button
@@ -1377,8 +1725,11 @@ export default function SalaryPage() {
               onClick={() => {
                 if (isPaymentDialogOpen) closePaymentDialog();
                 if (isDebtDialogOpen) closeDebtDialog();
+                if (isEarningDialogOpen) closeEarningDialog();
                 setIsEditMode(false);
+                setIsEarningEditMode(false);
                 setSelectedPayment(null);
+                setSelectedEarning(null);
               }}
             >
               Закрыть
@@ -1440,8 +1791,12 @@ export default function SalaryPage() {
                 />
               </div>
               
+              {/* Основной день выплаты */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">День выплаты зарплаты</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {employeeForm.periodic === "ONCE_MONTH" ? "День выплаты зарплаты" : 
+                   employeeForm.periodic === "TWICE_MONTH" ? "Первый день выплаты" : "Первый день выплаты"}  
+                </label>
                 <Input
                   type="number"
                   min="1"
@@ -1450,11 +1805,43 @@ export default function SalaryPage() {
                   onChange={(e) => handleEmployeeFormChange('payday', e.target.value)}
                   isInvalid={!!employeeErrors.payday}
                   errorMessage={employeeErrors.payday}
-                  aria-label="День выплаты зарплаты"
+                  aria-label="Первый день выплаты зарплаты"
                 />
               </div>
               
-
+              {/* Второй день выплаты (отображается только если выбрано два или три раза в месяц) */}
+              {(employeeForm.periodic === "TWICE_MONTH" || employeeForm.periodic === "THRICE_MONTH") && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Второй день выплаты</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={employeeForm.payday2}
+                    onChange={(e) => handleEmployeeFormChange('payday2', e.target.value)}
+                    isInvalid={!!employeeErrors.payday2}
+                    errorMessage={employeeErrors.payday2}
+                    aria-label="Второй день выплаты зарплаты"
+                  />
+                </div>
+              )}
+              
+              {/* Третий день выплаты (отображается только если выбрано три раза в месяц) */}
+              {employeeForm.periodic === "THRICE_MONTH" && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Третий день выплаты</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={employeeForm.payday3}
+                    onChange={(e) => handleEmployeeFormChange('payday3', e.target.value)}
+                    isInvalid={!!employeeErrors.payday3}
+                    errorMessage={employeeErrors.payday3}
+                    aria-label="Третий день выплаты зарплаты"
+                  />
+                </div>
+              )}
               
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Фиксированная зарплата (если есть)</label>
@@ -1587,8 +1974,12 @@ export default function SalaryPage() {
                 />
               </div>
               
+              {/* Основной день выплаты */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">День выплаты зарплаты</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {employeeForm.periodic === "ONCE_MONTH" ? "День выплаты зарплаты" : 
+                   employeeForm.periodic === "TWICE_MONTH" ? "Первый день выплаты" : "Первый день выплаты"}  
+                </label>
                 <Input
                   type="number"
                   min="1"
@@ -1597,11 +1988,44 @@ export default function SalaryPage() {
                   onChange={(e) => handleEmployeeFormChange('payday', e.target.value)}
                   isInvalid={!!employeeErrors.payday}
                   errorMessage={employeeErrors.payday}
-                  aria-label="День выплаты зарплаты"
+                  aria-label="Первый день выплаты зарплаты"
                 />
               </div>
-
               
+              {/* Второй день выплаты (отображается только если выбрано два или три раза в месяц) */}
+              {(employeeForm.periodic === "TWICE_MONTH" || employeeForm.periodic === "THRICE_MONTH") && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Второй день выплаты</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={employeeForm.payday2}
+                    onChange={(e) => handleEmployeeFormChange('payday2', e.target.value)}
+                    isInvalid={!!employeeErrors.payday2}
+                    errorMessage={employeeErrors.payday2}
+                    aria-label="Второй день выплаты зарплаты"
+                  />
+                </div>
+              )}
+              
+              {/* Третий день выплаты (отображается только если выбрано три раза в месяц) */}
+              {employeeForm.periodic === "THRICE_MONTH" && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Третий день выплаты</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={employeeForm.payday3}
+                    onChange={(e) => handleEmployeeFormChange('payday3', e.target.value)}
+                    isInvalid={!!employeeErrors.payday3}
+                    errorMessage={employeeErrors.payday3}
+                    aria-label="Третий день выплаты зарплаты"
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Фиксированная зарплата (если есть)</label>
                 <Input
@@ -1665,6 +2089,8 @@ export default function SalaryPage() {
                   position: employeeForm.position,
                   startDate: new Date(employeeForm.startDate),
                   payday: parseInt(employeeForm.payday),
+                  payday2: employeeForm.periodic !== "ONCE_MONTH" ? parseInt(employeeForm.payday2) : undefined,
+                  payday3: employeeForm.periodic === "THRICE_MONTH" ? parseInt(employeeForm.payday3) : undefined,
                   paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
                   fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
                   comment: employeeForm.comment,
@@ -1674,7 +2100,7 @@ export default function SalaryPage() {
               isLoading={updateEmployeeMutation.isLoading}
               startIcon={<Save className="w-4 h-4" />}
             >
-              Редактировать сотрудника
+              Сохранить изменения
             </Button>
           </ModalFooter>
         </ModalContent>

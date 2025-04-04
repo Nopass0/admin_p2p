@@ -54,7 +54,7 @@ export const salaryRouter = createTRPCRouter({
           }
         }
 
-        // Для каждого сотрудника получаем суммы выплат и долгов за период
+        // Для каждого сотрудника получаем суммы выплат, долгов и заработков за период
         const employeesWithDetails = await Promise.all(
           employees.map(async (employee) => {
             // Получаем выплаты за период
@@ -82,8 +82,23 @@ export const salaryRouter = createTRPCRouter({
             // Суммируем долги
             const totalDebts = debts.reduce((sum, debt) => sum + debt.amount, 0);
             
+            // Получаем заработки за период
+            const earnings = await ctx.db.salaryEarning.findMany({
+              where: {
+                salaryId: employee.id,
+                ...(Object.keys(dateFilter).length > 0 ? { earningDate: dateFilter } : {})
+              },
+              orderBy: { earningDate: 'desc' },
+            });
+            
+            // Суммируем заработки
+            const totalEarning = earnings.reduce((sum, earning) => sum + earning.amount, 0);
+            
             // Последняя выплата для отображения даты
             const lastPayment = payments.length > 0 ? payments[0] : null;
+
+            // Последний заработок для отображения даты
+            const lastEarning = earnings.length > 0 ? earnings[0] : null;
 
             return {
               ...employee,
@@ -95,7 +110,10 @@ export const salaryRouter = createTRPCRouter({
                 paymentsCount: payments.length
               }],
               debts,
-              totalDebts
+              totalDebts,
+              earnings: earnings,
+              totalEarning: totalEarning,
+              earningsCount: earnings.length
             };
           })
         );
@@ -173,9 +191,11 @@ export const salaryRouter = createTRPCRouter({
       fullName: z.string().min(1, "ФИО сотрудника обязательно"),
       position: z.string().min(1, "Должность обязательна"),
       startDate: z.date(),
-      payday: z.number().int().min(1).max(31),
-      paydayMonth: z.number().int().min(1).max(12).nullish(),
-      fixedSalary: z.number().positive().nullish(),
+      payday: z.number().int().gte(1).lte(31),
+      payday2: z.number().int().gte(1).lte(31).optional(),
+      payday3: z.number().int().gte(1).lte(31).optional(),
+      paydayMonth: z.number().int().optional(),
+      fixedSalary: z.number().optional(),
       isActive: z.boolean().default(true),
       comment: z.string().nullish(),
       periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
@@ -189,11 +209,13 @@ export const salaryRouter = createTRPCRouter({
             position: input.position,
             startDate: input.startDate,
             payday: input.payday,
+            payday2: input.payday2,
+            payday3: input.payday3,
             paydayMonth: input.paydayMonth,
             fixedSalary: input.fixedSalary,
-            isActive: input.isActive,
             comment: input.comment,
             periodic: input.periodic,
+            isActive: input.isActive
           },
         });
 
@@ -219,10 +241,12 @@ export const salaryRouter = createTRPCRouter({
       fullName: z.string().min(1, "ФИО сотрудника обязательно"),
       position: z.string().min(1, "Должность обязательна"),
       startDate: z.date(),
-      payday: z.number().int().min(1).max(31),
-      paydayMonth: z.number().int().min(1).max(12).nullish(),
-      fixedSalary: z.number().positive().nullish(),
-      isActive: z.boolean().default(true),
+      payday: z.number().int().gte(1).lte(31),
+      payday2: z.number().int().gte(1).lte(31).optional(),
+      payday3: z.number().int().gte(1).lte(31).optional(),
+      paydayMonth: z.number().int().optional(),
+      fixedSalary: z.number().optional(),
+      isActive: z.boolean().optional(),
       comment: z.string().nullish(),
       periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
     }))
@@ -708,4 +732,191 @@ export const salaryRouter = createTRPCRouter({
         };
       }
     }),
+
+ // Получение всех заработков сотрудника
+ getEmployeeEarnings: publicProcedure
+ .input(z.object({ 
+   employeeId: z.number().int().positive(),
+   startDate: z.date().optional(),
+   endDate: z.date().optional()
+ }))
+ .query(async ({ ctx, input }) => {
+   try {
+     const { employeeId, startDate, endDate } = input;
+     
+     // Базовый фильтр - указываем salaryId для связи с конкретным сотрудником
+     let where: Prisma.SalaryEarningWhereInput = {
+       salaryId: employeeId
+     };
+     
+     // Добавляем фильтры по датам, если указаны
+     if (startDate || endDate) {
+       where.earningDate = {};
+       if (startDate) where.earningDate.gte = startDate;
+       if (endDate) where.earningDate.lte = endDate;
+     }
+     
+     // Получаем заработки сотрудника
+     const earnings = await ctx.db.salaryEarning.findMany({
+       where,
+       orderBy: { earningDate: 'desc' },
+     });
+
+     // Получаем общую сумму заработков
+     const totalSum = await ctx.db.salaryEarning.aggregate({
+       where,
+       _sum: {
+         amount: true
+       }
+     });
+
+     return { 
+       success: true, 
+       earnings,
+       totalSum: totalSum._sum.amount || 0
+     };
+   } catch (error) {
+     console.error("Ошибка при получении заработков сотрудника:", error);
+     return { 
+       success: false, 
+       message: "Произошла ошибка при получении заработков сотрудника", 
+       earnings: [],
+       totalSum: 0
+     };
+   }
+ }),
+
+// Добавление нового заработка
+addEarning: publicProcedure
+ .input(z.object({ 
+   salaryId: z.number().int().positive(),
+   amount: z.number().positive(),
+   earningDate: z.date(),
+   description: z.string().optional()
+ }))
+ .mutation(async ({ ctx, input }) => {
+   try {
+     // Проверяем существование сотрудника
+     const employee = await ctx.db.salary.findUnique({
+       where: { id: input.salaryId }
+     });
+
+     if (!employee) {
+       return { 
+         success: false, 
+         message: "Сотрудник не найден", 
+         earning: null 
+       };
+     }
+
+     // Создаем новый заработок с привязкой к сотруднику
+     const newEarning = await ctx.db.salaryEarning.create({
+       data: {
+         salaryId: input.salaryId, // Указываем ID сотрудника
+         amount: input.amount,
+         earningDate: input.earningDate,
+         description: input.description || null
+       },
+     });
+
+     return { 
+       success: true, 
+       message: "Заработок успешно добавлен", 
+       earning: newEarning 
+     };
+   } catch (error) {
+     console.error("Ошибка при добавлении заработка:", error);
+     return { 
+       success: false, 
+       message: "Произошла ошибка при добавлении заработка", 
+       earning: null 
+     };
+   }
+ }),
+
+// Обновление заработка
+updateEarning: publicProcedure
+ .input(z.object({ 
+   earningId: z.number().int().positive(),
+   amount: z.number().positive(),
+   earningDate: z.date(),
+   description: z.string().optional()
+ }))
+ .mutation(async ({ ctx, input }) => {
+   try {
+     // Проверяем существование заработка
+     const earning = await ctx.db.salaryEarning.findUnique({
+       where: { id: input.earningId }
+     });
+
+     if (!earning) {
+       return { 
+         success: false, 
+         message: "Заработок не найден", 
+         earning: null 
+       };
+     }
+
+     // Обновляем заработок
+     const updatedEarning = await ctx.db.salaryEarning.update({
+       where: { id: input.earningId },
+       data: {
+         amount: input.amount,
+         earningDate: input.earningDate,
+         description: input.description || null
+       },
+     });
+
+     return { 
+       success: true, 
+       message: "Заработок успешно обновлен", 
+       earning: updatedEarning 
+     };
+   } catch (error) {
+     console.error("Ошибка при обновлении заработка:", error);
+     return { 
+       success: false, 
+       message: "Произошла ошибка при обновлении заработка", 
+       earning: null 
+     };
+   }
+ }),
+
+// Удаление заработка
+deleteEarning: publicProcedure
+ .input(z.object({ 
+   earningId: z.number().int().positive()
+ }))
+ .mutation(async ({ ctx, input }) => {
+   try {
+     // Проверяем существование заработка
+     const earning = await ctx.db.salaryEarning.findUnique({
+       where: { id: input.earningId }
+     });
+
+     if (!earning) {
+       return { 
+         success: false, 
+         message: "Заработок не найден" 
+       };
+     }
+
+     // Удаляем заработок
+     await ctx.db.salaryEarning.delete({
+       where: { id: input.earningId }
+     });
+
+     return { 
+       success: true, 
+       message: "Заработок успешно удален"
+     };
+   } catch (error) {
+     console.error("Ошибка при удалении заработка:", error);
+     return { 
+       success: false, 
+       message: "Произошла ошибка при удалении заработка"
+     };
+   }
+ }),
+
 });

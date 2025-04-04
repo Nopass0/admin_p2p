@@ -6,6 +6,72 @@ import { Prisma } from "@prisma/client";
 const currencySchema = z.enum(["RUB", "USDT"]).default("RUB");
 
 export const shiftReportsRouter = createTRPCRouter({
+  // Создание финансовой записи
+  createFinRow: publicProcedure
+    .input(z.object({
+      date: z.date().default(() => new Date()),
+      time: z.string().default(() => {
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      }),
+      shift: z.enum(['morning', 'evening']),
+      startBalanceRUB: z.number(),
+      endBalanceRUB: z.number(),
+      startBalanceUSDT: z.number().optional(),
+      endBalanceUSDT: z.number().optional(),
+      employeePayments: z.array(z.object({
+        employeeId: z.string(),
+        amount: z.string(),
+        currency: currencySchema
+      })).optional(),
+      comment: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Создаем финансовую запись
+        const newFinRow = await ctx.db.finRow.create({
+          data: {
+            date: input.date,
+            time: input.time,
+            shift: input.shift,
+            startBalanceRUB: input.startBalanceRUB,
+            endBalanceRUB: input.endBalanceRUB,
+            startBalanceUSDT: input.startBalanceUSDT || 0,
+            endBalanceUSDT: input.endBalanceUSDT || 0,
+            comment: input.comment
+          }
+        });
+        
+        // Если есть выплаты сотрудникам, создаем их
+        if (input.employeePayments && input.employeePayments.length > 0) {
+          for (const payment of input.employeePayments) {
+            await ctx.db.employeeSalaryPayment.create({
+              data: {
+                employeeId: parseInt(payment.employeeId),
+                amount: parseFloat(payment.amount),
+                currency: payment.currency,
+                paymentDate: input.date,
+                finRowId: newFinRow.id
+              }
+            });
+          }
+        }
+        
+        return { 
+          success: true, 
+          message: "Финансовая запись успешно создана", 
+          finRow: newFinRow 
+        };
+      } catch (error) {
+        console.error("Ошибка при создании финансовой записи:", error);
+        return { 
+          success: false, 
+          message: "Произошла ошибка при создании финансовой записи", 
+          finRow: null 
+        };
+      }
+    }),
+    
   // Получение записей смен с пагинацией и фильтрами
   getAllShiftReports: publicProcedure
     .input(z.object({ 

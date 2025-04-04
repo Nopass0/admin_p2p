@@ -486,29 +486,27 @@ export default function FinancePage() {
       return;
     }
     
-    // Адаптируем данные для совместимости с API
-    // Отправляем только одно значение для startBalance и endBalance
-    // в зависимости от того, какая валюта заполнена
-    const hasRUB = !!finRowForm.startBalanceRUB || !!finRowForm.endBalanceRUB;
-    const currency = hasRUB ? "RUB" : "USDT";
+    // Адаптируем данные для совместимости с новым API createFinRow
+    // Отправляем отдельные значения для RUB и USDT
+    const startBalanceRUB = parseFloat(finRowForm.startBalanceRUB || "0");
+    const endBalanceRUB = parseFloat(finRowForm.endBalanceRUB || "0");
+    const startBalanceUSDT = parseFloat(finRowForm.startBalanceUSDT || "0");
+    const endBalanceUSDT = parseFloat(finRowForm.endBalanceUSDT || "0");
     
+    // Формируем объект данных для API, соответствующий схеме Zod в API
     const formData = {
       date: new Date(finRowForm.date),
       time: finRowForm.time,
       shift: finRowForm.shift,
-      startBalance: hasRUB 
-        ? parseFloat(finRowForm.startBalanceRUB || "0") 
-        : parseFloat(finRowForm.startBalanceUSDT || "0"),
-      endBalance: hasRUB 
-        ? parseFloat(finRowForm.endBalanceRUB || "0") 
-        : parseFloat(finRowForm.endBalanceUSDT || "0"),
-      employeeId: finRowForm.employeePayments.length > 0 
-        ? parseInt(finRowForm.employeePayments[0].employeeId) 
-        : undefined,
-      usdtAmount: finRowForm.employeePayments.length > 0 
-        ? parseFloat(finRowForm.employeePayments[0].amount) 
-        : 0,
-      currency: currency,
+      startBalanceRUB: startBalanceRUB,
+      endBalanceRUB: endBalanceRUB,
+      startBalanceUSDT: startBalanceUSDT || undefined,
+      endBalanceUSDT: endBalanceUSDT || undefined,
+      employeePayments: finRowForm.employeePayments.map(payment => ({
+        employeeId: payment.employeeId,
+        amount: payment.amount,
+        currency: payment.currency
+      })),
       comment: finRowForm.comment || undefined
     };
     
@@ -518,22 +516,8 @@ export default function FinancePage() {
         ...formData
       });
     } else {
+      // Используем новый API для создания финансовой записи с выплатами сотрудникам
       createFinRowMutation.mutate(formData);
-    }
-    
-    // Если есть более одной выплаты сотруднику, создаем их отдельно
-    if (finRowForm.employeePayments.length > 1) {
-      finRowForm.employeePayments.slice(1).forEach(payment => {
-        if (payment.employeeId && payment.amount) {
-          api.salary.addPayment.mutate({
-            salaryId: parseInt(payment.employeeId),
-            amount: parseFloat(payment.amount),
-            paymentDate: new Date(finRowForm.date),
-            currency: payment.currency,
-            comment: `Выплата за смену (${finRowForm.shift === 'morning' ? 'утро' : 'вечер'})`
-          });
-        }
-      });
     }
   };
   

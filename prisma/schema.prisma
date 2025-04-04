@@ -98,17 +98,17 @@ model BybitTransaction {
 }
 
 model WorkSession {
-  id            Int           @id @default(autoincrement())
-  startTime     DateTime
-  endTime       DateTime?
-  duration      Int?
-  autoCompleted Boolean       @default(false)
-  userId        Int
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  comment       String?
-  idexCabinets  IdexCabinet[]
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                     Int                      @id @default(autoincrement())
+  startTime              DateTime
+  endTime                DateTime?
+  duration               Int?
+  autoCompleted          Boolean                  @default(false)
+  userId                 Int
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  comment                String?
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  WorkSessionIdexCabinet WorkSessionIdexCabinet[]
 }
 
 model ReportNotification {
@@ -132,16 +132,15 @@ model NotificationSettings {
 }
 
 model IdexCabinet {
-  id            Int               @id @default(autoincrement())
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  idexId        Int
-  login         String
-  password      String
-  workSessionId Int?
-  WorkSession   WorkSession?      @relation(fields: [workSessionId], references: [id])
-  IdexSyncOrder IdexSyncOrder[]
-  transactions  IdexTransaction[]
+  id                     Int                      @id @default(autoincrement())
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  idexId                 Int
+  login                  String
+  password               String
+  IdexSyncOrder          IdexSyncOrder[]
+  transactions           IdexTransaction[]
+  WorkSessionIdexCabinet WorkSessionIdexCabinet[]
 }
 
 model IdexTransaction {
@@ -270,30 +269,26 @@ model SalaryDebt {
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }
 
-enum PeriodType {
-  TWICE_MONTH
-  THRICE_MONTH
-  ONCE_MONTH
-
-}
-
 model Salary {
-  id          Int             @id @default(autoincrement())
-  fullName    String
-  position    String
-  startDate   DateTime
-  payday      Int
-  paydayMonth Int?
-  periodic    PeriodType @default(ONCE_MONTH)
-  fixedSalary Float?
-  isActive    Boolean         @default(true)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  comment     String?
-  FinRow      FinRow[]
-  debts       SalaryDebt[]
-  payments    SalaryPayment[]
-  ShiftReport ShiftReport[]
+  id            Int             @id @default(autoincrement())
+  fullName      String
+  position      String
+  startDate     DateTime
+  payday        Int              // Основной день выплаты
+  payday2       Int?             // Второй день выплаты (для TWICE_MONTH)
+  payday3       Int?             // Третий день выплаты (для THRICE_MONTH)
+  paydayMonth   Int?
+  fixedSalary   Float?
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  comment       String?
+  periodic      PeriodType      @default(ONCE_MONTH)
+  FinRow        FinRow[]
+  debts         SalaryDebt[]
+  earnings     SalaryEarning[]
+  payments      SalaryPayment[]
+  ShiftReport   ShiftReport[]
 }
 
 model SalaryPayment {
@@ -521,6 +516,46 @@ model AuditLog {
   @@index([userId])
 }
 
+model Password {
+  id        Int      @id @default(autoincrement())
+  name      String
+  login     String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  comment   String?
+}
+
+model WorkSessionIdexCabinet {
+  workSessionId Int
+  idexCabinetId Int
+  assignedAt    DateTime    @default(now())
+  IdexCabinet   IdexCabinet @relation(fields: [idexCabinetId], references: [id], onDelete: Cascade)
+  WorkSession   WorkSession @relation(fields: [workSessionId], references: [id], onDelete: Cascade)
+
+  @@id([workSessionId, idexCabinetId])
+}
+
+// Заработок (Не фактический)
+model SalaryEarning {
+  id          Int      @id @default(autoincrement())
+
+  amount      Float
+  earningDate DateTime
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  salaryId    Int
+  salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+}
+
+enum PeriodType {
+  TWICE_MONTH
+  THRICE_MONTH
+  ONCE_MONTH
+}
+
 enum CardStatus {
   ACTIVE
   WARNING
@@ -572,26 +607,4 @@ enum AuditAction {
 enum UserRole {
   USER
   USERCARDS
-}
-
-enum PaymentPeriodType {
-  NONE
-  WEEKLY
-  BIWEEKLY
-  MONTHLY
-  QUARTERLY
-  YEARLY
-}
-
-// Раздел "Пароли"
-
-model Password {
-  id        Int      @id @default(autoincrement())
-  name      String
-  login     String?
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  comment   String?
 }

@@ -99,6 +99,7 @@ export function UsersTable({ limit }: UsersTableProps) {
           <TableColumn key="name">Имя</TableColumn>
           <TableColumn key="telegram">Telegram</TableColumn>
           <TableColumn key="status">Статус</TableColumn>
+          <TableColumn key="passCode">Роль</TableColumn>
           <TableColumn key="actions">Действия</TableColumn>
         </TableHeader>
         <TableBody>
@@ -132,6 +133,17 @@ export function UsersTable({ limit }: UsersTableProps) {
                 >
                   {user.isActive ? "Активен" : "Неактивен"}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                <div 
+                  className={`text-xs px-2 py-1 rounded-full inline-flex items-center ${
+                    user.role === "USER" 
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
+                      : "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
+                  }`}
+                >
+                  {user.role === "USER" ? "Пользователь" : user.role === "USERCARDS" ? "Работает с картами" : user.role}
+                </div>
               </TableCell>
               <TableCell className="space-x-1">
                 <Link href={`/users/${user.id}`}>
