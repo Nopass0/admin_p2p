@@ -98,21 +98,26 @@ const navigationSections = [
         href: "/finances-tractor",
         icon: CreditCard
       },
-
       {
-        title: "Таблицы",
-        href: "/tables",
-        icon: FileText
+        title: "Зарплаты",
+        href: "/salary?section=TRACTOR",
+        icon: Banknote
       },
+    ]
+  },
+  {
+    id: "other",
+    title: "Другое",
+    items: [
       {
         title: "Пароли",
         href: "/passwords",
         icon: LockKeyhole
       },
       {
-        title: "Зарплаты",
-        href: "/salary?section=TRACTOR",
-        icon: Banknote
+        title: "Таблицы",
+        href: "/tables",
+        icon: FileText
       },
     ]
   }
