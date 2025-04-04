@@ -73,7 +73,7 @@ const navigationSections = [
       },
       {
         title: "Зарплаты",
-        href: "/salary",
+        href: "/salary?section=PAYMENTS",
         icon: Banknote
       },
       ,
@@ -111,7 +111,7 @@ const navigationSections = [
       },
       {
         title: "Зарплаты",
-        href: "/salary",
+        href: "/salary?section=TRACTOR",
         icon: Banknote
       },
     ]

@@ -10,14 +10,20 @@ export const salaryRouter = createTRPCRouter({
       pageSize: z.number().int().positive().default(10),
       searchQuery: z.string().optional(),
       startDate: z.string().optional(),
-      endDate: z.string().optional()
+      endDate: z.string().optional(),
+      section: z.enum(['PAYMENTS', 'TRACTOR']).optional()
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { page, pageSize, searchQuery, startDate, endDate } = input;
+        const { page, pageSize, searchQuery, startDate, endDate, section } = input;
         
         // Базовый фильтр для сотрудников
         let where: Prisma.SalaryWhereInput = {};
+        
+        // Фильтр по разделу, если указан
+        if (section) {
+          where.section = section;
+        }
         
         // Добавляем поиск по имени и должности, если указан searchQuery
         if (searchQuery) {
@@ -191,14 +197,15 @@ export const salaryRouter = createTRPCRouter({
       fullName: z.string().min(1, "ФИО сотрудника обязательно"),
       position: z.string().min(1, "Должность обязательна"),
       startDate: z.date(),
-      payday: z.number().int().gte(1).lte(31),
-      payday2: z.number().int().gte(1).lte(31).optional(),
-      payday3: z.number().int().gte(1).lte(31).optional(),
+      payday: z.number().int().positive(),
+      payday2: z.number().int().positive().optional(),
+      payday3: z.number().int().positive().optional(),
       paydayMonth: z.number().int().optional(),
       fixedSalary: z.number().optional(),
       isActive: z.boolean().default(true),
       comment: z.string().nullish(),
-      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
+      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH),
+      section: z.enum(['PAYMENTS', 'TRACTOR']).default('PAYMENTS')
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -215,6 +222,7 @@ export const salaryRouter = createTRPCRouter({
             fixedSalary: input.fixedSalary,
             comment: input.comment,
             periodic: input.periodic,
+            section: input.section,
             isActive: input.isActive
           },
         });
@@ -241,14 +249,15 @@ export const salaryRouter = createTRPCRouter({
       fullName: z.string().min(1, "ФИО сотрудника обязательно"),
       position: z.string().min(1, "Должность обязательна"),
       startDate: z.date(),
-      payday: z.number().int().gte(1).lte(31),
-      payday2: z.number().int().gte(1).lte(31).optional(),
-      payday3: z.number().int().gte(1).lte(31).optional(),
+      payday: z.number().int().positive(),
+      payday2: z.number().int().positive().optional(),
+      payday3: z.number().int().positive().optional(),
       paydayMonth: z.number().int().optional(),
       fixedSalary: z.number().optional(),
       isActive: z.boolean().optional(),
       comment: z.string().nullish(),
-      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH)
+      periodic: z.enum([PeriodType.ONCE_MONTH, PeriodType.TWICE_MONTH, PeriodType.THRICE_MONTH]).default(PeriodType.ONCE_MONTH),
+      section: z.enum(['PAYMENTS', 'TRACTOR']).optional()
     }))
     .mutation(async ({ ctx, input }) => {
       try {

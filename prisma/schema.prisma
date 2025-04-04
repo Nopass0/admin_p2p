@@ -217,6 +217,8 @@ model Card {
   cardPrice   Float?
   isPaid      Boolean       @default(false)
   letterCode  String?
+  actor       String?
+  inWork      Boolean       @default(false)
   AuditLog    AuditLog[]
   balances    CardBalance[]
   pourings    CardPouring[]
@@ -269,26 +271,34 @@ model SalaryDebt {
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }
 
+//разделы
+enum SalarySection {
+  PAYMENTS
+  TRACTOR
+}
+
 model Salary {
-  id            Int             @id @default(autoincrement())
-  fullName      String
-  position      String
-  startDate     DateTime
-  payday        Int              // Основной день выплаты
-  payday2       Int?             // Второй день выплаты (для TWICE_MONTH)
-  payday3       Int?             // Третий день выплаты (для THRICE_MONTH)
-  paydayMonth   Int?
-  fixedSalary   Float?
-  isActive      Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  comment       String?
-  periodic      PeriodType      @default(ONCE_MONTH)
-  FinRow        FinRow[]
-  debts         SalaryDebt[]
-  earnings     SalaryEarning[]
-  payments      SalaryPayment[]
-  ShiftReport   ShiftReport[]
+  id          Int             @id @default(autoincrement())
+  fullName    String
+  position    String
+  startDate   DateTime
+  payday      Int
+  //раздел
+  section     SalarySection @default(PAYMENTS)
+  paydayMonth Int?
+  fixedSalary Float?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  comment     String?
+  periodic    PeriodType      @default(ONCE_MONTH)
+  payday2     Int?
+  payday3     Int?
+  FinRow      FinRow[]
+  debts       SalaryDebt[]
+  earnings    SalaryEarning[]
+  payments    SalaryPayment[]
+  ShiftReport ShiftReport[]
 }
 
 model SalaryPayment {
@@ -536,16 +546,13 @@ model WorkSessionIdexCabinet {
   @@id([workSessionId, idexCabinetId])
 }
 
-// Заработок (Не фактический)
 model SalaryEarning {
   id          Int      @id @default(autoincrement())
-
   amount      Float
   earningDate DateTime
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
   salaryId    Int
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
 }

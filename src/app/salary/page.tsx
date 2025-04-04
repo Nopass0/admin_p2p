@@ -74,6 +74,9 @@ export default function SalaryPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isEarningEditMode, setIsEarningEditMode] = useState(false);
   
+  // Текущий раздел (Выплаты или Трактор)
+  const [currentSection, setCurrentSection] = useState("PAYMENTS");
+  
   // Использование useDisclosure для модальных окон
   const { 
     isOpen: isPaymentDialogOpen, 
@@ -122,7 +125,8 @@ export default function SalaryPage() {
     paydayMonth: "",
     fixedSalary: "",
     comment: "",
-    periodic: "ONCE_MONTH"
+    periodic: "ONCE_MONTH",
+    section: "PAYMENTS" // Раздел по умолчанию
   });
   
   const [paymentForm, setPaymentForm] = useState({
@@ -177,13 +181,23 @@ export default function SalaryPage() {
     }, 5000);
   };
 
-  // Получение сотрудников с пагинацией и суммами за период
-  const employeesQuery = api.salary.getAllEmployees.useQuery({
+  // Запрос на получение списка сотрудников с пагинацией и фильтрацией
+  const { data: employeesData, refetch: refetchEmployees, isLoading } = api.salary.getAllEmployees.useQuery({
     page: currentPage,
     pageSize,
-    searchQuery: searchQuery.length > 0 ? searchQuery : undefined,
+    searchQuery,
     startDate: dateFilter.startDate || undefined,
-    endDate: dateFilter.endDate || undefined
+    endDate: dateFilter.endDate || undefined,
+    section: currentSection, // Фильтрация по текущему разделу
+  }, {
+    refetchOnWindowFocus: false,
+    onError: (err) => {
+      showAlert(
+        "Ошибка при загрузке", 
+        "Не удалось загрузить список сотрудников. " + err.message, 
+        "danger"
+      );
+    }
   });
 
   // Получение выплат для выбранного сотрудника с учетом фильтра дат
@@ -221,19 +235,23 @@ export default function SalaryPage() {
   // Мутации для работы с данными
   const createEmployeeMutation = api.salary.createEmployee.useMutation({
     onSuccess: () => {
-      showAlert("Успешно", "Сотрудник успешно добавлен", "success");
+      // Закрываем модалку, обновляем список
       closeAddEmployeeDialog();
-      employeesQuery.refetch();
-      // Сбросить форму
+      setCurrentPage(1); // Возвращаемся на первую страницу
+      refetchEmployees();
+      // Сбрасываем форму
       setEmployeeForm({
         fullName: "",
         position: "",
         startDate: dayjs().format("YYYY-MM-DD"),
         payday: 10,
+        payday2: 20,
+        payday3: 30,
         paydayMonth: "",
         fixedSalary: "",
         comment: "",
-        periodic: "ONCE_MONTH"
+        periodic: "ONCE_MONTH",
+        section: currentSection // Устанавливаем текущий раздел
       });
       setEmployeeErrors({});
     },
@@ -246,17 +264,20 @@ export default function SalaryPage() {
     onSuccess: () => {
       showAlert("Успешно", "Данные сотрудника успешно обновлены", "success");
       closeEditEmployeeDialog();
-      employeesQuery.refetch();
+      refetchEmployees();
       // Сбросить форму
       setEmployeeForm({
         fullName: "",
         position: "",
         startDate: dayjs().format("YYYY-MM-DD"),
         payday: 10,
+        payday2: 20,
+        payday3: 30,
         paydayMonth: "",
         fixedSalary: "",
         comment: "",
-        periodic: "ONCE_MONTH"
+        periodic: "ONCE_MONTH",
+        section: currentSection // Устанавливаем текущий раздел
       });
       setEmployeeErrors({});
     },
@@ -268,7 +289,7 @@ export default function SalaryPage() {
   const deleteEmployeeMutation = api.salary.deleteEmployee.useMutation({
     onSuccess: () => {
       showAlert("Успешно", "Сотрудник успешно удален", "success");
-      employeesQuery.refetch();
+      refetchEmployees();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при удалении сотрудника: ${error.message}`, "danger");
@@ -280,7 +301,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Выплата успешно добавлена", "success");
       if (selectedEmployee) {
         paymentsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
       // Сбросить форму
       setPaymentForm({
@@ -302,7 +323,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Выплата успешно обновлена", "success");
       if (selectedEmployee) {
         paymentsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
       setIsEditMode(false);
       setSelectedPayment(null);
@@ -323,7 +344,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Выплата успешно удалена", "success");
       if (selectedEmployee) {
         paymentsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
     },
     onError: (error) => {
@@ -336,7 +357,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Долг успешно добавлен", "success");
       if (selectedEmployee) {
         debtsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
       // Сбросить форму
       setDebtForm({
@@ -356,7 +377,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Статус долга успешно обновлен", "success");
       if (selectedEmployee) {
         debtsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
     },
     onError: (error) => {
@@ -369,7 +390,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Долг успешно удален", "success");
       if (selectedEmployee) {
         debtsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
     },
     onError: (error) => {
@@ -383,7 +404,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Заработок успешно добавлен", "success");
       if (selectedEmployee) {
         earningsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
       // Сбросить форму
       setEarningForm({
@@ -405,7 +426,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Заработок успешно обновлен", "success");
       if (selectedEmployee) {
         earningsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
       setIsEarningEditMode(false);
       setSelectedEarning(null);
@@ -426,7 +447,7 @@ export default function SalaryPage() {
       showAlert("Успешно", "Заработок успешно удален", "success");
       if (selectedEmployee) {
         earningsQuery.refetch();
-        employeesQuery.refetch();
+        refetchEmployees();
       }
     },
     onError: (error) => {
@@ -529,11 +550,11 @@ export default function SalaryPage() {
   // Обработчики форм
   const handleEmployeeSubmit = (e) => {
     e.preventDefault();
-
+    
     if (!validateEmployeeForm()) {
       return;
     }
-
+    
     createEmployeeMutation.mutate({
       fullName: employeeForm.fullName,
       position: employeeForm.position,
@@ -544,7 +565,8 @@ export default function SalaryPage() {
       paydayMonth: employeeForm.paydayMonth ? parseInt(employeeForm.paydayMonth) : undefined,
       fixedSalary: employeeForm.fixedSalary ? parseFloat(employeeForm.fixedSalary) : undefined,
       comment: employeeForm.comment,
-      periodic: employeeForm.periodic
+      periodic: employeeForm.periodic,
+      section: currentSection // Всегда используем текущий раздел
     });
   };
 
@@ -734,7 +756,7 @@ export default function SalaryPage() {
 
   // Применение фильтра дат
   const applyDateFilter = () => {
-    employeesQuery.refetch();
+    refetchEmployees();
     if (selectedEmployee) {
       paymentsQuery.refetch();
       earningsQuery.refetch();
@@ -748,7 +770,7 @@ export default function SalaryPage() {
       endDate: ""
     });
     
-    employeesQuery.refetch();
+    refetchEmployees();
     if (selectedEmployee) {
       paymentsQuery.refetch();
       earningsQuery.refetch();
@@ -790,7 +812,8 @@ export default function SalaryPage() {
       paydayMonth: employee.paydayMonth ? employee.paydayMonth.toString() : "",
       fixedSalary: employee.fixedSalary ? employee.fixedSalary.toString() : "",
       comment: employee.comment || "",
-      periodic: employee.periodic
+      periodic: employee.periodic,
+      section: employee.section || "PAYMENTS" // Раздел сотрудника
     });
     openEditEmployeeDialog();
   };
@@ -841,12 +864,46 @@ export default function SalaryPage() {
 
   // Получение имени сотрудника по ID
   const getEmployeeName = (id) => {
-    const employee = employeesQuery.data?.employees.find(emp => emp.id === id);
+    const employee = employeesData?.employees.find(emp => emp.id === id);
     return employee ? employee.fullName : "...";
   };
 
   return (
-    <div className="container mx-auto py-6 px-4">
+    <div className="container mx-auto px-4 py-8">
+      {/* Шапка страницы с заголовком и кнопками */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+        <h1 className="text-2xl font-bold mb-4 sm:mb-0">
+          Управление зарплатами - {currentSection === "PAYMENTS" ? "Раздел выплат" : "Раздел трактор"}
+        </h1>
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto">
+          <Button 
+            color="primary"
+            startIcon={<Plus className="w-4 h-4" />}
+            onClick={openAddEmployeeDialog}
+            size="sm"
+          >
+            Добавить сотрудника
+          </Button>
+        </div>
+      </div>
+      
+      {/* Переключатель разделов */}
+      <div className="mb-6">
+        <Tabs 
+          selectedKey={currentSection} 
+          onSelectionChange={setCurrentSection}
+          aria-label="Разделы зарплат"
+          classNames={{
+            base: "w-full",
+            tabList: "bg-gray-100 dark:bg-zinc-800 rounded-lg p-1",
+            tab: "data-[selected=true]:bg-white dark:data-[selected=true]:bg-zinc-700 data-[selected=true]:text-blue-600 dark:data-[selected=true]:text-blue-400 py-2 px-4 rounded-md font-medium"
+          }}
+        >
+          <Tab key="PAYMENTS" title="Раздел выплат" />
+          <Tab key="TRACTOR" title="Раздел трактор" />
+        </Tabs>
+      </div>
+      
       {/* Alert notification */}
       {alert.isVisible && (
         <div className="fixed top-4 right-4 z-50 w-96">
@@ -876,8 +933,8 @@ export default function SalaryPage() {
           <Button
             variant="outline"
             startIcon={<RefreshCw className="w-4 h-4" />}
-            onClick={() => employeesQuery.refetch()}
-            isLoading={employeesQuery.isLoading}
+            onClick={() => refetchEmployees()}
+            isLoading={isLoading}
           >
             Обновить
           </Button>
@@ -958,7 +1015,9 @@ export default function SalaryPage() {
       
       <Card>
         <CardHeader className="pb-0">
-          <h2 className="text-lg font-medium">Список сотрудников</h2>
+          <h2 className="text-lg font-medium">
+            Список сотрудников - {currentSection === "PAYMENTS" ? "Раздел выплат" : "Раздел трактор"}
+          </h2>
         </CardHeader>
         <CardBody className="p-0">
           <Table aria-label="Таблица сотрудников">
@@ -974,7 +1033,7 @@ export default function SalaryPage() {
               <TableColumn>Действия</TableColumn>
             </TableHeader>
             <TableBody>
-              {employeesQuery.isLoading ? (
+              {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-10">
                     <div className="flex justify-center">
@@ -982,14 +1041,14 @@ export default function SalaryPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : employeesQuery.data?.employees.length === 0 ? (
+              ) : employeesData?.employees.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-10 text-gray-500">
                     Нет данных о сотрудниках
                   </TableCell>
                 </TableRow>
               ) : (
-                employeesQuery.data?.employees.map((employee) => (
+                employeesData?.employees.map((employee) => (
                   <TableRow key={employee.id}>
                     <TableCell>
                       <div className="font-medium">{employee.fullName}</div>
@@ -1131,13 +1190,13 @@ export default function SalaryPage() {
         </CardBody>
         
         {/* Пагинация */}
-        {employeesQuery.data && employeesQuery.data.pagination.totalPages > 1 && (
+        {employeesData && employeesData.pagination.totalPages > 1 && (
           <CardFooter className="flex justify-between px-6 py-4">
             <div className="text-sm text-gray-500">
-              Страница {currentPage} из {employeesQuery.data.pagination.totalPages}
+              Страница {currentPage} из {employeesData.pagination.totalPages}
             </div>
             <Pagination
-              total={employeesQuery.data.pagination.totalPages}
+              total={employeesData.pagination.totalPages}
               initialPage={currentPage}
               page={currentPage}
               onChange={handlePageChange}
