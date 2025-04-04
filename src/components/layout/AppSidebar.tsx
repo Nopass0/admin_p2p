@@ -79,7 +79,7 @@ const navigationSections = [
       ,
       {
         title: "Финансы",
-        href: "/finances",
+        href: "/finances?section=PAYMENTS",
         icon: CreditCard
       }
     ]
@@ -100,7 +100,7 @@ const navigationSections = [
       },
       {
         title: "Финансы",
-        href: "/finances-tractor",
+        href: "/finances?section=TRACTOR",
         icon: CreditCard
       },
 

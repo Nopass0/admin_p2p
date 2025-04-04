@@ -1,9 +1,12 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, SalarySection } from "@prisma/client";
 
 // Определяем схему валидации для валюты
-const currencySchema = z.enum(["RUB", "USDT"]).default("RUB");
+const currencySchema = z.enum(["RUB", "USDT"]).nullable().default("RUB");
+
+// Определяем схему валидации для секции
+const sectionSchema = z.enum([SalarySection.PAYMENTS, SalarySection.TRACTOR]).default(SalarySection.PAYMENTS);
 
 export const financeRouter = createTRPCRouter({
   // Получение финансовых записей с пагинацией и фильтрами
@@ -11,15 +14,17 @@ export const financeRouter = createTRPCRouter({
     .input(z.object({ 
       page: z.number().int().positive().default(1),
       pageSize: z.number().int().positive().default(10),
-      startDate: z.date().optional(),
-      endDate: z.date().optional(),
-      shift: z.enum(['morning', 'evening']).optional(),
-      employeeId: z.number().int().positive().optional(),
-      currency: currencySchema.optional()
+      startDate: z.union([z.date(), z.null()]).optional(),
+      endDate: z.union([z.date(), z.null()]).optional(),
+      shift: z.enum(['morning', 'evening']).nullable().optional(),
+      employeeId: z.number().int().positive().nullable().optional(),
+      currency: currencySchema.nullable().optional(),
+      section: z.enum([SalarySection.PAYMENTS, SalarySection.TRACTOR]).nullable().optional(),
+      allSections: z.boolean().default(false)
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { page, pageSize, startDate, endDate, shift, employeeId, currency } = input;
+        const { page, pageSize, startDate, endDate, shift, employeeId, currency, section, allSections } = input;
         
         // Базовый фильтр
         let where: Prisma.FinRowWhereInput = {};
@@ -50,6 +55,11 @@ export const financeRouter = createTRPCRouter({
         
         if (currency) {
           where.currency = currency;
+        }
+        
+        // Фильтрация по секции
+        if (!allSections && section) {
+          where.section = section;
         }
           
         // Получаем общее количество записей для пагинации
@@ -147,7 +157,8 @@ export const financeRouter = createTRPCRouter({
       employeeId: z.number().int().positive().optional(),
       usdtAmount: z.number().optional(),
       currency: currencySchema,
-      comment: z.string().optional()
+      comment: z.string().optional(),
+      section: sectionSchema
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -162,6 +173,7 @@ export const financeRouter = createTRPCRouter({
             employeeId: input.employeeId,
             usdtAmount: input.usdtAmount || 0,
             currency: input.currency,
+            section: input.section,
             comment: input.comment || null
           },
         });
@@ -206,7 +218,8 @@ export const financeRouter = createTRPCRouter({
       employeeId: z.number().int().positive().optional(),
       usdtAmount: z.number().optional(),
       currency: currencySchema,
-      comment: z.string().optional()
+      comment: z.string().optional(),
+      section: sectionSchema
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -221,6 +234,7 @@ export const financeRouter = createTRPCRouter({
             employeeId: input.employeeId,
             usdtAmount: input.usdtAmount || 0,
             currency: input.currency,
+            section: input.section,
             comment: input.comment || null
           },
           include: { 
@@ -286,14 +300,15 @@ export const financeRouter = createTRPCRouter({
     .input(z.object({ 
       page: z.number().int().positive().default(1),
       pageSize: z.number().int().positive().default(10),
-      startDate: z.date().optional(),
-      endDate: z.date().optional(),
+      startDate: z.union([z.date(), z.null()]).optional(),
+      endDate: z.union([z.date(), z.null()]).optional(),
       expenseType: z.enum(['fixed', 'variable']).optional(),
-      currency: currencySchema.optional()
+      currency: currencySchema.nullable().optional(),
+      section: z.enum([SalarySection.PAYMENTS, SalarySection.TRACTOR]).nullable().optional()
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { page, pageSize, startDate, endDate, expenseType, currency } = input;
+        const { page, pageSize, startDate, endDate, expenseType, currency, section } = input;
         
         // Базовый фильтр
         let where: Prisma.FinRowExpenseWhereInput = {};
@@ -320,6 +335,11 @@ export const financeRouter = createTRPCRouter({
         
         if (currency) {
           where.currency = currency;
+        }
+        
+        // Фильтрация по секции
+        if (section) {
+          where.section = section;
         }
           
         // Получаем общее количество расходов для пагинации
@@ -373,12 +393,13 @@ export const financeRouter = createTRPCRouter({
       amount: z.number().positive(),
       currency: currencySchema,
       date: z.date().default(() => new Date()),
-      time: z.string().default(() => {
+      time: z.string().min(1).default(() => {
         const now = new Date();
         return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
       }),
       period: z.string().optional(), // Для постоянных расходов (ежемесячно, еженедельно и т.д.)
-      description: z.string().optional()
+      description: z.string().optional(),
+      section: sectionSchema.optional()
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -392,7 +413,8 @@ export const financeRouter = createTRPCRouter({
             date: input.date,
             time: input.time,
             period: input.period || null,
-            description: input.description || null
+            description: input.description || null,
+            section: input.section || null
           },
         });
 
@@ -419,10 +441,11 @@ export const financeRouter = createTRPCRouter({
       expenseType: z.enum(['fixed', 'variable']),
       amount: z.number().positive(),
       currency: currencySchema,
-      date: z.date(),
+      date: z.date().default(() => new Date()),
       time: z.string(),
       period: z.string().optional(),
-      description: z.string().optional()
+      description: z.string().optional(),
+      section: sectionSchema.optional()
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -436,7 +459,8 @@ export const financeRouter = createTRPCRouter({
             date: input.date,
             time: input.time,
             period: input.period || null,
-            description: input.description || null
+            description: input.description || null,
+            section: input.section || null
           },
           include: { finRow: true }
         });
@@ -501,11 +525,12 @@ export const financeRouter = createTRPCRouter({
       includeFixed: z.boolean().default(true),
       includeVariable: z.boolean().default(true),
       includeSalary: z.boolean().default(true),
-      currency: currencySchema.optional()
+      currency: currencySchema.optional(),
+      section: z.enum([SalarySection.PAYMENTS, SalarySection.TRACTOR]).optional()
     }))
     .query(async ({ ctx, input }) => {
       try {
-        const { startDate, endDate, includeFixed, includeVariable, includeSalary, currency } = input;
+        const { startDate, endDate, includeFixed, includeVariable, includeSalary, currency, section } = input;
         
         // Базовый фильтр по датам для финансовых записей
         let finRowsWhere: Prisma.FinRowWhereInput = {
@@ -518,6 +543,11 @@ export const financeRouter = createTRPCRouter({
         // Добавляем фильтр по валюте, если он указан
         if (currency) {
           finRowsWhere.currency = currency;
+        }
+        
+        // Добавляем фильтр по секции, если он указан
+        if (section) {
+          finRowsWhere.section = section;
         }
         
         // Получаем все финансовые записи за период
@@ -572,10 +602,20 @@ export const financeRouter = createTRPCRouter({
           }
           
           const salaryPayments = await ctx.db.salaryPayment.findMany({
-            where: salaryWhere
+            where: salaryWhere,
+            include: {
+              salary: true
+            }
           });
           
-          salaryExpenses = salaryPayments.reduce((sum, payment) => sum + payment.amount, 0);
+          // Учитываем фильтр по секции для зарплат
+          if (section) {
+            salaryExpenses = salaryPayments
+              .filter(payment => payment.salary.section === section)
+              .reduce((sum, payment) => sum + payment.amount, 0);
+          } else {
+            salaryExpenses = salaryPayments.reduce((sum, payment) => sum + payment.amount, 0);
+          }
         }
         
         // Считаем общую сумму доходов (разница между конечным и начальным балансом для всех смен)
@@ -604,6 +644,7 @@ export const financeRouter = createTRPCRouter({
               endDate
             },
             currency: currency || "ALL",
+            section: section,
             income: {
               total: totalIncome
             },

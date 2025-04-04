@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
 import { 
   Card, 
   CardBody, 
-  CardHeader,
-  CardFooter
+  CardHeader
 } from "@heroui/card";
 import { 
   Table, 
@@ -34,32 +33,20 @@ import { Textarea } from "@heroui/input";
 import { Badge } from "@heroui/badge";
 import { Tabs, Tab } from "@heroui/tabs";
 import { 
-  Calendar, 
-  User, 
-  Plus, 
-  CheckCircle, 
-  AlertCircle, 
-  Loader,
-  Edit,
-  Trash,
-  Search,
-  DollarSign,
-  FileText,
-  BarChart,
-  X
+  Calendar, Plus, CheckCircle, AlertCircle, Loader, Edit, Trash,
+  DollarSign, FileText, BarChart, X
 } from "lucide-react";
 import dayjs from "dayjs";
-import "dayjs/locale/ru"; // Импортируем русскую локаль
+import "dayjs/locale/ru";
 import localeData from "dayjs/plugin/localeData";
 
-// Подключаем плагины
 dayjs.extend(localeData);
-dayjs.locale("ru"); // Устанавливаем русскую локаль
+dayjs.locale("ru");
 
-// Типы валют
+// Types and constants
 type Currency = "RUB" | "USDT";
+type EmployeePayment = { employeeId: string; amount: string; currency: Currency };
 
-// Периоды на русском
 const periodOptions = [
   { key: "daily", label: "Ежедневно" },
   { key: "weekly", label: "Еженедельно" },
@@ -68,32 +55,35 @@ const periodOptions = [
   { key: "yearly", label: "Ежегодно" }
 ];
 
-// Тип для выплаты сотруднику
-type EmployeePayment = {
-  employeeId: string;
-  amount: string;
-  currency: Currency;
-};
-
 export default function FinancePage() {
-  // Состояния для вкладок и пагинации
+  // Router and URL params
+  const searchParams = useSearchParams();
+  const sectionFromUrl = searchParams.get('section');
+  const router = useRouter();
+  
+  // State management
   const [activeTab, setActiveTab] = useState("income");
+  const [activeSection, setActiveSection] = useState(sectionFromUrl || "ALL");
   const [currentPageIncome, setCurrentPageIncome] = useState(1);
   const [currentPageExpenses, setCurrentPageExpenses] = useState(1);
+  const [incomeTableKey, setIncomeTableKey] = useState(0);
+  const [reportTableKey, setReportTableKey] = useState(0);
   
-  // Состояния для модальных окон
+  // Modal states
   const [isFinRowDialogOpen, setIsFinRowDialogOpen] = useState(false);
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [editingFinRowId, setEditingFinRowId] = useState(null);
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   
-  // Состояния для фильтров
+  // Filter states
   const [finRowFilters, setFinRowFilters] = useState({
     startDate: null,
     endDate: null,
     shift: null,
     employeeId: null,
     currency: null as Currency | null,
+    section: sectionFromUrl === "PAYMENTS" || sectionFromUrl === "TRACTOR" ? sectionFromUrl : null,
+    allSections: sectionFromUrl !== "PAYMENTS" && sectionFromUrl !== "TRACTOR",
   });
   
   const [fixedExpensesFilters, setFixedExpensesFilters] = useState({
@@ -116,7 +106,7 @@ export default function FinancePage() {
     includeSalary: true,
   });
   
-  // Состояния для форм
+  // Form states
   const [finRowForm, setFinRowForm] = useState({
     date: dayjs().format("YYYY-MM-DD"),
     time: dayjs().format("HH:mm"),
@@ -126,25 +116,27 @@ export default function FinancePage() {
     endBalanceRUB: "",
     endBalanceUSDT: "",
     employeePayments: [] as EmployeePayment[],
-    comment: ""
+    comment: "",
+    section: (sectionFromUrl === "PAYMENTS" || sectionFromUrl === "TRACTOR") ? sectionFromUrl : "PAYMENTS"
   });
   
   const [expenseForm, setExpenseForm] = useState({
-    finRowId: null,
-    expenseType: "variable",
-    amountRUB: "",
-    amountUSDT: "",
     date: dayjs().format("YYYY-MM-DD"),
     time: dayjs().format("HH:mm"),
-    period: "",
-    description: ""
+    expenseType: "fixed",
+    amountRUB: "",
+    amountUSDT: "",
+    finRowId: "",
+    period: "monthly",
+    description: "",
+    section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
   });
   
-  // Состояния для валидации
+  // Validation states
   const [finRowErrors, setFinRowErrors] = useState({});
   const [expenseErrors, setExpenseErrors] = useState({});
   
-  // Состояние для уведомлений
+  // Alert state
   const [alert, setAlert] = useState({
     isVisible: false,
     title: "",
@@ -154,77 +146,66 @@ export default function FinancePage() {
 
   const pageSize = 10;
 
-  // Показать уведомление
+  // Show notification
   const showAlert = (title, description, color) => {
-    setAlert({
-      isVisible: true,
-      title,
-      description,
-      color
-    });
-    
-    // Автоматически скрыть через 5 секунд
-    setTimeout(() => {
-      setAlert(prev => ({ ...prev, isVisible: false }));
-    }, 5000);
+    setAlert({ isVisible: true, title, description, color });
+    setTimeout(() => setAlert(prev => ({ ...prev, isVisible: false })), 5000);
   };
 
-  // API запросы с фильтрами
-  const finRowsQuery = api.finance.getAllFinRows.useQuery({
+  // API queries
+  const getAllFinRowsQuery = api.finance.getAllFinRows.useQuery({
     page: currentPageIncome,
-    pageSize,
-    startDate: finRowFilters.startDate ? new Date(finRowFilters.startDate) : undefined,
-    endDate: finRowFilters.endDate ? new Date(finRowFilters.endDate) : undefined,
-    shift: finRowFilters.shift || undefined,
-    employeeId: finRowFilters.employeeId || undefined,
-    currency: finRowFilters.currency || undefined,
+    pageSize: 10,
+    startDate: finRowFilters.startDate && new Date(finRowFilters.startDate),
+    endDate: finRowFilters.endDate && new Date(finRowFilters.endDate),
+    shift: finRowFilters.shift as any,
+    employeeId: finRowFilters.employeeId as any,
+    currency: finRowFilters.currency as any,
+    section: finRowFilters.section as any,
+    allSections: finRowFilters.allSections
+  }, {
+    enabled: activeTab === "income",
+    keepPreviousData: false,
   });
 
   const fixedExpensesQuery = api.finance.getExpenses.useQuery({
     page: currentPageExpenses,
     pageSize,
-    startDate: fixedExpensesFilters.startDate ? new Date(fixedExpensesFilters.startDate) : undefined,
-    endDate: fixedExpensesFilters.endDate ? new Date(fixedExpensesFilters.endDate) : undefined,
+    startDate: fixedExpensesFilters.startDate && new Date(fixedExpensesFilters.startDate),
+    endDate: fixedExpensesFilters.endDate && new Date(fixedExpensesFilters.endDate),
     expenseType: "fixed",
-    currency: fixedExpensesFilters.currency || undefined,
+    currency: fixedExpensesFilters.currency as any,
+    section: activeSection !== "ALL" ? activeSection : null,
   });
   
   const variableExpensesQuery = api.finance.getExpenses.useQuery({
     page: currentPageExpenses,
     pageSize,
-    startDate: variableExpensesFilters.startDate ? new Date(variableExpensesFilters.startDate) : undefined,
-    endDate: variableExpensesFilters.endDate ? new Date(variableExpensesFilters.endDate) : undefined,
+    startDate: variableExpensesFilters.startDate && new Date(variableExpensesFilters.startDate),
+    endDate: variableExpensesFilters.endDate && new Date(variableExpensesFilters.endDate),
     expenseType: "variable",
-    currency: variableExpensesFilters.currency || undefined,
+    currency: variableExpensesFilters.currency as any,
+    section: activeSection !== "ALL" ? activeSection : null,
   });
 
-  const employeesQuery = api.salary.getAllEmployees.useQuery({ 
-    page: 1, 
-    pageSize: 100 
-  });
+  const employeesQuery = api.salary.getAllEmployees.useQuery({ page: 1, pageSize: 100 });
   
-  // Запрос зарплатных выплат использует теперь getAllPayments
   const salaryPaymentsRUBQuery = api.salary.getAllPayments.useQuery({
     page: 1,
     pageSize: 100,
-    startDate: reportFilters.startDate ? new Date(reportFilters.startDate) : undefined,
-    endDate: reportFilters.endDate ? new Date(reportFilters.endDate) : undefined,
+    startDate: reportFilters.startDate && new Date(reportFilters.startDate),
+    endDate: reportFilters.endDate && new Date(reportFilters.endDate),
     currency: "RUB"
-  }, {
-    enabled: reportFilters.includeSalary
-  });
+  }, { enabled: reportFilters.includeSalary });
   
   const salaryPaymentsUSDTQuery = api.salary.getAllPayments.useQuery({
     page: 1,
     pageSize: 100,
-    startDate: reportFilters.startDate ? new Date(reportFilters.startDate) : undefined,
-    endDate: reportFilters.endDate ? new Date(reportFilters.endDate) : undefined,
+    startDate: reportFilters.startDate && new Date(reportFilters.startDate),
+    endDate: reportFilters.endDate && new Date(reportFilters.endDate),
     currency: "USDT"
-  }, {
-    enabled: reportFilters.includeSalary
-  });
+  }, { enabled: reportFilters.includeSalary });
 
-  // Отдельные запросы для рублей и USDT
   const reportRUBQuery = api.finance.getSummaryReport.useQuery({
     startDate: new Date(reportFilters.startDate),
     endDate: new Date(reportFilters.endDate),
@@ -232,6 +213,7 @@ export default function FinancePage() {
     includeVariable: reportFilters.includeVariable,
     includeSalary: reportFilters.includeSalary,
     currency: "RUB",
+    section: activeSection !== "ALL" ? activeSection : null,
   });
   
   const reportUSDTQuery = api.finance.getSummaryReport.useQuery({
@@ -241,15 +223,16 @@ export default function FinancePage() {
     includeVariable: reportFilters.includeVariable,
     includeSalary: reportFilters.includeSalary,
     currency: "USDT",
+    section: activeSection !== "ALL" ? activeSection : null,
   });
 
-  // Мутации для CRUD операций
+  // CRUD mutations
   const createFinRowMutation = api.finance.createFinRow.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Финансовая запись успешно создана", "success");
       setIsFinRowDialogOpen(false);
       resetFinRowForm();
-      finRowsQuery.refetch();
+      getAllFinRowsQuery.refetch();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при создании записи: ${error.message}`, "danger");
@@ -257,12 +240,12 @@ export default function FinancePage() {
   });
   
   const updateFinRowMutation = api.finance.updateFinRow.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Финансовая запись успешно обновлена", "success");
       setIsFinRowDialogOpen(false);
       setEditingFinRowId(null);
       resetFinRowForm();
-      finRowsQuery.refetch();
+      getAllFinRowsQuery.refetch();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при обновлении записи: ${error.message}`, "danger");
@@ -270,9 +253,9 @@ export default function FinancePage() {
   });
   
   const deleteFinRowMutation = api.finance.deleteFinRow.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Финансовая запись успешно удалена", "success");
-      finRowsQuery.refetch();
+      getAllFinRowsQuery.refetch();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при удалении записи: ${error.message}`, "danger");
@@ -280,14 +263,11 @@ export default function FinancePage() {
   });
   
   const createExpenseMutation = api.finance.createExpense.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Расход успешно добавлен", "success");
       setIsExpenseDialogOpen(false);
       resetExpenseForm();
-      fixedExpensesQuery.refetch();
-      variableExpensesQuery.refetch();
-      reportRUBQuery.refetch();
-      reportUSDTQuery.refetch();
+      refreshExpenseData();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при добавлении расхода: ${error.message}`, "danger");
@@ -295,15 +275,12 @@ export default function FinancePage() {
   });
   
   const updateExpenseMutation = api.finance.updateExpense.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Расход успешно обновлен", "success");
       setIsExpenseDialogOpen(false);
       setEditingExpenseId(null);
       resetExpenseForm();
-      fixedExpensesQuery.refetch();
-      variableExpensesQuery.refetch();
-      reportRUBQuery.refetch();
-      reportUSDTQuery.refetch();
+      refreshExpenseData();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при обновлении расхода: ${error.message}`, "danger");
@@ -311,19 +288,38 @@ export default function FinancePage() {
   });
   
   const deleteExpenseMutation = api.finance.deleteExpense.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       showAlert("Успешно", "Расход успешно удален", "success");
-      fixedExpensesQuery.refetch();
-      variableExpensesQuery.refetch();
-      reportRUBQuery.refetch();
-      reportUSDTQuery.refetch();
+      refreshExpenseData();
     },
     onError: (error) => {
       showAlert("Ошибка", `Ошибка при удалении расхода: ${error.message}`, "danger");
     },
   });
 
-  // Сброс форм
+  // Utility functions to refresh data
+  const refreshExpenseData = () => {
+    fixedExpensesQuery.refetch();
+    variableExpensesQuery.refetch();
+    reportRUBQuery.refetch();
+    reportUSDTQuery.refetch();
+  };
+  
+  const refreshAllQueries = () => {
+    getAllFinRowsQuery.refetch();
+    fixedExpensesQuery.refetch();
+    variableExpensesQuery.refetch();
+    if (activeTab === "report") {
+      reportRUBQuery.refetch();
+      reportUSDTQuery.refetch();
+      if (reportFilters.includeSalary) {
+        salaryPaymentsRUBQuery.refetch();
+        salaryPaymentsUSDTQuery.refetch();
+      }
+    }
+  };
+
+  // Reset forms
   const resetFinRowForm = () => {
     setFinRowForm({
       date: dayjs().format("YYYY-MM-DD"),
@@ -334,41 +330,35 @@ export default function FinancePage() {
       endBalanceRUB: "",
       endBalanceUSDT: "",
       employeePayments: [],
-      comment: ""
+      comment: "",
+      section: activeSection === "ALL" ? "PAYMENTS" : activeSection as "PAYMENTS" | "TRACTOR"
     });
     setFinRowErrors({});
   };
   
   const resetExpenseForm = () => {
     setExpenseForm({
-      finRowId: null,
-      expenseType: "variable",
-      amountRUB: "",
-      amountUSDT: "",
       date: dayjs().format("YYYY-MM-DD"),
       time: dayjs().format("HH:mm"),
-      period: "",
-      description: ""
+      expenseType: "fixed",
+      amountRUB: "",
+      amountUSDT: "",
+      finRowId: "",
+      period: "monthly",
+      description: "",
+      section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
     });
     setExpenseErrors({});
   };
 
-  // Добавление выплаты сотруднику
+  // Employee payment handlers
   const addEmployeePayment = () => {
     setFinRowForm(prev => ({
       ...prev,
-      employeePayments: [
-        ...prev.employeePayments,
-        {
-          employeeId: "",
-          amount: "",
-          currency: "RUB"
-        }
-      ]
+      employeePayments: [...prev.employeePayments, {employeeId: "", amount: "", currency: "RUB"}]
     }));
   };
 
-  // Удаление выплаты сотруднику
   const removeEmployeePayment = (index) => {
     setFinRowForm(prev => ({
       ...prev,
@@ -376,32 +366,20 @@ export default function FinancePage() {
     }));
   };
 
-  // Обновление данных выплаты сотруднику
   const updateEmployeePayment = (index, field, value) => {
     setFinRowForm(prev => {
       const updatedPayments = [...prev.employeePayments];
-      updatedPayments[index] = {
-        ...updatedPayments[index],
-        [field]: value
-      };
-      return {
-        ...prev,
-        employeePayments: updatedPayments
-      };
+      updatedPayments[index] = {...updatedPayments[index], [field]: value};
+      return {...prev, employeePayments: updatedPayments};
     });
   };
 
-  // Валидация форм
+  // Form validation
   const validateFinRowForm = () => {
     const errors = {};
     
-    if (!finRowForm.date) {
-      errors.date = "Укажите дату";
-    }
-    
-    if (!finRowForm.time) {
-      errors.time = "Укажите время";
-    }
+    if (!finRowForm.date) errors.date = "Укажите дату";
+    if (!finRowForm.time) errors.time = "Укажите время";
     
     if (!finRowForm.startBalanceRUB && !finRowForm.startBalanceUSDT) {
       errors.startBalance = "Укажите начальный баланс хотя бы в одной валюте";
@@ -427,7 +405,6 @@ export default function FinancePage() {
       errors.endBalanceUSDT = "Укажите корректный конечный баланс в USDT";
     }
     
-    // Проверка выплат сотрудникам
     const employeeErrors = {};
     finRowForm.employeePayments.forEach((payment, index) => {
       if (!payment.employeeId) {
@@ -450,13 +427,8 @@ export default function FinancePage() {
   const validateExpenseForm = () => {
     const errors = {};
     
-    if (!expenseForm.date) {
-      errors.date = "Укажите дату";
-    }
-    
-    if (!expenseForm.time) {
-      errors.time = "Укажите время";
-    }
+    if (!expenseForm.date) errors.date = "Укажите дату";
+    if (!expenseForm.time) errors.time = "Укажите время";
     
     if (!expenseForm.amountRUB && !expenseForm.amountUSDT) {
       errors.amount = "Укажите сумму расхода хотя бы в одной валюте";
@@ -478,17 +450,11 @@ export default function FinancePage() {
     return Object.keys(errors).length === 0;
   };
 
-  // Обработчики форм
+  // Form submission handlers
   const handleFinRowSubmit = (e) => {
-    e && e.preventDefault();
+    e.preventDefault();
+    if (!validateFinRowForm()) return;
     
-    if (!validateFinRowForm()) {
-      return;
-    }
-    
-    // Адаптируем данные для совместимости с API
-    // Отправляем только одно значение для startBalance и endBalance
-    // в зависимости от того, какая валюта заполнена
     const hasRUB = !!finRowForm.startBalanceRUB || !!finRowForm.endBalanceRUB;
     const currency = hasRUB ? "RUB" : "USDT";
     
@@ -509,19 +475,17 @@ export default function FinancePage() {
         ? parseFloat(finRowForm.employeePayments[0].amount) 
         : 0,
       currency: currency,
-      comment: finRowForm.comment || undefined
+      comment: finRowForm.comment || undefined,
+      section: finRowForm.section
     };
     
     if (editingFinRowId) {
-      updateFinRowMutation.mutate({
-        id: editingFinRowId,
-        ...formData
-      });
+      updateFinRowMutation.mutate({ id: editingFinRowId, ...formData });
     } else {
       createFinRowMutation.mutate(formData);
     }
     
-    // Если есть более одной выплаты сотруднику, создаем их отдельно
+    // Additional employee payments handling
     if (finRowForm.employeePayments.length > 1) {
       finRowForm.employeePayments.slice(1).forEach(payment => {
         if (payment.employeeId && payment.amount) {
@@ -538,41 +502,33 @@ export default function FinancePage() {
   };
   
   const handleExpenseSubmit = (e) => {
-    e && e.preventDefault();
+    e.preventDefault();
+    if (!validateExpenseForm()) return;
     
-    if (!validateExpenseForm()) {
-      return;
-    }
-    
-    // Адаптируем данные для совместимости с API
     const hasRUB = !!expenseForm.amountRUB;
     const currency = hasRUB ? "RUB" : "USDT";
     
     const formData = {
       finRowId: expenseForm.finRowId ? parseInt(expenseForm.finRowId) : undefined,
       expenseType: expenseForm.expenseType,
-      amount: hasRUB 
-        ? parseFloat(expenseForm.amountRUB) 
-        : parseFloat(expenseForm.amountUSDT),
+      amount: hasRUB ? parseFloat(expenseForm.amountRUB) : parseFloat(expenseForm.amountUSDT),
       currency: currency,
       date: new Date(expenseForm.date),
       time: expenseForm.time,
       period: expenseForm.period || undefined,
-      description: expenseForm.description || undefined
+      description: expenseForm.description || undefined,
+      section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
     };
     
     if (editingExpenseId) {
-      updateExpenseMutation.mutate({
-        id: editingExpenseId,
-        ...formData
-      });
+      updateExpenseMutation.mutate({ id: editingExpenseId, ...formData });
     } else {
       createExpenseMutation.mutate(formData);
     }
   };
   
   const handleReportFilterSubmit = (e) => {
-    e && e.preventDefault();
+    e.preventDefault();
     reportRUBQuery.refetch();
     reportUSDTQuery.refetch();
     if (reportFilters.includeSalary) {
@@ -581,34 +537,47 @@ export default function FinancePage() {
     }
   };
 
-  // Обработчики полей форм
-  const handleFinRowFormChange = (field, value) => {
-    setFinRowForm(prev => ({
+  // Section and form field handlers
+  const handleSectionChange = (section) => {
+    setActiveSection(section);
+    setCurrentPageIncome(1);
+    
+    if (section === "ALL") {
+      setFinRowFilters(prev => ({ ...prev, section: null, allSections: true }));
+      setFixedExpensesFilters(prev => ({ ...prev, section: null }));
+      setVariableExpensesFilters(prev => ({ ...prev, section: null }));
+      router.push('/finances');
+    } else {
+      setFinRowFilters(prev => ({ ...prev, section: section, allSections: false }));
+      setFixedExpensesFilters(prev => ({ ...prev, section: section }));
+      setVariableExpensesFilters(prev => ({ ...prev, section: section }));
+      router.push(`/finances?section=${section}`);
+    }
+    
+    // Обновляем секцию в форме расходов
+    setExpenseForm(prev => ({
       ...prev,
-      [field]: value
+      section: section !== "ALL" ? section : "PAYMENTS"
     }));
+    
+    setTimeout(refreshAllQueries, 0);
+  };
+
+  const handleFinRowFormChange = (field, value) => {
+    setFinRowForm(prev => ({ ...prev, [field]: value }));
   };
   
   const handleExpenseFormChange = (field, value) => {
-    setExpenseForm(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setExpenseForm(prev => ({ ...prev, [field]: value }));
   };
   
   const handleReportFilterChange = (field, value) => {
-    setReportFilters(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setReportFilters(prev => ({ ...prev, [field]: value }));
   };
 
-  // Обработчик для редактирования финансовой записи
+  // CRUD operation handlers
   const handleEditFinRow = (finRow) => {
     setEditingFinRowId(finRow.id);
-    
-    // Преобразуем данные из базы в формат формы
-    // Трансформируем старую структуру в новую с разделением валют
     const isRUB = finRow.currency === "RUB";
     
     setFinRowForm({
@@ -624,25 +593,22 @@ export default function FinancePage() {
         amount: finRow.usdtAmount?.toString() || "0",
         currency: finRow.currency
       }] : [],
-      comment: finRow.comment || ""
+      comment: finRow.comment || "",
+      section: finRow.section
     });
     
     setFinRowErrors({});
     setIsFinRowDialogOpen(true);
   };
   
-  // Обработчик для удаления финансовой записи
   const handleDeleteFinRow = (id) => {
     if (window.confirm("Вы уверены, что хотите удалить эту финансовую запись?")) {
       deleteFinRowMutation.mutate({ finRowId: id });
     }
   };
   
-  // Обработчик для редактирования расхода
   const handleEditExpense = (expense) => {
     setEditingExpenseId(expense.id);
-    
-    // Преобразуем данные из базы в формат формы
     const isRUB = expense.currency === "RUB";
     
     setExpenseForm({
@@ -653,64 +619,78 @@ export default function FinancePage() {
       date: dayjs(expense.date).format("YYYY-MM-DD"),
       time: expense.time,
       period: expense.period || "",
-      description: expense.description || ""
+      description: expense.description || "",
+      section: expense.section
     });
     
     setExpenseErrors({});
     setIsExpenseDialogOpen(true);
   };
   
-  // Обработчик для удаления расхода
   const handleDeleteExpense = (id) => {
     if (window.confirm("Вы уверены, что хотите удалить этот расход?")) {
       deleteExpenseMutation.mutate({ expenseId: id });
     }
   };
 
-  // Обработчики пагинации
-  const handleIncomePageChange = (page) => {
-    setCurrentPageIncome(page);
-  };
-  
-  const handleExpensesPageChange = (page) => {
-    setCurrentPageExpenses(page);
-  };
+  // Pagination handlers
+  const handleIncomePageChange = (page) => setCurrentPageIncome(page);
+  const handleExpensesPageChange = (page) => setCurrentPageExpenses(page);
 
-  // Вспомогательные функции
+  // Formatter functions
   const formatMoney = (amount, currency = "RUB") => {
     if (!amount || amount === 0) return "—";
-    
     return new Intl.NumberFormat('ru-RU', { 
       style: 'currency', 
       currency: currency === "USDT" ? "USD" : "RUB"
     }).format(amount) + (currency === "USDT" ? " USDT" : "");
   };
   
-  const formatDate = (date) => {
-    return dayjs(date).format("DD.MM.YYYY");
-  };
-  
-  const getShiftName = (shift) => {
-    return shift === 'morning' ? 'Утренняя' : 'Вечерняя';
-  };
-  
-  const getExpenseTypeName = (type) => {
-    return type === 'fixed' ? 'Постоянный' : 'Переменный';
-  };
-  
+  const formatDate = (date) => dayjs(date).format("DD.MM.YYYY");
+  const getShiftName = (shift) => shift === 'morning' ? 'Утренняя' : 'Вечерняя';
   const getPeriodName = (period) => {
     const found = periodOptions.find(p => p.key === period);
     return found ? found.label : period;
   };
 
   const getCurrencyBadge = (currency) => {
-    if (currency === "RUB") {
-      return <Badge color="primary">₽</Badge>;
-    } else if (currency === "USDT") {
-      return <Badge color="success">USDT</Badge>;
-    }
+    if (currency === "RUB") return <Badge color="primary">₽</Badge>;
+    if (currency === "USDT") return <Badge color="success">USDT</Badge>;
     return null;
   };
+
+  // Component initialization
+  useEffect(() => {
+    if (sectionFromUrl) {
+      setActiveSection(sectionFromUrl);
+      setFinRowFilters(prev => ({
+        ...prev,
+        section: sectionFromUrl === "PAYMENTS" || sectionFromUrl === "TRACTOR" ? sectionFromUrl : null,
+        allSections: sectionFromUrl !== "PAYMENTS" && sectionFromUrl !== "TRACTOR"
+      }));
+      
+      setTimeout(refreshAllQueries, 100);
+    }
+  }, []);
+
+  // Section change effect
+  useEffect(() => {
+    // Обновление фильтров расходов при изменении секции
+    setCurrentPageExpenses(1);
+    
+    // Обновление данных
+    refreshAllQueries();
+  }, [activeSection]);
+  
+  // Tab change effect
+  useEffect(() => {
+    if (activeTab === 'income') {
+      setIncomeTableKey(prevKey => prevKey + 1);
+    } else if (activeTab === 'report') {
+      setReportTableKey(prevKey => prevKey + 1);
+    }
+    refreshAllQueries();
+  }, [activeTab]);
 
   return (
     <div className="container mx-auto py-6 px-4">
@@ -730,255 +710,241 @@ export default function FinancePage() {
         </div>
       )}
       
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
         <h1 className="text-2xl font-bold">Финансовый учет</h1>
       </div>
 
-      <Tabs value={activeTab} onSelectionChange={setActiveTab} aria-label="Разделы финансов">
-        <Tab 
-          key="income" 
-          title={
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              <span>Доходы (отчеты смен)</span>
-            </div>
-          }
-        />
-        <Tab 
-          key="expenses" 
-          title={
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              <span>Расходы</span>
-            </div>
-          }
-        />
-        <Tab 
-          key="report" 
-          title={
-            <div className="flex items-center gap-2">
-              <BarChart className="w-4 h-4" />
-              <span>Прибыль</span>
-            </div>
-          }
-        />
+      {/* Section tabs */}
+      <div className="mb-6">
+        <Tabs 
+          selectedKey={activeSection} 
+          onSelectionChange={(key) => handleSectionChange(key.toString())}
+          aria-label="Секции финансов"
+          variant="bordered"
+          classNames={{
+            tabList: "bg-gray-50 dark:bg-zinc-900",
+            cursor: "bg-white dark:bg-zinc-800 shadow-md",
+            tab: "px-8 py-2 font-medium"
+          }}
+        >
+          <Tab key="ALL" title="Общее" />
+          <Tab key="PAYMENTS" title="Выплаты" />
+          <Tab key="TRACTOR" title="Трактор" />
+        </Tabs>
+      </div>
+
+      {/* Finance type tabs */}
+      <Tabs value={activeTab} onSelectionChange={setActiveTab} aria-label="Типы финансов">
+        <Tab key="income" title={<div className="flex items-center gap-2"><DollarSign className="w-4 h-4" /><span>Доходы (отчеты смен)</span></div>} />
+        <Tab key="expenses" title={<div className="flex items-center gap-2"><FileText className="w-4 h-4" /><span>Расходы</span></div>} />
+        <Tab key="report" title={<div className="flex items-center gap-2"><BarChart className="w-4 h-4" /><span>Прибыль</span></div>} />
       </Tabs>
       
       <div className="mt-4">
-        {/* Вкладка "Доходы (отчеты смен)" */}
+        {/* Income tab */}
         {activeTab === "income" && (
-          <Card>
-            <CardHeader className="flex justify-between items-center px-6 py-4">
-              <div>
-                <h2 className="text-xl font-bold">Отчеты смен</h2>
-                <p className="text-sm text-gray-500">Управление финансовыми отчетами по сменам</p>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center">
+                <h2 className="text-xl font-semibold">Доходы от смен</h2>
+                {activeSection !== 'ALL' && (
+                  <Badge color={activeSection === 'PAYMENTS' ? 'primary' : 'warning'} className="ml-3 px-3 py-1">
+                    {activeSection === 'PAYMENTS' ? 'Выплаты' : 'Трактор'}
+                  </Badge>
+                )}
               </div>
-              <Button
-                color="primary"
-                startIcon={<Plus className="w-4 h-4" />}
-                onClick={() => {
-                  setEditingFinRowId(null);
-                  resetFinRowForm();
-                  setIsFinRowDialogOpen(true);
-                }}
-              >
-                Добавить отчет
+              <Button color="primary" onClick={() => {
+                setEditingFinRowId(null);
+                resetFinRowForm();
+                setIsFinRowDialogOpen(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" /> Добавить запись
               </Button>
-            </CardHeader>
-            
-            <CardBody className="px-6 py-4">
-              {/* Фильтры для отчетов смен */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            </div>
+            <Card>
+              <CardHeader className="flex justify-between items-center px-6 py-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Начальная дата</label>
-                  <Input
-                    type="date"
-                    value={finRowFilters.startDate || ""}
-                    onChange={(e) => setFinRowFilters({...finRowFilters, startDate: e.target.value || null, page: 1})}
-                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                    aria-label="Начальная дата"
-                  />
+                  <h2 className="text-xl font-bold">Отчеты смен {activeSection !== "ALL" && (
+                    <Badge color={activeSection === "PAYMENTS" ? "primary" : "warning"} className="ml-2">
+                      {activeSection === "PAYMENTS" ? "Выплаты" : "Трактор"}
+                    </Badge>
+                  )}</h2>
+                  <p className="text-sm text-gray-500">Управление финансовыми отчетами по сменам</p>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Конечная дата</label>
-                  <Input
-                    type="date"
-                    value={finRowFilters.endDate || ""}
-                    onChange={(e) => setFinRowFilters({...finRowFilters, endDate: e.target.value || null, page: 1})}
-                    startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                    aria-label="Конечная дата"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Смена</label>
-                  <Select
-                    placeholder="Все смены"
-                    selectedKeys={finRowFilters.shift ? [finRowFilters.shift] : []}
-                    onChange={(e) => setFinRowFilters({...finRowFilters, shift: e.target.value || null, page: 1})}
-                    aria-label="Выбор смены"
-                  >
-                    <SelectItem key="" value="">Все смены</SelectItem>
-                    <SelectItem key="morning" value="morning">Утренняя</SelectItem>
-                    <SelectItem key="evening" value="evening">Вечерняя</SelectItem>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Сотрудник</label>
-                  <Select
-                    placeholder="Все сотрудники"
-                    selectedKeys={finRowFilters.employeeId ? [finRowFilters.employeeId.toString()] : []}
-                    onChange={(e) => setFinRowFilters({...finRowFilters, employeeId: e.target.value ? parseInt(e.target.value) : null, page: 1})}
-                    aria-label="Выбор сотрудника"
-                  >
-                    <SelectItem key="" value="">Все сотрудники</SelectItem>
-                    {employeesQuery.data?.employees.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id.toString()}>
-                        {employee.fullName}
-                      </SelectItem>
-                    ))}
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Валюта</label>
-                  <Select
-                    placeholder="Все валюты"
-                    selectedKeys={finRowFilters.currency ? [finRowFilters.currency] : []}
-                    onChange={(e) => setFinRowFilters({...finRowFilters, currency: e.target.value as Currency || null, page: 1})}
-                    aria-label="Выбор валюты"
-                  >
-                    <SelectItem key="" value="">Все валюты</SelectItem>
-                    <SelectItem key="RUB" value="RUB">Рубли (₽)</SelectItem>
-                    <SelectItem key="USDT" value="USDT">USDT</SelectItem>
-                  </Select>
-                </div>
-              </div>
+              </CardHeader>
               
-              {/* Таблица отчетов смен */}
-              <div className="overflow-x-auto">
-                <Table aria-label="Таблица отчетов по сменам">
-                  <TableHeader>
-                    <TableColumn>Дата/Время</TableColumn>
-                    <TableColumn>Смена</TableColumn>
-                    <TableColumn>Начальный баланс</TableColumn>
-                    <TableColumn>Конечный баланс</TableColumn>
-                    <TableColumn>Выручка</TableColumn>
-                    <TableColumn>Валюта</TableColumn>
-                    <TableColumn>Выплаты сотрудникам</TableColumn>
-                    <TableColumn>Комментарий</TableColumn>
-                    <TableColumn>Действия</TableColumn>
-                  </TableHeader>
-                  <TableBody>
-                    {finRowsQuery.isLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-10">
-                          <div className="flex justify-center">
-                            <Spinner size="lg" color="primary" />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : finRowsQuery.data?.finRows.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-10 text-gray-500">
-                          Нет данных
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      finRowsQuery.data?.finRows.map((finRow) => (
-                        <TableRow key={finRow.id}>
-                          <TableCell>
-                            {formatDate(finRow.date)} {finRow.time}
+              <CardBody className="px-6 py-4">
+                {/* Income report filters */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Начальная дата</label>
+                    <Input
+                      type="date"
+                      value={finRowFilters.startDate || ""}
+                      onChange={(e) => setFinRowFilters({...finRowFilters, startDate: e.target.value || null, page: 1})}
+                      startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Конечная дата</label>
+                    <Input
+                      type="date"
+                      value={finRowFilters.endDate || ""}
+                      onChange={(e) => setFinRowFilters({...finRowFilters, endDate: e.target.value || null, page: 1})}
+                      startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Смена</label>
+                    <Select
+                      placeholder="Все смены"
+                      selectedKeys={finRowFilters.shift ? [finRowFilters.shift] : []}
+                      onChange={(e) => setFinRowFilters({...finRowFilters, shift: e.target.value || null, page: 1})}
+                    >
+                      <SelectItem key="" value="">Все смены</SelectItem>
+                      <SelectItem key="morning" value="morning">Утренняя</SelectItem>
+                      <SelectItem key="evening" value="evening">Вечерняя</SelectItem>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Сотрудник</label>
+                    <Select
+                      placeholder="Все сотрудники"
+                      selectedKeys={finRowFilters.employeeId ? [finRowFilters.employeeId.toString()] : []}
+                      onChange={(e) => setFinRowFilters({...finRowFilters, employeeId: e.target.value ? parseInt(e.target.value) : null, page: 1})}
+                    >
+                      <SelectItem key="" value="">Все сотрудники</SelectItem>
+                      {employeesQuery.data?.employees.map((employee) => (
+                        <SelectItem key={employee.id} value={employee.id.toString()}>
+                          {employee.fullName}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Валюта</label>
+                    <Select
+                      placeholder="Все валюты"
+                      selectedKeys={finRowFilters.currency ? [finRowFilters.currency] : []}
+                      onChange={(e) => setFinRowFilters({...finRowFilters, currency: e.target.value as Currency || null, page: 1})}
+                    >
+                      <SelectItem key="" value="">Все валюты</SelectItem>
+                      <SelectItem key="RUB" value="RUB">Рубли (₽)</SelectItem>
+                      <SelectItem key="USDT" value="USDT">USDT</SelectItem>
+                    </Select>
+                  </div>
+                </div>
+                
+                {/* Income reports table */}
+                <div className="overflow-x-auto">
+                  <Table aria-label="Таблица отчетов по сменам">
+                    <TableHeader>
+                      <TableColumn>Дата/Время</TableColumn>
+                      <TableColumn>Смена</TableColumn>
+                      <TableColumn>Начальный баланс</TableColumn>
+                      <TableColumn>Конечный баланс</TableColumn>
+                      <TableColumn>Выручка</TableColumn>
+                      <TableColumn>Валюта</TableColumn>
+                      <TableColumn>Выплаты сотрудникам</TableColumn>
+                      <TableColumn>Комментарий</TableColumn>
+                      <TableColumn>Действия</TableColumn>
+                    </TableHeader>
+                    <TableBody>
+                      {getAllFinRowsQuery.isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-10">
+                            <div className="flex justify-center">
+                              <Spinner size="lg" color="primary" />
+                            </div>
                           </TableCell>
-                          <TableCell>{getShiftName(finRow.shift)}</TableCell>
-                          <TableCell>{formatMoney(finRow.startBalance, finRow.currency)}</TableCell>
-                          <TableCell>{formatMoney(finRow.endBalance, finRow.currency)}</TableCell>
-                          <TableCell>{formatMoney(finRow.endBalance - finRow.startBalance, finRow.currency)}</TableCell>
-                          <TableCell>{getCurrencyBadge(finRow.currency)}</TableCell>
-                          <TableCell>
-                            {finRow.employeeId ? (
-                              <div className="flex flex-col gap-1">
+                        </TableRow>
+                      ) : getAllFinRowsQuery.data?.finRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-10 text-gray-500">
+                            Нет данных
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        getAllFinRowsQuery.data?.finRows.map((finRow) => (
+                          <TableRow key={finRow.id}>
+                            <TableCell>
+                              {formatDate(finRow.date)} {finRow.time}
+                            </TableCell>
+                            <TableCell>{getShiftName(finRow.shift)}</TableCell>
+                            <TableCell>{formatMoney(finRow.startBalance, finRow.currency)}</TableCell>
+                            <TableCell>{formatMoney(finRow.endBalance, finRow.currency)}</TableCell>
+                            <TableCell>{formatMoney(finRow.endBalance - finRow.startBalance, finRow.currency)}</TableCell>
+                            <TableCell>{getCurrencyBadge(finRow.currency)}</TableCell>
+                            <TableCell>
+                              {finRow.employeeId ? (
                                 <div className="flex items-center gap-1">
                                   <span>{finRow.employee?.fullName}: </span>
                                   <span>{formatMoney(finRow.usdtAmount, finRow.currency)}</span>
                                 </div>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell>{finRow.comment || '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex space-x-2">
+                                <Button isIconOnly size="sm" variant="light" onClick={() => handleEditFinRow(finRow)}>
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button isIconOnly size="sm" variant="light" color="danger" onClick={() => handleDeleteFinRow(finRow.id)}>
+                                  <Trash className="w-4 h-4" />
+                                </Button>
                               </div>
-                            ) : (
-                              '—'
-                            )}
-                          </TableCell>
-                          <TableCell>{finRow.comment || '—'}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button 
-                                isIconOnly 
-                                size="sm" 
-                                variant="light" 
-                                onClick={() => handleEditFinRow(finRow)}
-                                aria-label="Редактировать"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button 
-                                isIconOnly 
-                                size="sm" 
-                                variant="light" 
-                                color="danger" 
-                                onClick={() => handleDeleteFinRow(finRow.id)}
-                                aria-label="Удалить"
-                              >
-                                <Trash className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              
-              {/* Пагинация */}
-              {finRowsQuery.data?.pagination && finRowsQuery.data.pagination.totalPages > 1 && (
-                <div className="flex justify-between items-center mt-4">
-                  <span className="text-sm text-gray-500">
-                    Страница {currentPageIncome} из {finRowsQuery.data.pagination.totalPages}
-                  </span>
-                  <Pagination
-                    total={finRowsQuery.data.pagination.totalPages}
-                    initialPage={currentPageIncome}
-                    page={currentPageIncome}
-                    onChange={handleIncomePageChange}
-                    aria-label="Пагинация списка финансовых записей"
-                  />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </CardBody>
-          </Card>
+                
+                {/* Pagination */}
+                {getAllFinRowsQuery.data?.pagination && getAllFinRowsQuery.data.pagination.totalPages > 1 && (
+                  <div className="flex justify-between items-center mt-4">
+                    <span className="text-sm text-gray-500">
+                      Страница {currentPageIncome} из {getAllFinRowsQuery.data.pagination.totalPages}
+                    </span>
+                    <Pagination
+                      total={getAllFinRowsQuery.data.pagination.totalPages}
+                      initialPage={currentPageIncome}
+                      page={currentPageIncome}
+                      onChange={handleIncomePageChange}
+                    />
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          </div>
         )}
         
-        {/* Вкладка "Расходы" */}
+        {/* Expenses tab */}
         {activeTab === "expenses" && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Постоянные расходы */}
+              {/* Fixed expenses */}
               <Card>
                 <CardHeader className="flex justify-between items-center px-6 py-4">
                   <div>
-                    <h2 className="text-xl font-bold">Постоянные расходы</h2>
-                    <p className="text-sm text-gray-500">Постоянные расходы с указанием периода</p>
+                    <h2 className="text-xl font-bold">Постоянные расходы {activeSection !== "ALL" && (
+                    <Badge color={activeSection === "PAYMENTS" ? "primary" : "warning"} className="ml-2">
+                      {activeSection === "PAYMENTS" ? "Выплаты" : "Трактор"}
+                    </Badge>
+                  )}</h2>
+                  <p className="text-sm text-gray-500">Постоянные расходы или расходы с фиксированной периодичностью</p>
                   </div>
                   <Button
                     color="primary"
                     startIcon={<Plus className="w-4 h-4" />}
                     onClick={() => {
                       setEditingExpenseId(null);
-                      setExpenseForm({
-                        ...expenseForm,
-                        expenseType: "fixed"
-                      });
+                      setExpenseForm({...expenseForm, expenseType: "fixed"});
                       setExpenseErrors({});
                       setIsExpenseDialogOpen(true);
                     }}
@@ -988,7 +954,7 @@ export default function FinancePage() {
                 </CardHeader>
                 
                 <CardBody className="px-6 py-4">
-                  {/* Фильтры для постоянных расходов */}
+                  {/* Fixed expenses filters */}
                   <div className="grid grid-cols-3 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Начальная дата</label>
@@ -1001,7 +967,6 @@ export default function FinancePage() {
                           page: 1
                         })}
                         startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                        aria-label="Начальная дата"
                       />
                     </div>
                     
@@ -1016,7 +981,6 @@ export default function FinancePage() {
                           page: 1
                         })}
                         startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                        aria-label="Конечная дата"
                       />
                     </div>
                     
@@ -1030,7 +994,6 @@ export default function FinancePage() {
                           currency: e.target.value as Currency || null,
                           page: 1
                         })}
-                        aria-label="Выбор валюты"
                       >
                         <SelectItem key="" value="">Все валюты</SelectItem>
                         <SelectItem key="RUB" value="RUB">Рубли (₽)</SelectItem>
@@ -1039,9 +1002,9 @@ export default function FinancePage() {
                     </div>
                   </div>
                   
-                  {/* Таблица постоянных расходов */}
+                  {/* Fixed expenses table */}
                   <div className="overflow-x-auto">
-                    <Table aria-label="Таблица постоянных расходов">
+                    <Table>
                       <TableHeader>
                         <TableColumn>Дата/Время</TableColumn>
                         <TableColumn>Сумма</TableColumn>
@@ -1077,23 +1040,10 @@ export default function FinancePage() {
                               <TableCell>{expense.description || '—'}</TableCell>
                               <TableCell>
                                 <div className="flex space-x-2">
-                                  <Button 
-                                    isIconOnly 
-                                    size="sm" 
-                                    variant="light" 
-                                    onClick={() => handleEditExpense(expense)}
-                                    aria-label="Редактировать"
-                                  >
+                                  <Button isIconOnly size="sm" variant="light" onClick={() => handleEditExpense(expense)}>
                                     <Edit className="w-4 h-4" />
                                   </Button>
-                                  <Button 
-                                    isIconOnly 
-                                    size="sm" 
-                                    variant="light" 
-                                    color="danger" 
-                                    onClick={() => handleDeleteExpense(expense.id)}
-                                    aria-label="Удалить"
-                                  >
+                                  <Button isIconOnly size="sm" variant="light" color="danger" onClick={() => handleDeleteExpense(expense.id)}>
                                     <Trash className="w-4 h-4" />
                                   </Button>
                                 </div>
@@ -1107,22 +1057,23 @@ export default function FinancePage() {
                 </CardBody>
               </Card>
               
-              {/* Переменные расходы */}
+              {/* Variable expenses */}
               <Card>
                 <CardHeader className="flex justify-between items-center px-6 py-4">
                   <div>
-                    <h2 className="text-xl font-bold">Переменные расходы</h2>
-                    <p className="text-sm text-gray-500">Переменные (разовые) расходы</p>
+                    <h2 className="text-xl font-bold">Переменные расходы {activeSection !== "ALL" && (
+                    <Badge color={activeSection === "PAYMENTS" ? "primary" : "warning"} className="ml-2">
+                      {activeSection === "PAYMENTS" ? "Выплаты" : "Трактор"}
+                    </Badge>
+                  )}</h2>
+                  <p className="text-sm text-gray-500">Переменные или разовые расходы</p>
                   </div>
                   <Button
                     color="primary"
                     startIcon={<Plus className="w-4 h-4" />}
                     onClick={() => {
                       setEditingExpenseId(null);
-                      setExpenseForm({
-                        ...expenseForm,
-                        expenseType: "variable"
-                      });
+                      setExpenseForm({...expenseForm, expenseType: "variable"});
                       setExpenseErrors({});
                       setIsExpenseDialogOpen(true);
                     }}
@@ -1132,7 +1083,7 @@ export default function FinancePage() {
                 </CardHeader>
                 
                 <CardBody className="px-6 py-4">
-                  {/* Фильтры для переменных расходов (независимые от других фильтров) */}
+                  {/* Variable expenses filters */}
                   <div className="grid grid-cols-3 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Начальная дата</label>
@@ -1145,7 +1096,6 @@ export default function FinancePage() {
                           page: 1
                         })}
                         startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                        aria-label="Начальная дата"
                       />
                     </div>
                     
@@ -1160,7 +1110,6 @@ export default function FinancePage() {
                           page: 1
                         })}
                         startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                        aria-label="Конечная дата"
                       />
                     </div>
                     
@@ -1174,7 +1123,6 @@ export default function FinancePage() {
                           currency: e.target.value as Currency || null,
                           page: 1
                         })}
-                        aria-label="Выбор валюты"
                       >
                         <SelectItem key="" value="">Все валюты</SelectItem>
                         <SelectItem key="RUB" value="RUB">Рубли (₽)</SelectItem>
@@ -1183,9 +1131,9 @@ export default function FinancePage() {
                     </div>
                   </div>
                   
-                  {/* Таблица переменных расходов */}
+                  {/* Variable expenses table */}
                   <div className="overflow-x-auto">
-                    <Table aria-label="Таблица переменных расходов">
+                    <Table>
                       <TableHeader>
                         <TableColumn>Дата/Время</TableColumn>
                         <TableColumn>Сумма</TableColumn>
@@ -1219,23 +1167,10 @@ export default function FinancePage() {
                               <TableCell>{expense.description || '—'}</TableCell>
                               <TableCell>
                                 <div className="flex space-x-2">
-                                  <Button 
-                                    isIconOnly 
-                                    size="sm" 
-                                    variant="light" 
-                                    onClick={() => handleEditExpense(expense)}
-                                    aria-label="Редактировать"
-                                  >
+                                  <Button isIconOnly size="sm" variant="light" onClick={() => handleEditExpense(expense)}>
                                     <Edit className="w-4 h-4" />
                                   </Button>
-                                  <Button 
-                                    isIconOnly 
-                                    size="sm" 
-                                    variant="light" 
-                                    color="danger" 
-                                    onClick={() => handleDeleteExpense(expense.id)}
-                                    aria-label="Удалить"
-                                  >
+                                  <Button isIconOnly size="sm" variant="light" color="danger" onClick={() => handleDeleteExpense(expense.id)}>
                                     <Trash className="w-4 h-4" />
                                   </Button>
                                 </div>
@@ -1250,16 +1185,17 @@ export default function FinancePage() {
               </Card>
             </div>
             
-            {/* Сводная информация по расходам */}
+            {/* Expense summary */}
             <Card>
               <CardHeader className="px-6 py-4">
                 <h2 className="text-xl font-bold">Сводная информация по расходам</h2>
               </CardHeader>
               <CardBody className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-8 gap-4">
-                  <Card className="md:col-span-2">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Fixed expenses */}
+                  <Card>
                     <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-semibold">Постоянные расходы</h3>
+                      <h3 className="text-lg font-bold">Постоянные расходы</h3>
                     </CardHeader>
                     <CardBody className="px-6 py-3">
                       <div className="flex flex-col gap-2">
@@ -1279,9 +1215,10 @@ export default function FinancePage() {
                     </CardBody>
                   </Card>
                   
-                  <Card className="md:col-span-2">
+                  {/* Variable expenses */}
+                  <Card>
                     <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-semibold">Переменные расходы</h3>
+                      <h3 className="text-lg font-bold">Переменные расходы</h3>
                     </CardHeader>
                     <CardBody className="px-6 py-3">
                       <div className="flex flex-col gap-2">
@@ -1301,9 +1238,10 @@ export default function FinancePage() {
                     </CardBody>
                   </Card>
                   
-                  <Card className="md:col-span-2">
+                  {/* Salary expenses */}
+                  <Card>
                     <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-semibold">Зарплатные расходы</h3>
+                      <h3 className="text-lg font-bold">Зарплатные расходы</h3>
                     </CardHeader>
                     <CardBody className="px-6 py-3">
                       <div className="flex flex-col gap-2">
@@ -1323,9 +1261,10 @@ export default function FinancePage() {
                     </CardBody>
                   </Card>
                   
-                  <Card className="md:col-span-2">
+                  {/* Total expenses */}
+                  <Card>
                     <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-semibold">Общие расходы</h3>
+                      <h3 className="text-lg font-bold">Общие расходы</h3>
                     </CardHeader>
                     <CardBody className="px-6 py-3">
                       <div className="flex flex-col gap-2">
@@ -1350,7 +1289,7 @@ export default function FinancePage() {
           </>
         )}
         
-        {/* Вкладка "Прибыль" */}
+        {/* Profit tab */}
         {activeTab === "report" && (
           <Card>
             <CardHeader className="px-6 py-4">
@@ -1359,7 +1298,7 @@ export default function FinancePage() {
             </CardHeader>
             
             <CardBody className="px-6 py-4">
-              {/* Фильтры отчета */}
+              {/* Report filters */}
               <form onSubmit={handleReportFilterSubmit} className="space-y-6 mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1369,7 +1308,6 @@ export default function FinancePage() {
                       value={reportFilters.startDate}
                       onChange={(e) => handleReportFilterChange('startDate', e.target.value)}
                       startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                      aria-label="Начальная дата отчета"
                     />
                   </div>
                   
@@ -1380,7 +1318,6 @@ export default function FinancePage() {
                       value={reportFilters.endDate}
                       onChange={(e) => handleReportFilterChange('endDate', e.target.value)}
                       startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                      aria-label="Конечная дата отчета"
                     />
                   </div>
                 </div>
@@ -1441,9 +1378,10 @@ export default function FinancePage() {
               
               <hr className="my-6" />
               
-              {/* Отчет о прибыли с двойными показателями */}
+              {/* Profit report cards */}
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Income card */}
                   <Card>
                     <CardHeader className="px-6 py-4">
                       <h3 className="text-lg font-bold">Доходы</h3>
@@ -1462,13 +1400,11 @@ export default function FinancePage() {
                             {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.total, "USDT") : '—'}
                           </p>
                         </div>
-                        <p className="text-sm text-gray-500">
-                          За период с {reportRUBQuery.data?.report ? formatDate(reportRUBQuery.data.report.period.startDate) : '—'} по {reportRUBQuery.data?.report ? formatDate(reportRUBQuery.data.report.period.endDate) : '—'}
-                        </p>
                       </div>
                     </CardBody>
                   </Card>
                   
+                  {/* Expenses card */}
                   <Card>
                     <CardHeader className="px-6 py-4">
                       <h3 className="text-lg font-bold">Расходы</h3>
@@ -1489,7 +1425,7 @@ export default function FinancePage() {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-3 mt-6 gap-2 text-sm">
+                      <div className="grid grid-cols-3 gap-2 text-sm">
                         <div>
                           <p className="font-semibold text-center">Постоянные</p>
                           <div className="flex flex-col gap-1 items-center mt-2">
@@ -1534,6 +1470,7 @@ export default function FinancePage() {
                   </Card>
                 </div>
                 
+                {/* Profit card */}
                 <Card>
                   <CardHeader className="px-6 py-4">
                     <h3 className="text-lg font-bold">Прибыль</h3>
@@ -1552,9 +1489,6 @@ export default function FinancePage() {
                           {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.profit, "USDT") : '—'}
                         </p>
                       </div>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Прибыль = Доходы - Расходы
-                      </p>
                     </div>
                   </CardBody>
                 </Card>
@@ -1564,14 +1498,9 @@ export default function FinancePage() {
         )}
       </div>
       
-      {/* Модальное окно добавления/редактирования финансовой записи - увеличена ширина */}
-      <Modal 
-        isOpen={isFinRowDialogOpen} 
-        onClose={() => setIsFinRowDialogOpen(false)}
-        size="3xl" // Увеличенный размер
-        className="max-w-5xl" // Дополнительное увеличение ширины через класс
-      >
-        <ModalContent className="w-full max-w-5xl"> {/* Увеличиваем ширину для всех полей */}
+      {/* FinRow modal */}
+      <Modal isOpen={isFinRowDialogOpen} onClose={() => setIsFinRowDialogOpen(false)} size="3xl" className="max-w-5xl">
+        <ModalContent className="w-full max-w-5xl">
           <ModalHeader>
             <h3 className="text-lg font-medium">
               {editingFinRowId ? 'Редактирование отчета смены' : 'Добавление отчета смены'}
@@ -1592,7 +1521,6 @@ export default function FinancePage() {
                     isInvalid={!!finRowErrors.date}
                     errorMessage={finRowErrors.date}
                     startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                    aria-label="Дата отчета"
                   />
                 </div>
                 
@@ -1604,19 +1532,20 @@ export default function FinancePage() {
                     onChange={(e) => handleFinRowFormChange('time', e.target.value)}
                     isInvalid={!!finRowErrors.time}
                     errorMessage={finRowErrors.time}
-                    aria-label="Время отчета"
                   />
                 </div>
                 
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">Смена</label>
                   <Select
+                    placeholder="Выберите смену"
                     selectedKeys={[finRowForm.shift]}
                     onChange={(e) => handleFinRowFormChange('shift', e.target.value)}
-                    aria-label="Выбор смены"
+                    isInvalid={!!finRowErrors.shift}
+                    errorMessage={finRowErrors.shift}
                   >
-                    <SelectItem key="morning" value="morning">Утренняя</SelectItem>
-                    <SelectItem key="evening" value="evening">Вечерняя</SelectItem>
+                    <SelectItem key="morning" value="morning">Утро</SelectItem>
+                    <SelectItem key="evening" value="evening">Вечер</SelectItem>
                   </Select>
                 </div>
               </div>
@@ -1634,7 +1563,6 @@ export default function FinancePage() {
                         onChange={(e) => handleFinRowFormChange('startBalanceRUB', e.target.value)}
                         isInvalid={!!finRowErrors.startBalanceRUB}
                         errorMessage={finRowErrors.startBalanceRUB}
-                        aria-label="Начальный баланс в рублях"
                         placeholder="0.00"
                       />
                     </div>
@@ -1648,7 +1576,6 @@ export default function FinancePage() {
                         onChange={(e) => handleFinRowFormChange('startBalanceUSDT', e.target.value)}
                         isInvalid={!!finRowErrors.startBalanceUSDT}
                         errorMessage={finRowErrors.startBalanceUSDT}
-                        aria-label="Начальный баланс в USDT"
                         placeholder="0.00"
                       />
                     </div>
@@ -1667,7 +1594,6 @@ export default function FinancePage() {
                         onChange={(e) => handleFinRowFormChange('endBalanceRUB', e.target.value)}
                         isInvalid={!!finRowErrors.endBalanceRUB}
                         errorMessage={finRowErrors.endBalanceRUB}
-                        aria-label="Конечный баланс в рублях"
                         placeholder="0.00"
                       />
                     </div>
@@ -1681,7 +1607,6 @@ export default function FinancePage() {
                         onChange={(e) => handleFinRowFormChange('endBalanceUSDT', e.target.value)}
                         isInvalid={!!finRowErrors.endBalanceUSDT}
                         errorMessage={finRowErrors.endBalanceUSDT}
-                        aria-label="Конечный баланс в USDT"
                         placeholder="0.00"
                       />
                     </div>
@@ -1689,17 +1614,23 @@ export default function FinancePage() {
                 </div>
               </div>
               
-              {/* Секция с выплатами сотрудникам */}
+              {/* Section selection */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Секция</label>
+                <Select
+                  selectedKeys={[finRowForm.section]}
+                  onChange={(e) => handleFinRowFormChange('section', e.target.value)}
+                >
+                  <SelectItem key="PAYMENTS" value="PAYMENTS">Выплаты</SelectItem>
+                  <SelectItem key="TRACTOR" value="TRACTOR">Трактор</SelectItem>
+                </Select>
+              </div>
+              
+              {/* Employee payments */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <label className="text-sm font-medium text-gray-700">Выплаты сотрудникам</label>
-                  <Button 
-                    size="sm"
-                    color="primary"
-                    variant="flat"
-                    onClick={addEmployeePayment}
-                    startIcon={<Plus className="w-4 h-4" />}
-                  >
+                  <Button size="sm" color="primary" variant="flat" onClick={addEmployeePayment} startIcon={<Plus className="w-4 h-4" />}>
                     Добавить сотрудника
                   </Button>
                 </div>
@@ -1715,7 +1646,6 @@ export default function FinancePage() {
                             placeholder="Выберите сотрудника"
                             selectedKeys={payment.employeeId ? [payment.employeeId] : []}
                             onChange={(e) => updateEmployeePayment(index, 'employeeId', e.target.value)}
-                            aria-label="Выбор сотрудника"
                             isInvalid={finRowErrors.employeePayments && finRowErrors.employeePayments[`employee_${index}`]}
                             errorMessage={finRowErrors.employeePayments && finRowErrors.employeePayments[`employee_${index}`]}
                           >
@@ -1734,7 +1664,6 @@ export default function FinancePage() {
                             placeholder="Сумма"
                             value={payment.amount}
                             onChange={(e) => updateEmployeePayment(index, 'amount', e.target.value)}
-                            aria-label="Сумма выплаты"
                             isInvalid={finRowErrors.employeePayments && finRowErrors.employeePayments[`amount_${index}`]}
                             errorMessage={finRowErrors.employeePayments && finRowErrors.employeePayments[`amount_${index}`]}
                           />
@@ -1744,21 +1673,13 @@ export default function FinancePage() {
                           <Select
                             selectedKeys={[payment.currency]}
                             onChange={(e) => updateEmployeePayment(index, 'currency', e.target.value)}
-                            aria-label="Валюта выплаты"
                           >
                             <SelectItem key="RUB" value="RUB">₽</SelectItem>
                             <SelectItem key="USDT" value="USDT">USDT</SelectItem>
                           </Select>
                         </div>
                         
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          variant="light"
-                          color="danger"
-                          onClick={() => removeEmployeePayment(index)}
-                          aria-label="Удалить выплату"
-                        >
+                        <Button isIconOnly size="sm" variant="light" color="danger" onClick={() => removeEmployeePayment(index)}>
                           <X className="w-4 h-4" />
                         </Button>
                       </div>
@@ -1773,17 +1694,12 @@ export default function FinancePage() {
                   placeholder="Добавьте комментарий (необязательно)"
                   value={finRowForm.comment}
                   onChange={(e) => handleFinRowFormChange('comment', e.target.value)}
-                  aria-label="Комментарий к отчету"
                 />
               </div>
             </form>
           </ModalBody>
           <ModalFooter>
-            <Button
-              variant="flat"
-              color="default"
-              onClick={() => setIsFinRowDialogOpen(false)}
-            >
+            <Button variant="flat" color="default" onClick={() => setIsFinRowDialogOpen(false)}>
               Отмена
             </Button>
             <Button
@@ -1797,21 +1713,21 @@ export default function FinancePage() {
                   {editingFinRowId ? 'Сохранение...' : 'Добавление...'}
                 </>
               ) : (
-                editingFinRowId ? 'Сохранить' : 'Добавить'
+                <>
+                  {editingFinRowId ? 'Сохранить' : 'Добавить'} 
+                  <Badge color={finRowForm.section === 'PAYMENTS' ? 'primary' : 'warning'} className="ml-2 px-2 py-1 text-xs">
+                    {finRowForm.section === 'PAYMENTS' ? 'Выплаты' : 'Трактор'}
+                  </Badge>
+                </>
               )}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
       
-      {/* Модальное окно добавления/редактирования расхода - увеличена ширина */}
-      <Modal 
-        isOpen={isExpenseDialogOpen} 
-        onClose={() => setIsExpenseDialogOpen(false)}
-        size="2xl" // Увеличенный размер
-        className="max-w-3xl" // Дополнительное увеличение ширины через класс
-      >
-        <ModalContent className="w-full max-w-3xl"> {/* Увеличиваем ширину для всех полей */}
+      {/* Expense modal */}
+      <Modal isOpen={isExpenseDialogOpen} onClose={() => setIsExpenseDialogOpen(false)} size="2xl" className="max-w-3xl">
+        <ModalContent className="w-full max-w-3xl">
           <ModalHeader>
             <h3 className="text-lg font-medium">
               {editingExpenseId ? 'Редактирование расхода' : 'Добавление расхода'}
@@ -1862,7 +1778,6 @@ export default function FinancePage() {
                     isInvalid={!!expenseErrors.date}
                     errorMessage={expenseErrors.date}
                     startContent={<Calendar className="w-4 h-4 text-gray-500" />}
-                    aria-label="Дата расхода"
                   />
                 </div>
                 
@@ -1874,7 +1789,6 @@ export default function FinancePage() {
                     onChange={(e) => handleExpenseFormChange('time', e.target.value)}
                     isInvalid={!!expenseErrors.time}
                     errorMessage={expenseErrors.time}
-                    aria-label="Время расхода"
                   />
                 </div>
                 
@@ -1887,7 +1801,6 @@ export default function FinancePage() {
                       onChange={(e) => handleExpenseFormChange('period', e.target.value)}
                       isInvalid={!!expenseErrors.period}
                       errorMessage={expenseErrors.period}
-                      aria-label="Период расхода"
                     >
                       {periodOptions.map(option => (
                         <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>
@@ -1907,7 +1820,6 @@ export default function FinancePage() {
                     onChange={(e) => handleExpenseFormChange('amountRUB', e.target.value)}
                     isInvalid={!!expenseErrors.amountRUB}
                     errorMessage={expenseErrors.amountRUB}
-                    aria-label="Сумма расхода в рублях"
                     placeholder="0.00"
                   />
                 </div>
@@ -1921,7 +1833,6 @@ export default function FinancePage() {
                     onChange={(e) => handleExpenseFormChange('amountUSDT', e.target.value)}
                     isInvalid={!!expenseErrors.amountUSDT}
                     errorMessage={expenseErrors.amountUSDT}
-                    aria-label="Сумма расхода в USDT"
                     placeholder="0.00"
                   />
                 </div>
@@ -1933,17 +1844,12 @@ export default function FinancePage() {
                   placeholder="Добавьте описание расхода (необязательно)"
                   value={expenseForm.description}
                   onChange={(e) => handleExpenseFormChange('description', e.target.value)}
-                  aria-label="Описание расхода"
                 />
               </div>
             </form>
           </ModalBody>
           <ModalFooter>
-            <Button
-              variant="flat"
-              color="default"
-              onClick={() => setIsExpenseDialogOpen(false)}
-            >
+            <Button variant="flat" color="default" onClick={() => setIsExpenseDialogOpen(false)}>
               Отмена
             </Button>
             <Button
