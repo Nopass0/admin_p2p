@@ -26,6 +26,7 @@ import {
   ModalHeader 
 } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
+import { Suspense } from 'react';
 import { Pagination } from "@heroui/pagination";
 import { Spinner } from "@heroui/spinner";
 import { Alert } from "@heroui/alert";
@@ -693,6 +694,7 @@ export default function FinancePage() {
   }, [activeTab]);
 
   return (
+    <Suspense fallback={<Spinner />}>
     <div className="container mx-auto py-6 px-4">
       {/* Alert notification */}
       {alert.isVisible && (
@@ -1870,5 +1872,6 @@ export default function FinancePage() {
         </ModalContent>
       </Modal>
     </div>
+    </Suspense>
   );
 }
