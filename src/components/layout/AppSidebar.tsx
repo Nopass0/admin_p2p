@@ -29,6 +29,7 @@ import {
   FileText,
   LockKeyhole
 } from "lucide-react";
+import { title } from "process";
 
 // Zustand store для состояния сайдбара
 const useSidebarStore = create(
@@ -110,6 +111,11 @@ const navigationSections = [
     id: "other",
     title: "Другое",
     items: [
+      {
+        title: "Общие финансы",
+        href: "/finances",
+        icon: CreditCard
+      },
       {
         title: "Пароли",
         href: "/passwords",
