@@ -1,38 +1,15 @@
 "use client";
 
+// app/finances/client.tsx
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/trpc/react";
 import { 
-  Card, 
-  CardBody, 
-  CardHeader
-} from "@heroui/card";
-import { 
-  Table, 
-  TableHeader, 
-  TableColumn, 
-  TableBody, 
-  TableRow, 
-  TableCell 
-} from "@heroui/table";
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { 
-  Modal, 
-  ModalContent, 
-  ModalBody, 
-  ModalFooter, 
-  ModalHeader 
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
-import { Suspense } from 'react';
-import { Pagination } from "@heroui/pagination";
-import { Spinner } from "@heroui/spinner";
-import { Alert } from "@heroui/alert";
-import { Textarea } from "@heroui/input";
-import { Badge } from "@heroui/badge";
-import { Tabs, Tab } from "@heroui/tabs";
+  Card, CardBody, CardHeader, 
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Button, Input, Modal, ModalContent, ModalBody, ModalFooter, ModalHeader,
+  Select, SelectItem, Pagination, Spinner, Alert, Textarea, Badge, Tabs, Tab
+} from "@heroui";
 import { 
   Calendar, Plus, CheckCircle, AlertCircle, Loader, Edit, Trash,
   DollarSign, FileText, BarChart, X
@@ -56,7 +33,7 @@ const periodOptions = [
   { key: "yearly", label: "Ежегодно" }
 ];
 
-export default function FinancePage() {
+export default function FinanceClientPage() {
   // Router and URL params
   const searchParams = useSearchParams();
   const sectionFromUrl = searchParams.get('section');
@@ -91,12 +68,14 @@ export default function FinancePage() {
     startDate: null,
     endDate: null,
     currency: null as Currency | null,
+    section: activeSection !== "ALL" ? activeSection : null
   });
   
   const [variableExpensesFilters, setVariableExpensesFilters] = useState({
     startDate: null,
     endDate: null,
     currency: null as Currency | null,
+    section: activeSection !== "ALL" ? activeSection : null
   });
   
   const [reportFilters, setReportFilters] = useState({
@@ -176,7 +155,7 @@ export default function FinancePage() {
     endDate: fixedExpensesFilters.endDate && new Date(fixedExpensesFilters.endDate),
     expenseType: "fixed",
     currency: fixedExpensesFilters.currency as any,
-    section: activeSection !== "ALL" ? activeSection : null,
+    section: fixedExpensesFilters.section as any,
   });
   
   const variableExpensesQuery = api.finance.getExpenses.useQuery({
@@ -186,7 +165,7 @@ export default function FinancePage() {
     endDate: variableExpensesFilters.endDate && new Date(variableExpensesFilters.endDate),
     expenseType: "variable",
     currency: variableExpensesFilters.currency as any,
-    section: activeSection !== "ALL" ? activeSection : null,
+    section: variableExpensesFilters.section as any,
   });
 
   const employeesQuery = api.salary.getAllEmployees.useQuery({ page: 1, pageSize: 100 });
@@ -518,7 +497,7 @@ export default function FinancePage() {
       time: expenseForm.time,
       period: expenseForm.period || undefined,
       description: expenseForm.description || undefined,
-      section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
+      section: expenseForm.section
     };
     
     if (editingExpenseId) {
@@ -555,7 +534,7 @@ export default function FinancePage() {
       router.push(`/finances?section=${section}`);
     }
     
-    // Обновляем секцию в форме расходов
+    // Update section in expense form
     setExpenseForm(prev => ({
       ...prev,
       section: section !== "ALL" ? section : "PAYMENTS"
@@ -621,7 +600,7 @@ export default function FinancePage() {
       time: expense.time,
       period: expense.period || "",
       description: expense.description || "",
-      section: expense.section
+      section: expense.section || (activeSection !== "ALL" ? activeSection : "PAYMENTS")
     });
     
     setExpenseErrors({});
@@ -670,16 +649,18 @@ export default function FinancePage() {
         allSections: sectionFromUrl !== "PAYMENTS" && sectionFromUrl !== "TRACTOR"
       }));
       
+      // Update expense filters with section
+      setFixedExpensesFilters(prev => ({ ...prev, section: sectionFromUrl !== "ALL" ? sectionFromUrl : null }));
+      setVariableExpensesFilters(prev => ({ ...prev, section: sectionFromUrl !== "ALL" ? sectionFromUrl : null }));
+      
       setTimeout(refreshAllQueries, 100);
     }
   }, []);
 
   // Section change effect
   useEffect(() => {
-    // Обновление фильтров расходов при изменении секции
+    // Update expense filters when section changes
     setCurrentPageExpenses(1);
-    
-    // Обновление данных
     refreshAllQueries();
   }, [activeSection]);
   
@@ -694,7 +675,6 @@ export default function FinancePage() {
   }, [activeTab]);
 
   return (
-    <Suspense fallback={<Spinner />}>
     <div className="container mx-auto py-6 px-4">
       {/* Alert notification */}
       {alert.isVisible && (
@@ -1840,6 +1820,18 @@ export default function FinancePage() {
                 </div>
               </div>
               
+              {/* Section selection for expenses */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Секция</label>
+                <Select
+                  selectedKeys={[expenseForm.section]}
+                  onChange={(e) => handleExpenseFormChange('section', e.target.value)}
+                >
+                  <SelectItem key="PAYMENTS" value="PAYMENTS">Выплаты</SelectItem>
+                  <SelectItem key="TRACTOR" value="TRACTOR">Трактор</SelectItem>
+                </Select>
+              </div>
+              
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Описание</label>
                 <Textarea
@@ -1865,13 +1857,17 @@ export default function FinancePage() {
                   {editingExpenseId ? 'Сохранение...' : 'Добавление...'}
                 </>
               ) : (
-                editingExpenseId ? 'Сохранить' : 'Добавить'
+                <>
+                  {editingExpenseId ? 'Сохранить' : 'Добавить'}
+                  <Badge color={expenseForm.section === 'PAYMENTS' ? 'primary' : 'warning'} className="ml-2 px-2 py-1 text-xs">
+                    {expenseForm.section === 'PAYMENTS' ? 'Выплаты' : 'Трактор'}
+                  </Badge>
+                </>
               )}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
     </div>
-    </Suspense>
   );
 }
