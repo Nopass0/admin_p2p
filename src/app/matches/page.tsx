@@ -408,6 +408,8 @@ const handleStartBybitMatching = () => {
     return cabinetsData.cabinets;
   };
 
+
+
   // Get users for selection dropdown
   const { data: usersData } = api.users.getAllUsers.useQuery({
     page: 1,
@@ -597,6 +599,25 @@ const {
   }, {
     refetchOnWindowFocus: false,
     enabled: activeTab === "bybitMatches" || activeTab === "bybitUserMatches"
+  });
+
+  // Запрос для получения IDEX транзакций, сопоставленных с Bybit
+  const {
+    data: bybitMatchedIdexData,
+    isLoading: isLoadingBybitMatchedIdex,
+    refetch: refetchBybitMatchedIdex
+  } = api.match.getIdexTransactionsMatchedWithBybit.useQuery({
+    startDate,
+    endDate,
+    page,
+    pageSize,
+    searchQuery: idexSearchQuery,
+    cabinetIds: Object.keys(selectedIdexCabinetIds).length > 0 ? 
+      Object.keys(selectedIdexCabinetIds).map(id => parseInt(id)) : 
+      undefined
+  }, {
+    refetchOnWindowFocus: false,
+    enabled: activeTab === "unmatchedIdex" && idexViewMode === "matched" && matchedTransactionType === "bybit"
   });
 
   // Add this query to your component
@@ -2320,67 +2341,108 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
     </div>
   </CardHeader>
   <CardBody>
-          {/* Переключатель режима просмотра */}
-          <div>
-        <label className="block text-sm font-medium mb-2">Режим просмотра</label>
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            size="sm" 
-            color={idexViewMode === "unmatched" ? "primary" : "default"}
-            variant={idexViewMode === "unmatched" ? "solid" : "flat"}
-            onClick={() => {
-              setIdexViewMode("unmatched");
-              setTimeout(() => refetchUnmatchedIdex(), 100);
-            }}
-          >
-            <AlertCircle className="w-4 h-4 mr-2" />
-            Несопоставленные
-          </Button>
-          <Button 
-            size="sm" 
-            color={idexViewMode === "matched" ? "primary" : "default"}
-            variant={idexViewMode === "matched" ? "solid" : "flat"}
-            onClick={() => {
-              setIdexViewMode("matched");
-              setTimeout(() => refetchMatchedIdex(), 100);
-            }}
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Сопоставленные
-          </Button>
-        </div>
+    {/* Переключатель режима просмотра */}
+    <div>
+      <label className="block text-sm font-medium mb-2">Режим просмотра</label>
+      <div className="flex flex-wrap gap-2">
+        <Button 
+          size="sm" 
+          color={idexViewMode === "unmatched" ? "primary" : "default"}
+          variant={idexViewMode === "unmatched" ? "solid" : "flat"}
+          onClick={() => {
+            setIdexViewMode("unmatched");
+            setTimeout(() => refetchUnmatchedIdex(), 100);
+          }}
+        >
+          <AlertCircle className="w-4 h-4 mr-2" />
+          Несопоставленные
+        </Button>
+        <Button 
+          size="sm" 
+          color={idexViewMode === "matched" ? "primary" : "default"}
+          variant={idexViewMode === "matched" ? "solid" : "flat"}
+          onClick={() => {
+            setIdexViewMode("matched");
+            setTimeout(() => refetchMatchedIdex(), 100);
+          }}
+        >
+          <CheckCircle className="w-4 h-4 mr-2" />
+          Сопоставленные
+        </Button>
       </div>
-      
-    {/* Добавляем переключатель типа несопоставленных IDEX транзакций */}
-<div className="mb-4">
-  <label className="block text-sm font-medium mb-2">Тип несопоставленных IDEX транзакций</label>
-  <div className="flex flex-wrap gap-2">
-    <Button 
-      size="sm" 
-      color={idexMatchType === "telegram" ? "primary" : "default"}
-      variant={idexMatchType === "telegram" ? "solid" : "flat"}
-      onClick={() => {
-        setIdexMatchType("telegram");
-        setTimeout(() => refetchUnmatchedIdex(), 100);
-      }}
-    >
-      <Database className="w-4 h-4 mr-2 text-blue-500" />
-      Не сопоставлены с Telegram
-    </Button>
-    <Button 
-      size="sm" 
-      color={idexMatchType === "bybit" ? "primary" : "default"}
-      variant={idexMatchType === "bybit" ? "solid" : "flat"}
-      onClick={() => {
-        setIdexMatchType("bybit");
-        setTimeout(() => refetchUnmatchedIdex(), 100);
-      }}
-    >
-      <Database className="w-4 h-4 mr-2 text-orange-500" />
-      Не сопоставлены с Bybit
-    </Button>
-  </div>
-</div>
+    </div>
+    
+    {/* Условное отображение элементов UI в зависимости от режима просмотра */}
+    {idexViewMode === "unmatched" && (
+      <>
+        {/* Переключатель типа несопоставленных IDEX транзакций */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2">Тип несопоставленных IDEX транзакций</label>
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              size="sm" 
+              color={idexMatchType === "telegram" ? "primary" : "default"}
+              variant={idexMatchType === "telegram" ? "solid" : "flat"}
+              onClick={() => {
+                setIdexMatchType("telegram");
+                setTimeout(() => refetchUnmatchedIdex(), 100);
+              }}
+            >
+              <Database className="w-4 h-4 mr-2 text-blue-500" />
+              Не сопоставлены с Telegram
+            </Button>
+            <Button 
+              size="sm" 
+              color={idexMatchType === "bybit" ? "primary" : "default"}
+              variant={idexMatchType === "bybit" ? "solid" : "flat"}
+              onClick={() => {
+                setIdexMatchType("bybit");
+                setTimeout(() => refetchUnmatchedIdex(), 100);
+              }}
+            >
+              <Database className="w-4 h-4 mr-2 text-orange-500" />
+              Не сопоставлены с Bybit
+            </Button>
+          </div>
+        </div>
+      </>
+    )}
+
+    {idexViewMode === "matched" && (
+      <>
+        {/* Переключатель типа сопоставленных транзакций */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2">Тип сопоставления</label>
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              size="sm" 
+              color={matchedTransactionType === "idex" ? "primary" : "default"}
+              variant={matchedTransactionType === "idex" ? "solid" : "flat"}
+              onClick={() => {
+                setMatchedTransactionType("idex");
+                setTimeout(() => refetchMatchedIdex(), 100);
+              }}
+            >
+              <Database className="w-4 h-4 mr-2 text-blue-500" />
+              Сопоставлены с Telegram
+            </Button>
+            <Button 
+              size="sm" 
+              color={matchedTransactionType === "bybit" ? "primary" : "default"}
+              variant={matchedTransactionType === "bybit" ? "solid" : "flat"}
+              onClick={() => {
+                setMatchedTransactionType("bybit");
+                setTimeout(() => refetchBybitMatchedIdex(), 100);
+              }}
+            >
+              <Database className="w-4 h-4 mr-2 text-orange-500" />
+              Сопоставлены с Bybit
+            </Button>
+          </div>
+        </div>
+      </>
+    )}
+    
     {/* Добавляем поиск и фильтры по кабинетам */}
     <div className="mb-4 grid grid-cols-1 gap-4">
       <div>
@@ -2396,7 +2458,7 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
           <Button
             color="primary"
             variant="flat"
-            onClick={() => refetchUnmatchedIdex()}
+            onClick={() => idexViewMode === "unmatched" ? refetchUnmatchedIdex() : refetchMatchedIdex()}
             aria-label="Применить фильтры"
           >
             <Filter className="w-4 h-4" />
@@ -2483,87 +2545,260 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
       </div>
     </div>
 
-    {isLoadingUnmatchedIdex ? (
-      <div className="flex justify-center py-10">
-        <Spinner size="lg" color="primary" />
-      </div>
-    ) : unmatchedIdexData?.transactions && unmatchedIdexData.transactions.length > 0 ? (
-      <>
-        <div className="overflow-x-auto">
-          <Table aria-label="Таблица несопоставленных IDEX транзакций">
-            <TableHeader>
-              <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
-              <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
-              <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
-              <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
-              <TableColumn>Сумма</TableColumn>
-              <TableColumn>Действия</TableColumn>
-            </TableHeader>
-            <TableBody>
-              {unmatchedIdexData.transactions.map((transaction) => {
-                // Parse amount from JSON
-                let amountValue = 0;
-                try {
-                  if (typeof transaction.amount === 'string') {
-                    const amountJson = JSON.parse(transaction.amount as string);
-                    amountValue = parseFloat(amountJson.trader?.[643] || 0);
-                  } else if (transaction.amount && typeof transaction.amount === 'object') {
-                    amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
-                  }
-                } catch (error) {
-                  console.error('Ошибка при парсинге JSON поля amount:', error);
-                }
-                
-                return (
-                  <TableRow 
-                    key={transaction.id}
-                    className={selectedIdexTransaction === transaction.id ? "bg-blue-100 dark:bg-blue-900/20 rounded-md" : ""}
-                  >
-                    <TableCell>{transaction.id}</TableCell>
-                    <TableCell>{transaction.externalId.toString()}</TableCell>
-                    <TableCell>{transaction.cabinet.idexId.toString()}</TableCell>
-                    <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
-                    <TableCell>{formatNumber(amountValue)} ₽</TableCell>
-                    <TableCell>
-                      <Button 
-                        color={selectedIdexTransaction === transaction.id ? "secondary" : "primary"} 
-                        variant="flat" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedIdexTransaction(
-                            selectedIdexTransaction === transaction.id ? null : transaction.id
-                          );
-                          if (activeTab === "unmatchedIdex") {
-                            setActiveTab("unmatchedUser");
-                          }
-                        }}
-                      >
-                        {selectedIdexTransaction === transaction.id ? "Отменить выбор" : "Выбрать для сопоставления"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+    {/* Отображение данных в зависимости от выбранного режима просмотра */}
+    {idexViewMode === "unmatched" ? (
+      // Отображение несопоставленных транзакций
+      isLoadingUnmatchedIdex ? (
+        <div className="flex justify-center py-10">
+          <Spinner size="lg" color="primary" />
         </div>
-        {unmatchedIdexData?.pagination.totalPages > 1 && (
-          <div className="flex justify-center mt-4">
-            <Pagination
-              total={unmatchedIdexData.pagination.totalPages}
-              initialPage={page}
-              page={page}
-              onChange={setPage}
-              aria-label="Пагинация несопоставленных IDEX транзакций"
-            />
+      ) : unmatchedIdexData?.transactions && unmatchedIdexData.transactions.length > 0 ? (
+        <>
+          <div className="overflow-x-auto">
+            <Table aria-label="Таблица несопоставленных IDEX транзакций">
+              <TableHeader>
+                <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+                <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
+                <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+                <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
+                <TableColumn>Сумма</TableColumn>
+                <TableColumn>Действия</TableColumn>
+              </TableHeader>
+              <TableBody>
+                {unmatchedIdexData.transactions.map((transaction) => {
+                  // Parse amount from JSON
+                  let amountValue = 0;
+                  try {
+                    if (typeof transaction.amount === 'string') {
+                      const amountJson = JSON.parse(transaction.amount as string);
+                      amountValue = parseFloat(amountJson.trader?.[643] || 0);
+                    } else if (transaction.amount && typeof transaction.amount === 'object') {
+                      amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
+                    }
+                  } catch (error) {
+                    console.error('Ошибка при парсинге JSON поля amount:', error);
+                  }
+                  
+                  return (
+                    <TableRow 
+                      key={transaction.id}
+                      className={selectedIdexTransaction === transaction.id ? "bg-blue-100 dark:bg-blue-900/20 rounded-md" : ""}
+                    >
+                      <TableCell>{transaction.id}</TableCell>
+                      <TableCell>{transaction.externalId.toString()}</TableCell>
+                      <TableCell>{transaction.cabinet.idexId.toString()}</TableCell>
+                      <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
+                      <TableCell>{formatNumber(amountValue)} ₽</TableCell>
+                      <TableCell>
+                        <Button 
+                          color={selectedIdexTransaction === transaction.id ? "secondary" : "primary"} 
+                          variant="flat" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedIdexTransaction(
+                              selectedIdexTransaction === transaction.id ? null : transaction.id
+                            );
+                            if (activeTab === "unmatchedIdex") {
+                              setActiveTab("unmatchedUser");
+                            }
+                          }}
+                        >
+                          {selectedIdexTransaction === transaction.id ? "Отменить выбор" : "Выбрать для сопоставления"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-        )}
-      </>
+          {unmatchedIdexData?.pagination.totalPages > 1 && (
+            <div className="flex justify-center mt-4">
+              <Pagination
+                total={unmatchedIdexData.pagination.totalPages}
+                initialPage={page}
+                page={page}
+                onChange={setPage}
+                aria-label="Пагинация несопоставленных IDEX транзакций"
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-center py-10 text-gray-500">
+          <AlertCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+          <p>Нет несопоставленных IDEX транзакций в выбранном диапазоне дат</p>
+        </div>
+      )
     ) : (
-      <div className="text-center py-10 text-gray-500">
-        <AlertCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
-        <p>Нет несопоставленных IDEX транзакций в выбранном диапазоне дат</p>
-      </div>
+      // Отображение сопоставленных транзакций
+      matchedTransactionType === "idex" ? (
+        // Сопоставления IDEX с Telegram
+        isLoadingMatchedIdex ? (
+          <div className="flex justify-center py-10">
+            <Spinner size="lg" color="primary" />
+          </div>
+        ) : matchedIdexData?.transactions && matchedIdexData.transactions.length > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <Table aria-label="Таблица сопоставленных IDEX транзакций">
+                <TableHeader>
+                  <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
+                  <TableColumn>Сумма</TableColumn>
+                  <TableColumn>Сопоставлено с</TableColumn>
+                  <TableColumn>Действия</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {matchedIdexData.transactions.map((transaction) => {
+                    // Parse amount from JSON
+                    let amountValue = 0;
+                    try {
+                      if (typeof transaction.amount === 'string') {
+                        const amountJson = JSON.parse(transaction.amount as string);
+                        amountValue = parseFloat(amountJson.trader?.[643] || 0);
+                      } else if (transaction.amount && typeof transaction.amount === 'object') {
+                        amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
+                      }
+                    } catch (error) {
+                      console.error('Ошибка при парсинге JSON поля amount:', error);
+                    }
+                    
+                    return (
+                      <TableRow key={transaction.id}>
+                        <TableCell>{transaction.id}</TableCell>
+                        <TableCell>{transaction.externalId.toString()}</TableCell>
+                        <TableCell>{transaction.cabinet.idexId.toString()}</TableCell>
+                        <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
+                        <TableCell>{formatNumber(amountValue)} ₽</TableCell>
+                        <TableCell>
+                          {transaction.matches && transaction.matches.length > 0 ? (
+                            <div className="flex items-center gap-1">
+                              <Database className="w-4 h-4 text-blue-500" />
+                              <span>Telegram ID: {transaction.matches[0].transactionId}</span>
+                            </div>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            color="danger" 
+                            variant="flat" 
+                            size="sm"
+                            onClick={() => transaction.matches && transaction.matches.length > 0 && deleteMatch(transaction.matches[0].id)}
+                          >
+                            Удалить сопоставление
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {matchedIdexData?.pagination.totalPages > 1 && (
+              <div className="flex justify-center mt-4">
+                <Pagination
+                  total={matchedIdexData.pagination.totalPages}
+                  initialPage={page}
+                  page={page}
+                  onChange={setPage}
+                  aria-label="Пагинация сопоставленных IDEX транзакций"
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-10 text-gray-500">
+            <CheckCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+            <p>Нет сопоставленных IDEX транзакций с Telegram в выбранном диапазоне дат</p>
+          </div>
+        )
+      ) : (
+        // Сопоставления IDEX с Bybit
+        isLoadingBybitMatchedIdex ? (
+          <div className="flex justify-center py-10">
+            <Spinner size="lg" color="primary" />
+          </div>
+        ) : bybitMatchedIdexData?.transactions && bybitMatchedIdexData.transactions.length > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <Table aria-label="Таблица IDEX транзакций, сопоставленных с Bybit">
+                <TableHeader>
+                  <TableColumn>{renderSortableHeader("id", "ID")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("externalId", "Внешний ID")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("cabinet.idexId", "ID IDEX кабинета")}</TableColumn>
+                  <TableColumn>{renderSortableHeader("approvedAt", "Дата подтверждения")}</TableColumn>
+                  <TableColumn>Сумма</TableColumn>
+                  <TableColumn>Сопоставлено с Bybit</TableColumn>
+                  <TableColumn>Действия</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {bybitMatchedIdexData.transactions.map((transaction) => {
+                    // Parse amount from JSON
+                    let amountValue = 0;
+                    try {
+                      if (typeof transaction.amount === 'string') {
+                        const amountJson = JSON.parse(transaction.amount as string);
+                        amountValue = parseFloat(amountJson.trader?.[643] || 0);
+                      } else if (transaction.amount && typeof transaction.amount === 'object') {
+                        amountValue = parseFloat(transaction.amount.trader?.[643] || 0);
+                      }
+                    } catch (error) {
+                      console.error('Ошибка при парсинге JSON поля amount:', error);
+                    }
+                    
+                    return (
+                      <TableRow key={transaction.id}>
+                        <TableCell>{transaction.id}</TableCell>
+                        <TableCell>{transaction.externalId.toString()}</TableCell>
+                        <TableCell>{transaction.cabinet.idexId.toString()}</TableCell>
+                        <TableCell>{transaction.approvedAt ? dayjs(transaction.approvedAt).subtract(3, 'hour').format(DATE_FORMAT) : '-'}</TableCell>
+                        <TableCell>{formatNumber(amountValue)} ₽</TableCell>
+                        <TableCell>
+                          {transaction.BybitMatch && transaction.BybitMatch.length > 0 ? (
+                            <div className="flex items-center gap-1">
+                              <Database className="w-4 h-4 text-orange-500" />
+                              <span>Bybit ID: {transaction.BybitMatch[0].bybitTransactionId}</span>
+                            </div>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            color="danger" 
+                            variant="flat" 
+                            size="sm"
+                            onClick={() => transaction.BybitMatch && transaction.BybitMatch.length > 0 && deleteBybitMatch(transaction.BybitMatch[0].id)}
+                          >
+                            Удалить сопоставление
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {bybitMatchedIdexData?.pagination.totalPages > 1 && (
+              <div className="flex justify-center mt-4">
+                <Pagination
+                  total={bybitMatchedIdexData.pagination.totalPages}
+                  initialPage={page}
+                  page={page}
+                  onChange={setPage}
+                  aria-label="Пагинация IDEX транзакций, сопоставленных с Bybit"
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-10 text-gray-500">
+            <CheckCircle className="w-16 h-16 mx-auto text-gray-400 mb-2" />
+            <p>Нет IDEX транзакций, сопоставленных с Bybit в выбранном диапазоне дат</p>
+          </div>
+        )
+      )
     )}
   </CardBody>
 </Card>

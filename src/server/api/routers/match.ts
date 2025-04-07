@@ -3077,6 +3077,168 @@ getMatchedTransactions: publicProcedure
   }
 }),
 
+// Получение IDEX транзакций, сопоставленных с Bybit
+getIdexTransactionsMatchedWithBybit: publicProcedure
+.input(z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+  cabinetIds: z.array(z.number().int().positive()).optional()
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, cabinetIds } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Базовый фильтр: IDEX транзакции, которые сопоставлены с Bybit
+    let where: any = {
+      approvedAt: {
+        gte: startDateTime.toISOString(),
+        lte: endDateTime.toISOString()
+      },
+      BybitMatch: {
+        some: {} // Только сопоставленные с Bybit
+      }
+    };
+    
+    // Добавляем фильтр по кабинетам, если указан
+    if (cabinetIds && cabinetIds.length > 0) {
+      where.cabinetId = { in: cabinetIds };
+    }
+    
+    // Добавляем поиск, если указан
+    if (searchQuery) {
+      const numericQuery = parseFloat(searchQuery);
+      const isNumeric = !isNaN(numericQuery);
+      const orConditions: any[] = [];
+      
+      if (isNumeric) {
+        orConditions.push({ externalId: { equals: BigInt(numericQuery) } });
+        
+        // Поиск в JSON полях
+        orConditions.push({
+          amount: {
+            path: ['trader', '643'],
+            equals: numericQuery
+          }
+        });
+        
+        orConditions.push({
+          total: {
+            path: ['trader', '000001'],
+            equals: numericQuery
+          }
+        });
+      }
+      
+      // Строковые поиски
+      orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+      
+      if (orConditions.length > 0) {
+        where.OR = orConditions;
+      }
+    }
+    
+    // Формируем объект сортировки
+    let orderBy: any = { approvedAt: 'desc' };
+    
+    if (sortColumn && sortDirection && sortDirection !== "null") {
+      orderBy = {
+        [sortColumn]: sortDirection
+      };
+    }
+    
+    // Получаем транзакции
+    const transactions = await ctx.db.idexTransaction.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        cabinet: true,
+        BybitMatch: {
+          include: {
+            bybitTransaction: {
+              select: {
+                id: true,
+                orderNo: true,
+                totalPrice: true,
+                dateTime: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                },
+                originalData: true
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // Считаем общее количество
+    const totalTransactions = await ctx.db.idexTransaction.count({ where });
+    
+    return {
+      success: true,
+      transactions: transactions.map(tx => ({
+        ...tx,
+        approvedAt: tx.approvedAt ? dayjs(tx.approvedAt).tz(MOSCOW_TIMEZONE).format() : null,
+        // Добавляем информацию о связанных Bybit транзакциях
+        bybitMatches: tx.BybitMatch.map(match => ({
+          id: match.id,
+          bybitTransaction: {
+            ...match.bybitTransaction,
+            dateTime: (() => {
+              // Извлекаем время из originalData, если оно есть
+              try {
+                const originalData = typeof match.bybitTransaction.originalData === 'string'
+                  ? JSON.parse(match.bybitTransaction.originalData)
+                  : match.bybitTransaction.originalData;
+                
+                if (originalData && originalData.Time) {
+                  return dayjs(originalData.Time).add(3, 'hour').tz(MOSCOW_TIMEZONE).format();
+                }
+                return dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format();
+              } catch (error) {
+                return dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format();
+              }
+            })()
+          }
+        }))
+      })),
+      pagination: {
+        totalTransactions,
+        totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+        currentPage: page,
+        pageSize
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при получении IDEX транзакций, сопоставленных с Bybit:", error);
+    return {
+      success: false,
+      message: "Ошибка при получении IDEX транзакций, сопоставленных с Bybit",
+      transactions: [],
+      pagination: {
+        totalTransactions: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
+
   // Получение несопоставленных транзакций пользователя
   getUnmatchedUserTransactions: publicProcedure
     .input(z.object({
