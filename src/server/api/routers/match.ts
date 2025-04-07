@@ -1356,7 +1356,7 @@ matchBybitWithIdex: publicProcedure
           
           // Проверяем, находится ли дата в пределах +/- 30 минут
           const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime);
-          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, txTime: ${txTime}`);
+          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, txTime: ${txTime} IDEX#${idexTx.id}`);
           return timeDiff <= MINUTES_THRESHOLD;
         })
         .map(tx => {
