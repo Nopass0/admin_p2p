@@ -1274,10 +1274,7 @@ matchBybitWithIdex: publicProcedure
     
     // Получаем Bybit транзакции в указанном диапазоне дат
     let bybitTransactionsWhere: any = {
-      dateTime: {
-        gte: globalStartDateTime,
-        lte: globalEndDateTime
-      },
+
       // Только несопоставленные
       BybitMatch: {
         none: {}
