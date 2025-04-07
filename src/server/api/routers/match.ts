@@ -540,16 +540,45 @@ export const matchRouter = createTRPCRouter({
           }
         });
 
-              // Get Bybit statistics for this user
-      const totalUserBybitTransactions = await ctx.db.bybitTransaction.count({
+                    // Get Bybit statistics for this user
+      const bybitTransactions = await ctx.db.bybitTransaction.findMany({
         where: {
-          userId,
-          dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
-          }
+          userId
+        },
+        select: {
+          id: true,
+          dateTime: true,
+          originalData: true
         }
       });
+      
+      // Фильтруем по Time из originalData с более точной датой
+      const filteredBybitIds = bybitTransactions
+        .filter(tx => {
+          try {
+            // Извлекаем Time из originalData
+            const originalData = typeof tx.originalData === 'string'
+              ? JSON.parse(tx.originalData)
+              : tx.originalData;
+              
+            if (originalData && originalData.Time) {
+              // Добавляем 3 часа к Time
+              const txTime = dayjs(originalData.Time).add(3, 'hour');
+              // Проверяем, попадает ли в диапазон дат, включая границы
+              return txTime.isAfter(dayjs(startDateTime).subtract(1, 'millisecond')) && txTime.isBefore(dayjs(endDateTime).add(1, 'millisecond'));
+            }
+              
+            // Если нет Time, используем обычное dateTime
+            return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+          } catch (error) {
+            console.error("Error parsing originalData for transaction:", tx.id, error);
+            // Если ошибка парсинга, используем обычное dateTime
+            return tx.dateTime >= startDateTime && tx.dateTime <= endDateTime;
+          }
+        })
+        .map(tx => tx.id);
+      
+      const totalUserBybitTransactions = filteredBybitIds.length;
       
       const matchedUserBybitTransactions = await ctx.db.bybitTransaction.count({
         where: {
@@ -902,35 +931,31 @@ getUnmatchedBybitTransactions: publicProcedure
   try {
     const { userId, startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
     
-    // Преобразуем даты с учетом таймзоны
-    const startDateTime = dayjs(startDate).utc().toDate();
-    const endDateTime = dayjs(endDate).utc().toDate();
+    // Convert dates to dayjs objects for easier comparison
+    const startDateObj = dayjs(startDate).utc();
+    const endDateObj = dayjs(endDate).utc();
     
-    // Базовый фильтр
+    // Base filter - only filter for unmatched transactions and optionally by user
     let where: any = {
-      dateTime: {
-        gte: startDateTime,
-        lte: endDateTime
-      },
-      // Только несопоставленные
+      // Only unmatched transactions
       BybitMatch: {
         none: {}
       }
     };
     
-    // Добавляем фильтр по пользователю, если указан
+    // Add user filter if specified
     if (userId) {
       where.userId = userId;
     }
     
-    // Расширенный поиск, если указан
+    // Extended search if specified
     if (searchQuery && searchQuery.trim() !== '') {
-      // Определяем, может ли поисковый запрос быть числом
+      // Check if search query can be a number
       const numericSearch = !isNaN(parseFloat(searchQuery)) ? parseFloat(searchQuery) : null;
       
       const searchConditions = [];
       
-      // Поиск по строковым полям
+      // Search string fields
       searchConditions.push(
         { orderNo: { contains: searchQuery, mode: 'insensitive' } },
         { counterparty: { contains: searchQuery, mode: 'insensitive' } },
@@ -939,30 +964,30 @@ getUnmatchedBybitTransactions: publicProcedure
         { status: { contains: searchQuery, mode: 'insensitive' } }
       );
       
-      // Если есть связь с пользователем, ищем и в его данных
+      // If user relation exists, search in user data
       searchConditions.push({
         user: {
           name: { contains: searchQuery, mode: 'insensitive' }
         }
       });
       
-      // Поиск по числовым полям (только если поисковый запрос может быть преобразован в число)
+      // Search numeric fields (only if search query can be converted to a number)
       if (numericSearch !== null) {
         searchConditions.push(
-          // Точное соответствие
+          // Exact match
           { id: { equals: parseInt(searchQuery) || undefined } },
           { totalPrice: { equals: numericSearch } },
           { amount: { equals: numericSearch } },
           { unitPrice: { equals: numericSearch } },
           
-          // Приблизительное соответствие для цен (поиск значений, которые содержат введенное число)
+          // Approximate match for prices (search values that contain the entered number)
           { totalPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
           { amount: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } },
           { unitPrice: { gte: numericSearch - 0.01, lte: numericSearch + 0.01 } }
         );
       }
       
-      // Поиск внутри JSON поля originalData
+      // Search inside originalData JSON field
       searchConditions.push({
         originalData: {
           path: ['Time'],
@@ -991,7 +1016,7 @@ getUnmatchedBybitTransactions: publicProcedure
         }
       });
       
-      // Если numericSearch не null, ищем и в числовых полях JSON
+      // If numericSearch is not null, search in numeric JSON fields
       if (numericSearch !== null) {
         searchConditions.push({
           originalData: {
@@ -1015,69 +1040,96 @@ getUnmatchedBybitTransactions: publicProcedure
         });
       }
       
-      // Добавляем условия поиска к where
+      // Add search conditions to where
       where.OR = searchConditions;
     }
     
-    // Формируем объект сортировки
-    let orderBy: any = { dateTime: 'desc' };
-    
-    if (sortColumn && sortDirection && sortDirection !== "null") {
-      // Обрабатываем специальные случаи для вложенных полей
-      if (sortColumn === "user.name") {
-        orderBy = {
-          user: {
-            name: sortDirection
-          }
-        };
-      } else {
-        orderBy = {
-          [sortColumn]: sortDirection
-        };
-      }
-    }
-    
-    // Получаем несопоставленные Bybit транзакции
-    const transactions = await ctx.db.bybitTransaction.findMany({
+    // Get all unmatched Bybit transactions (without date filtering in DB query)
+    const allTransactions = await ctx.db.bybitTransaction.findMany({
       where,
       include: {
         user: true
-      },
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize
+      }
     });
     
-    // Считаем общее количество для пагинации
-    const totalTransactions = await ctx.db.bybitTransaction.count({
-      where
+    // Function to get and parse Time from originalData
+    const getTransactionTime = (tx: any) => {
+      try {
+        const originalData = typeof tx.originalData === 'string'
+          ? JSON.parse(tx.originalData)
+          : tx.originalData;
+        
+        if (originalData && originalData.Time) {
+          return dayjs(originalData.Time).add(3, 'hour');
+        }
+        // Fallback to dateTime from DB if Time not found
+        return dayjs(tx.dateTime);
+      } catch (error) {
+        console.error("Error parsing originalData for transaction:", tx.id, error);
+        return dayjs(tx.dateTime);
+      }
+    };
+    
+    // Filter transactions based on the Time field in originalData
+    const filteredTransactions = allTransactions.filter(tx => {
+      const transactionTime = getTransactionTime(tx);
+      return transactionTime.isAfter(startDateObj) && transactionTime.isBefore(endDateObj);
     });
+    
+    // Sort function for transactions
+    const sortTransactions = (a: any, b: any) => {
+      if (sortColumn && sortDirection && sortDirection !== "null") {
+        let aValue, bValue;
+        
+        // Handle nested fields
+        if (sortColumn === "user.name") {
+          aValue = a.user?.name;
+          bValue = b.user?.name;
+        } else if (sortColumn === "dateTime") {
+          // For dateTime, sort by the parsed Time field
+          aValue = getTransactionTime(a).valueOf();
+          bValue = getTransactionTime(b).valueOf();
+        } else {
+          aValue = a[sortColumn];
+          bValue = b[sortColumn];
+        }
+        
+        if (aValue === bValue) return 0;
+        
+        if (sortDirection === "asc") {
+          return aValue < bValue ? -1 : 1;
+        } else {
+          return aValue > bValue ? -1 : 1;
+        }
+      } else {
+        // Default sort by Time in originalData (desc)
+        const aTime = getTransactionTime(a).valueOf();
+        const bTime = getTransactionTime(b).valueOf();
+        return bTime - aTime;
+      }
+    };
+    
+    // Sort the filtered transactions
+    const sortedTransactions = [...filteredTransactions].sort(sortTransactions);
+    
+    // Apply pagination
+    const paginatedTransactions = sortedTransactions.slice(
+      (page - 1) * pageSize,
+      page * pageSize
+    );
+    
+    // Total count for pagination
+    const totalTransactions = filteredTransactions.length;
     
     return {
       success: true,
-      transactions: transactions.map(tx => {
-        // Извлекаем поле Time из originalData
-        let transactionTime = tx.dateTime; // По умолчанию используем dateTime из БД
-        
-        try {
-          // Проверяем, является ли originalData строкой JSON или объектом
-          const originalData = typeof tx.originalData === 'string'
-            ? JSON.parse(tx.originalData)
-            : tx.originalData;
-          
-          // Если поле Time существует, используем его
-          if (originalData && originalData.Time) {
-
-            transactionTime = dayjs(originalData.Time).toDate();
-          }
-        } catch (error) {
-          console.error("Error parsing originalData for transaction:", tx.id, error);
-          // В случае ошибки используем имеющийся dateTime
-        }
+      transactions: paginatedTransactions.map(tx => {
+        // Get the transaction time from originalData
+        const transactionTime = getTransactionTime(tx).toDate();
         
         return {
           ...tx,
-          // Преобразуем дату в московский формат для вывода
+          // Convert date to Moscow format for display
           dateTime: dayjs(transactionTime).tz(MOSCOW_TIMEZONE).format()
         };
       }),
@@ -1125,8 +1177,8 @@ matchBybitWithIdex: publicProcedure
     const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
     // Преобразуем глобальные даты с учетом таймзоны
-    const globalStartDateTime = dayjs(startDate).utc().add(1, 'day').toDate();
-    const globalEndDateTime = dayjs(endDate).utc().add(1, 'day').toDate();
+    const globalStartDateTime = dayjs(startDate).utc().toDate();
+    const globalEndDateTime = dayjs(endDate).utc().toDate();
     
     console.log(`Начинаем сопоставление Bybit транзакций с ${startDate} по ${endDate}`);
     console.log(`UTC даты: с ${globalStartDateTime.toISOString()} по ${globalEndDateTime.toISOString()}`);
@@ -1222,10 +1274,7 @@ matchBybitWithIdex: publicProcedure
     
     // Получаем Bybit транзакции в указанном диапазоне дат
     let bybitTransactionsWhere: any = {
-      dateTime: {
-        gte: globalStartDateTime,
-        lte: globalEndDateTime
-      },
+
       // Только несопоставленные
       BybitMatch: {
         none: {}
@@ -1504,16 +1553,18 @@ getBybitMatches: publicProcedure
     const startDateTime = dayjs(startDate).utc().toDate();
     const endDateTime = dayjs(endDate).utc().toDate();
     
-    // Перед фильтрацией получаем все Bybit транзакции, которые попадают в диапазон дат
-    // (будем фильтровать по Time из originalData на уровне приложения)
+
+    // для уменьшения количества обрабатываемых записей
     const bybitTransactions = await ctx.db.bybitTransaction.findMany({
       where: {
-        ...(userId ? { userId } : {})
-      },
-      select: { id: true, originalData: true, dateTime: true }
+        ...(userId ? { userId } : {}),
+       
+      }
     });
     
-    // Фильтруем по Time из originalData
+    console.log(`Предварительно выбрано ${bybitTransactions.length} Bybit транзакций по dateTime`);
+    
+    // Фильтруем по Time из originalData с более точной датой
     const filteredBybitIds = bybitTransactions
       .filter(tx => {
         try {
@@ -1525,8 +1576,8 @@ getBybitMatches: publicProcedure
           if (originalData && originalData.Time) {
             // Добавляем 3 часа к Time
             const txTime = dayjs(originalData.Time).add(3, 'hour');
-            // Проверяем, попадает ли в диапазон дат
-            return txTime.isAfter(dayjs(startDateTime)) && txTime.isBefore(dayjs(endDateTime));
+            // Проверяем, попадает ли в диапазон дат, включая границы
+            return txTime.isAfter(dayjs(startDateTime).subtract(1, 'millisecond')) && txTime.isBefore(dayjs(endDateTime).add(1, 'millisecond'));
           }
           
           // Если нет Time, используем обычное dateTime
@@ -1539,13 +1590,29 @@ getBybitMatches: publicProcedure
       })
       .map(tx => tx.id);
     
+    // Удаляем возможные дубликаты
+    const uniqueBybitIds = [...new Set(filteredBybitIds)];
+    
+    console.log(`После фильтрации по Time осталось ${uniqueBybitIds.length} уникальных Bybit транзакций`);
+    
+    // Получаем ТОЧНОЕ количество Bybit транзакций в базе данных для данного периода
+    const totalBybitTransactions = await ctx.db.bybitTransaction.count({
+      where: {
+        id: {
+          in: uniqueBybitIds
+        }
+      }
+    });
+    
+    console.log(`Точное количество Bybit транзакций в базе: ${totalBybitTransactions}`);
+    
     // Строим базовый фильтр с учетом отфильтрованных bybitIds
     let where: any = {
       OR: [
         {
           bybitTransaction: {
             id: {
-              in: filteredBybitIds
+              in: uniqueBybitIds
             }
           }
         },
@@ -1671,9 +1738,7 @@ getBybitMatches: publicProcedure
       where
     });
     
-    // Получаем статистику по транзакциям в выбранном диапазоне
-    const totalBybitTransactions = filteredBybitIds.length;
-    
+    // Получаем статистику по транзакциям IDEX в выбранном диапазоне
     const totalIdexTransactions = await ctx.db.idexTransaction.count({
       where: {
         approvedAt: {
@@ -1719,12 +1784,12 @@ getBybitMatches: publicProcedure
       };
     }
     
-    // Получаем количество сопоставленных Bybit транзакций с учетом отфильтрованных по Time
+    // Получаем количество сопоставленных Bybit транзакций
     const matchedBybitTransactions = await ctx.db.bybitMatch.count({
       where: {
         bybitTransaction: {
           id: {
-            in: filteredBybitIds
+            in: uniqueBybitIds
           }
         }
       }
@@ -1866,202 +1931,497 @@ deleteBybitMatch: publicProcedure
 
   // Получение всех сопоставлений
   getAllMatches: publicProcedure
-    .input(z.object({
-      startDate: z.string(),
-      endDate: z.string(),
-      page: z.number().int().positive().default(1),
-      pageSize: z.number().int().positive().default(10),
-      searchQuery: z.string().optional(),
-      sortColumn: z.string().optional(),
-      sortDirection: z.enum(["asc", "desc", "null"]).optional(),
-      cabinetIds: z.array(z.number().int().positive()).optional()
-
-    }))
-    .query(async ({ ctx, input }) => {
-      try {
-        const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, cabinetIds } = input;
-        
-        // Преобразуем даты с учетом таймзоны
-        const startDateTime = dayjs(startDate).utc().toDate();
-        const endDateTime = dayjs(endDate).utc().toDate();
-        
-        // Строим базовый фильтр по диапазону дат
-        let where: any = {
-          OR: [
-            {
-              transaction: {
-                dateTime: {
-                  gte: startDateTime,
-                  lte: endDateTime
-                }
+  .input(z.object({
+    startDate: z.string(),
+    endDate: z.string(),
+    page: z.number().int().positive().default(1),
+    pageSize: z.number().int().positive().default(10),
+    searchQuery: z.string().optional(),
+    sortColumn: z.string().optional(),
+    sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+    cabinetIds: z.array(z.number().int().positive()).optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    try {
+      const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, cabinetIds } = input;
+      
+      // Convert dates considering timezone
+      const startDateTime = dayjs(startDate).utc().toDate();
+      const endDateTime = dayjs(endDate).utc().toDate();
+      
+      // Build base filter for date range for regular matches
+      let where: any = {
+        OR: [
+          {
+            transaction: {
+              dateTime: {
+                gte: startDateTime,
+                lte: endDateTime
               }
-            },
+            }
+          },
+          {
+            idexTransaction: {
+              approvedAt: {
+                gte: startDateTime.toISOString(),
+                lte: endDateTime.toISOString()
+              }
+            }
+          }
+        ]
+      };
+
+      // For Bybit matches, we'll only filter by idexTransaction initially,
+      // then filter by parsed Time field in memory
+      let bybitWhere: any = {
+        idexTransaction: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
+          }
+        }
+      };
+
+      // If cabinet IDs are specified, add filter
+      if (cabinetIds && cabinetIds.length > 0) {
+        const cabinetFilter = {
+          AND: [
             {
               idexTransaction: {
-                approvedAt: {
-                  gte: startDateTime.toISOString(),
-                  lte: endDateTime.toISOString()
+                cabinetId: {
+                  in: cabinetIds
                 }
               }
             }
           ]
         };
-
-        // Если указаны идентификаторы кабинетов, добавляем фильтр
-        if (cabinetIds && cabinetIds.length > 0) {
-          where = {
-            ...where,
-            AND: [
-              {
-                idexTransaction: {
-                  cabinetId: {
-                    in: cabinetIds
-                  }
-                }
-              }
-            ]
-          };
-        }
-      
-        
-        // Если есть поисковый запрос, добавляем фильтры
-        if (searchQuery) {
-          where = {
-            ...where,
-            OR: [
-              {
-                transaction: {
-                  externalId: { contains: searchQuery }
-                }
-              },
-              {
-                transaction: {
-                  orderNo: { contains: searchQuery }
-                }
-              },
-              {
-                transaction: {
-                  counterparty: { contains: searchQuery }
-                }
-              },
-              {
-                transaction: {
-                  user: {
-                    name: { contains: searchQuery }
-                  }
-                }
-              },
-              {
-                idexTransaction: {
-                  externalId: { equals: /^\d+$/.test(searchQuery) ? BigInt(searchQuery) : undefined }
-                }
-              },
-              {
-                idexTransaction: {
-                  wallet: { contains: searchQuery }
-                }
-              }
-            ]
-          };
-        }
-        
-        // Формируем объект сортировки
-        let orderBy: any = {};
-        
-        if (sortColumn && sortDirection && sortDirection !== "null") {
-          // Обрабатываем случаи для вложенных полей
-          if (sortColumn.includes(".")) {
-            const [parentField, childField] = sortColumn.split(".");
-            orderBy = {
-              [parentField as string]: {
-                [childField as string]: sortDirection
-              }
-            };
-          } else {
-            orderBy = {
-              [sortColumn]: sortDirection
-            };
-          }
-        } else {
-          // Сортировка по умолчанию по дате транзакции
-          orderBy = {
-            transaction: {
-              dateTime: "desc"
+        where = { ...where, ...cabinetFilter };
+        bybitWhere = {
+          ...bybitWhere,
+          idexTransaction: {
+            ...bybitWhere.idexTransaction,
+            cabinetId: {
+              in: cabinetIds
             }
-          };
-        }
-        
-        // Получаем сопоставления для текущей страницы
-        const matches = await ctx.db.match.findMany({
-          where,
-          include: {
-            transaction: {
-              include: {
-                user: true
+          }
+        };
+      }
+    
+      // If there's a search query, add filters for regular matches
+      if (searchQuery) {
+        const regularSearchFilter = {
+          OR: [
+            {
+              transaction: {
+                externalId: { contains: searchQuery }
               }
             },
-            idexTransaction: {
-              include: {
-                cabinet: true
+            {
+              transaction: {
+                orderNo: { contains: searchQuery }
               }
+            },
+            {
+              transaction: {
+                counterparty: { contains: searchQuery }
+              }
+            },
+            {
+              transaction: {
+                user: {
+                  name: { contains: searchQuery }
+                }
+              }
+            },
+            {
+              idexTransaction: {
+                externalId: { equals: /^\d+$/.test(searchQuery) ? BigInt(searchQuery) : undefined }
+              }
+            },
+            {
+              idexTransaction: {
+                wallet: { contains: searchQuery }
+              }
+            }
+          ]
+        };
+        
+        where = { ...where, ...regularSearchFilter };
+      }
+      
+      // Create sort object for regular matches
+      let orderBy: any = {};
+      
+      if (sortColumn && sortDirection && sortDirection !== "null") {
+        if (sortColumn.includes(".")) {
+          const [parentField, childField] = sortColumn.split(".");
+          orderBy = {
+            [parentField as string]: {
+              [childField as string]: sortDirection
+            }
+          };
+        } else {
+          orderBy = {
+            [sortColumn]: sortDirection
+          };
+        }
+      } else {
+        orderBy = {
+          transaction: {
+            dateTime: "desc"
+          }
+        };
+      }
+      
+      // Get regular matches for current page
+      const matches = await ctx.db.match.findMany({
+        where,
+        include: {
+          transaction: {
+            include: {
+              user: true
             }
           },
-          orderBy,
-          take: pageSize,
-          skip: (page - 1) * pageSize
-        });
-        
-        // Получаем общее количество сопоставлений для пагинации
-        const totalMatches = await ctx.db.match.count({
-          where
-        });
-        
-        // Получаем статистику по транзакциям в выбранном диапазоне
-        const totalTransactions = await ctx.db.transaction.count({
-          where: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
+          idexTransaction: {
+            include: {
+              cabinet: true
             }
           }
-        });
-        
-        const totalIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            approvedAt: {
-              gte: startDateTime.toISOString(),
-              lte: endDateTime.toISOString()
+        },
+        orderBy,
+        take: pageSize,
+        skip: (page - 1) * pageSize
+      });
+      
+      // For Bybit matches, we need to fetch all and filter in memory based on Time field
+      const allBybitMatches = await ctx.db.bybitMatch.findMany({
+        where: bybitWhere,
+        include: {
+          bybitTransaction: {
+            include: {
+              user: true
+            }
+          },
+          idexTransaction: {
+            include: {
+              cabinet: true
             }
           }
-        });
+        }
+      });
+      
+      // Function to parse and check Time field in originalData
+      const isInTimeRange = (originalData: any) => {
+        try {
+          if (originalData && originalData.Time) {
+            const transactionTime = dayjs(originalData.Time).add(3, 'hour');
+            return transactionTime.isAfter(dayjs(startDateTime)) && 
+                   transactionTime.isBefore(dayjs(endDateTime));
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Filter Bybit matches based on the Time field in originalData
+      const filteredBybitMatches = allBybitMatches.filter(match => {
+        const originalData = typeof match.bybitTransaction.originalData === 'string'
+          ? JSON.parse(match.bybitTransaction.originalData)
+          : match.bybitTransaction.originalData;
         
-        // Получаем количество несопоставленных IDEX транзакций
-        const totalUnmatchedIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            approvedAt: {
-              gte: startDateTime.toISOString(),
-              lte: endDateTime.toISOString()
-            },
-            matches: {
-              none: {}
+        return isInTimeRange(originalData);
+      });
+      
+      // Apply search filter to bybit matches if needed
+      let searchFilteredBybitMatches = filteredBybitMatches;
+      if (searchQuery) {
+        searchFilteredBybitMatches = filteredBybitMatches.filter(match => {
+          const { bybitTransaction, idexTransaction } = match;
+          
+          // Check if any of the fields contain the search query
+          return (
+            (bybitTransaction.orderNo && bybitTransaction.orderNo.includes(searchQuery)) ||
+            (bybitTransaction.counterparty && bybitTransaction.counterparty.includes(searchQuery)) ||
+            (bybitTransaction.user && bybitTransaction.user.name && 
+             bybitTransaction.user.name.includes(searchQuery)) ||
+            (idexTransaction.externalId && 
+             idexTransaction.externalId.toString() === searchQuery) ||
+            (idexTransaction.wallet && idexTransaction.wallet.includes(searchQuery))
+          );
+        });
+      }
+      
+      // Sort the filtered bybit matches
+      const sortBybitMatches = (a: any, b: any) => {
+        if (sortColumn && sortDirection && sortDirection !== "null") {
+          let aValue, bValue;
+          
+          if (sortColumn.includes(".")) {
+            const [parentField, childField] = sortColumn.split(".");
+            const parent = parentField === 'transaction' ? 'bybitTransaction' : parentField;
+            
+            aValue = a[parent]?.[childField];
+            bValue = b[parent]?.[childField];
+          } else {
+            const field = sortColumn === 'transaction' ? 'bybitTransaction' : sortColumn;
+            aValue = a[field];
+            bValue = b[field];
+          }
+          
+          if (aValue === bValue) return 0;
+          
+          if (sortDirection === "asc") {
+            return aValue < bValue ? -1 : 1;
+          } else {
+            return aValue > bValue ? -1 : 1;
+          }
+        } else {
+          // Default sort by Time in originalData
+          try {
+            const aData = typeof a.bybitTransaction.originalData === 'string' 
+              ? JSON.parse(a.bybitTransaction.originalData) 
+              : a.bybitTransaction.originalData;
+            
+            const bData = typeof b.bybitTransaction.originalData === 'string' 
+              ? JSON.parse(b.bybitTransaction.originalData) 
+              : b.bybitTransaction.originalData;
+            
+            const aTime = aData?.Time ? dayjs(aData.Time).valueOf() : 0;
+            const bTime = bData?.Time ? dayjs(bData.Time).valueOf() : 0;
+            
+            return bTime - aTime; // Desc by default
+          } catch {
+            return 0;
+          }
+        }
+      };
+      
+      const sortedBybitMatches = [...searchFilteredBybitMatches].sort(sortBybitMatches);
+      
+      // Apply pagination to filtered and sorted Bybit matches
+      const bybitMatches = sortedBybitMatches.slice(
+        (page - 1) * pageSize, 
+        page * pageSize
+      );
+      
+      // Count total regular matches for pagination
+      const totalMatches = await ctx.db.match.count({
+        where
+      });
+      
+      // Count total bybit matches (filtered in memory)
+      const totalBybitMatches = searchFilteredBybitMatches.length;
+      
+      // Get statistics for transactions in selected range
+      const totalTransactions = await ctx.db.transaction.count({
+        where: {
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          }
+        }
+      });
+      
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({
+        where: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
+          }
+        }
+      });
+      
+      // Get count of unmatched IDEX transactions
+      const totalUnmatchedIdexTransactions = await ctx.db.idexTransaction.count({
+        where: {
+          approvedAt: {
+            gte: startDateTime.toISOString(),
+            lte: endDateTime.toISOString()
+          },
+          matches: {
+            none: {}
+          },
+          BybitMatch: {
+            none: {}
+          }
+        }
+      });
+      
+      const totalUnmatchedTransactions = await ctx.db.transaction.count({
+        where: {
+          dateTime: {
+            gte: startDateTime,
+            lte: endDateTime
+          },
+          matches: {
+            none: {}
+          }
+        }
+      });
+      
+      // For Bybit transactions, we need to fetch all and filter in memory
+      const allBybitTransactions = await ctx.db.bybitTransaction.findMany({
+        include: {
+          BybitMatch: {
+            select: {
+              id: true
             }
           }
-        });
+        }
+      });
+      
+      // Filter Bybit transactions based on originalData.Time
+      const filteredBybitTransactions = allBybitTransactions.filter(tx => {
+        const originalData = typeof tx.originalData === 'string'
+          ? JSON.parse(tx.originalData)
+          : tx.originalData;
         
-        const totalUnmatchedTransactions = await ctx.db.transaction.count({
-          where: {
-            dateTime: {
-              gte: startDateTime,
-              lte: endDateTime
-            },
-            matches: {
-              none: {}
-            }
+        return isInTimeRange(originalData);
+      });
+      
+      const totalBybitTransactions = filteredBybitTransactions.length;
+      const matchedBybitTransactions = filteredBybitTransactions.filter(tx => 
+        tx.BybitMatch && tx.BybitMatch.length > 0
+      ).length;
+      
+      const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
+      
+      // Calculate total statistics for all matches
+      let stats = {
+        grossExpense: 0,
+        grossIncome: 0,
+        grossProfit: 0,
+        profitPercentage: 0,
+        matchedCount: 0,
+        profitPerOrder: 0,
+        expensePerOrder: 0,
+      };
+      
+      // Get all matches for statistics calculation
+      const allMatches = await ctx.db.match.findMany({
+        where
+      });
+      
+      if (allMatches.length > 0) {
+        stats = calculateTotalStats(allMatches);
+      }
+      
+      // Calculate statistics for bybit matches
+      let bybitStats = {
+        grossExpense: 0,
+        grossIncome: 0,
+        grossProfit: 0,
+        profitPercentage: 0,
+        matchedCount: 0,
+        profitPerOrder: 0,
+        expensePerOrder: 0,
+      };
+      
+      // We already have filtered Bybit matches
+      if (searchFilteredBybitMatches.length > 0) {
+        // We need to extract just the necessary fields for calculateTotalStats
+        const simplifiedBybitMatches = searchFilteredBybitMatches.map(match => ({
+          grossExpense: match.grossExpense,
+          grossIncome: match.grossIncome,
+          grossProfit: match.grossProfit,
+          profitPercentage: match.profitPercentage
+        }));
+        
+        bybitStats = calculateTotalStats(simplifiedBybitMatches);
+      }
+      
+      // Calculate combined statistics
+      const combinedStats = {
+        grossExpense: stats.grossExpense + bybitStats.grossExpense,
+        grossIncome: stats.grossIncome + bybitStats.grossIncome,
+        grossProfit: stats.grossProfit + bybitStats.grossProfit,
+        profitPercentage: ((stats.grossProfit + bybitStats.grossProfit) / 
+                          (stats.grossExpense + bybitStats.grossExpense) * 100) || 0,
+        matchedCount: stats.matchedCount + bybitStats.matchedCount,
+        profitPerOrder: ((stats.grossProfit + bybitStats.grossProfit) / 
+                         (stats.matchedCount + bybitStats.matchedCount)) || 0,
+        expensePerOrder: ((stats.grossExpense + bybitStats.grossExpense) / 
+                          (stats.matchedCount + bybitStats.matchedCount)) || 0
+      };
+      
+      return {
+        success: true,
+        matches: matches.map(match => ({
+          ...match,
+          // Convert dates to Moscow format for display
+          transaction: {
+            ...match.transaction,
+            dateTime: dayjs(match.transaction.dateTime).tz(MOSCOW_TIMEZONE).format()
+          },
+          idexTransaction: {
+            ...match.idexTransaction,
+            approvedAt: match.idexTransaction.approvedAt ? 
+              dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
           }
-        });
-        
-        // Вычисляем общую статистику для всех сопоставлений
-        let stats = {
+        })),
+        bybitMatches: bybitMatches.map(match => ({
+          ...match,
+          // Convert dates to Moscow format for display
+          bybitTransaction: {
+            ...match.bybitTransaction,
+            dateTime: (() => {
+              let transactionTime = match.bybitTransaction.dateTime;
+              try {
+                const originalData = typeof match.bybitTransaction.originalData === 'string'
+                  ? JSON.parse(match.bybitTransaction.originalData)
+                  : match.bybitTransaction.originalData;
+                
+                if (originalData && originalData.Time) {
+                  transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+                }
+              } catch (error) {
+                console.error("Error parsing originalData for bybitTransaction:", match.bybitTransaction.id, error);
+              }
+              return dayjs(transactionTime).tz(MOSCOW_TIMEZONE).format();
+            })()
+          },
+          idexTransaction: {
+            ...match.idexTransaction,
+            approvedAt: match.idexTransaction.approvedAt ? 
+              dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+          }
+        })),
+        stats: {
+          ...combinedStats,
+          totalTransactions,
+          totalIdexTransactions,
+          totalMatchedTransactions: totalMatches,
+          totalUnmatchedTransactions,
+          totalMatchedIdexTransactions: totalIdexTransactions - totalUnmatchedIdexTransactions,
+          totalUnmatchedIdexTransactions,
+          totalTelegramTransactions: totalTransactions,
+          matchedTelegramTransactions: totalTransactions - totalUnmatchedTransactions,
+          unmatchedTelegramTransactions: totalUnmatchedTransactions,
+          matchedIdexTransactions: totalIdexTransactions - totalUnmatchedIdexTransactions,
+          unmatchedIdexTransactions: totalUnmatchedIdexTransactions,
+          totalBybitTransactions,
+          matchedBybitTransactions,
+          unmatchedBybitTransactions,
+          // Add detailed stats for each type
+          regularStats: stats,
+          bybitStats
+        },
+        pagination: {
+          totalMatches: totalMatches + totalBybitMatches,
+          totalPages: Math.ceil((totalMatches + totalBybitMatches) / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } catch (error) {
+      console.error("Ошибка при получении всех сопоставлений:", error);
+      return { 
+        success: false, 
+        message: "Произошла ошибка при получении всех сопоставлений",
+        matches: [],
+        bybitMatches: [],
+        stats: {
           grossExpense: 0,
           grossIncome: 0,
           grossProfit: 0,
@@ -2069,115 +2429,48 @@ deleteBybitMatch: publicProcedure
           matchedCount: 0,
           profitPerOrder: 0,
           expensePerOrder: 0,
-        };
-        
-        // Получаем все сопоставления для расчета статистики
-        const allMatches = await ctx.db.match.findMany({
-          where
-        });
-        
-        if (allMatches.length > 0) {
-          stats = calculateTotalStats(allMatches);
-        }
-
-              // Get Bybit statistics
-      const totalBybitTransactions = await ctx.db.bybitTransaction.count({
-        where: {
-          dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
-          }
-        }
-      });
-      
-      const matchedBybitTransactions = await ctx.db.bybitTransaction.count({
-        where: {
-          dateTime: {
-            gte: startDateTime,
-            lte: endDateTime
-          },
-          BybitMatch: {
-            some: {}
-          }
-        }
-      });
-      
-      const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitTransactions;
-        
-        return {
-          success: true,
-          matches: matches.map(match => ({
-            ...match,
-            // Преобразуем даты в московский формат для вывода
-            transaction: {
-              ...match.transaction,
-              dateTime: dayjs(match.transaction.dateTime).tz(MOSCOW_TIMEZONE).format()
-            },
-            idexTransaction: {
-              ...match.idexTransaction,
-              approvedAt: match.idexTransaction.approvedAt ? 
-                dayjs(match.idexTransaction.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
-            }
-          })),
-          stats: {
-            ...stats,
-            totalTransactions,
-            totalIdexTransactions,
-            totalMatchedTransactions: totalMatches,
-            totalUnmatchedTransactions,
-            totalMatchedIdexTransactions: totalIdexTransactions - totalUnmatchedIdexTransactions,
-            totalUnmatchedIdexTransactions,
-            totalTelegramTransactions: totalTransactions,
-            matchedTelegramTransactions: totalTransactions - totalUnmatchedTransactions,
-            unmatchedTelegramTransactions: totalUnmatchedTransactions,
-            matchedIdexTransactions: totalIdexTransactions - totalUnmatchedIdexTransactions,
-            unmatchedIdexTransactions: totalUnmatchedIdexTransactions,
-            totalBybitTransactions,
-            matchedBybitTransactions,
-            unmatchedBybitTransactions
-          },
-          pagination: {
-            totalMatches,
-            totalPages: Math.ceil(totalMatches / pageSize) || 1,
-            currentPage: page,
-            pageSize
-          }
-        };
-      } catch (error) {
-        console.error("Ошибка при получении всех сопоставлений:", error);
-        return { 
-          success: false, 
-          message: "Произошла ошибка при получении всех сопоставлений",
-          matches: [],
-          stats: {
+          totalTransactions: 0,
+          totalIdexTransactions: 0,
+          totalMatchedTransactions: 0,
+          totalUnmatchedTransactions: 0,
+          totalMatchedIdexTransactions: 0,
+          totalUnmatchedIdexTransactions: 0,
+          totalTelegramTransactions: 0,
+          matchedTelegramTransactions: 0,
+          unmatchedTelegramTransactions: 0,
+          matchedIdexTransactions: 0,
+          unmatchedIdexTransactions: 0,
+          totalBybitTransactions: 0,
+          matchedBybitTransactions: 0,
+          unmatchedBybitTransactions: 0,
+          regularStats: {
             grossExpense: 0,
             grossIncome: 0,
             grossProfit: 0,
             profitPercentage: 0,
             matchedCount: 0,
             profitPerOrder: 0,
-            expensePerOrder: 0,
-            totalTransactions: 0,
-            totalIdexTransactions: 0,
-            totalMatchedTransactions: 0,
-            totalUnmatchedTransactions: 0,
-            totalMatchedIdexTransactions: 0,
-            totalUnmatchedIdexTransactions: 0,
-            totalTelegramTransactions: 0,
-            matchedTelegramTransactions: 0,
-            unmatchedTelegramTransactions: 0,
-            matchedIdexTransactions: 0,
-            unmatchedIdexTransactions: 0
+            expensePerOrder: 0
           },
-          pagination: {
-            totalMatches: 0,
-            totalPages: 0,
-            currentPage: input.page,
-            pageSize: input.pageSize
+          bybitStats: {
+            grossExpense: 0,
+            grossIncome: 0,
+            grossProfit: 0,
+            profitPercentage: 0,
+            matchedCount: 0,
+            profitPerOrder: 0,
+            expensePerOrder: 0
           }
-        };
-      }
-    }),
+        },
+        pagination: {
+          totalMatches: 0,
+          totalPages: 0,
+          currentPage: input.page,
+          pageSize: input.pageSize
+        }
+      };
+    }
+  }),
 
   // Получение пользователей со статистикой сопоставлений
   getUsersWithMatchStats: publicProcedure
@@ -2418,7 +2711,8 @@ deleteBybitMatch: publicProcedure
     searchQuery: z.string().optional(),
     sortColumn: z.string().optional(),
     sortDirection: z.enum(["asc", "desc", "null"]).optional(),
-    cabinetIds: z.array(z.number().int().positive()).optional() // Добавляем массив ID кабинетов
+    cabinetIds: z.array(z.number().int().positive()).optional(),
+    matchType: z.enum(["telegram", "bybit"]).default("telegram") // Добавляем новый параметр для типа сопоставления
   }))
   .query(async ({ ctx, input }) => {
     try {
@@ -2430,7 +2724,8 @@ deleteBybitMatch: publicProcedure
         searchQuery, 
         sortColumn, 
         sortDirection,
-        cabinetIds
+        cabinetIds,
+        matchType // Получаем тип сопоставления
       } = input;
       
       // Преобразуем даты с учетом таймзоны
@@ -2438,16 +2733,23 @@ deleteBybitMatch: publicProcedure
       const endDateTime = dayjs(endDate).utc().toDate();
       
       // Базовый фильтр для IDEX транзакций с approvedAt в заданном диапазоне
-      // и еще не сопоставленных
       let where: any = {
         approvedAt: {
           gte: startDateTime.toISOString(),
           lte: endDateTime.toISOString()
-        },
-        matches: {
-          none: {}
         }
       };
+      
+      // Добавляем условие в зависимости от выбранного типа сопоставления
+      if (matchType === "telegram") {
+        where.matches = {
+          none: {}
+        };
+      } else if (matchType === "bybit") {
+        where.BybitMatch = {
+          none: {}
+        };
+      }
       
       // Добавляем фильтр по кабинетам, если указан
       if (cabinetIds && cabinetIds.length > 0) {
@@ -2456,94 +2758,72 @@ deleteBybitMatch: publicProcedure
         };
       }
       
-// Добавляем поиск, если указан
-if (searchQuery) {
-  const numericQuery = parseFloat(searchQuery);
-  const isNumeric = !isNaN(numericQuery);
-
-  // Initialize OR condition array
-  const orConditions: Prisma.IdexTransactionWhereInput[] = [];
-
-  // Для числовых полей используем числовое сравнение
-  if (isNumeric) {
-    // Поиск по числовому externalId (BigInt)
-    orConditions.push({ 
-      externalId: { equals: BigInt(numericQuery) } 
-    });
-    
-    // Поиск по totalPrice (если такое поле есть в IdexTransaction)
-    // Проверьте, есть ли такое поле в вашей модели
-    // orConditions.push({ totalPrice: { equals: numericQuery } });
-
-    // --- ПОИСК В JSON ПОЛЯХ ---
-    // Поиск в поле amount по значению trader.643
-    orConditions.push({
-      amount: {
-        path: ['trader', '643'],
-        equals: numericQuery
-      }
-    });
-    
-    // Поиск в поле amount по значению trader.000001
-    orConditions.push({
-      amount: {
-        path: ['trader', '000001'],
-        equals: numericQuery
-      }
-    });
-    
-    // Поиск в поле total по значению trader.643
-    orConditions.push({
-      total: {
-        path: ['trader', '643'],
-        equals: numericQuery
-      }
-    });
-    
-    // Поиск в поле total по значению trader.000001
-    orConditions.push({
-      total: {
-        path: ['trader', '000001'],
-        equals: numericQuery
-      }
-    });
-    
-    // Поиск в extraData (если нужен)
-    orConditions.push({
-      extraData: {
-        path: ['trader', '643'],
-        equals: numericQuery
-      }
-    });
-    
-    orConditions.push({
-      extraData: {
-        path: ['trader', '000001'],
-        equals: numericQuery
-      }
-    });
-  }
+      // Добавляем поиск, если указан
+      if (searchQuery) {
+        const numericQuery = parseFloat(searchQuery);
+        const isNumeric = !isNaN(numericQuery);
   
-  // Для строковых поисков (только если у вас есть строковые поля в IdexTransaction)
-  // В вашей схеме wallet - это строковое поле, его можно использовать для поиска
-  orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+        // Initialize OR condition array
+        const orConditions: Prisma.IdexTransactionWhereInput[] = [];
   
-  // Для поиска по строковым значениям в JSON
-  if (!isNumeric) {
-    // Можно добавить строковый поиск в JSON полях если нужно
-    // Например:
-    // orConditions.push({
-    //   extraData: {
-    //     path: ['someStringKey'],
-    //     string_contains: searchQuery
-    //   }
-    // });
-  }
-
-  if (orConditions.length > 0) {
-    where.OR = orConditions;
-  }
-}
+        // Для числовых полей используем числовое сравнение
+        if (isNumeric) {
+          // Поиск по числовому externalId (BigInt)
+          orConditions.push({ 
+            externalId: { equals: BigInt(numericQuery) } 
+          });
+          
+          // Поиск в JSON полях
+          orConditions.push({
+            amount: {
+              path: ['trader', '643'],
+              equals: numericQuery
+            }
+          });
+          
+          orConditions.push({
+            amount: {
+              path: ['trader', '000001'],
+              equals: numericQuery
+            }
+          });
+          
+          orConditions.push({
+            total: {
+              path: ['trader', '643'],
+              equals: numericQuery
+            }
+          });
+          
+          orConditions.push({
+            total: {
+              path: ['trader', '000001'],
+              equals: numericQuery
+            }
+          });
+          
+          orConditions.push({
+            extraData: {
+              path: ['trader', '643'],
+              equals: numericQuery
+            }
+          });
+          
+          orConditions.push({
+            extraData: {
+              path: ['trader', '000001'],
+              equals: numericQuery
+            }
+          });
+        }
+        
+        // Строковые поиски
+        orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+        
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
       
       // Формируем объект сортировки
       let orderBy: any = { approvedAt: 'desc' };
@@ -2599,6 +2879,362 @@ if (searchQuery) {
       };
     }
   }),
+
+  // Эндпоинт для получения всех сопоставленных транзакций определенного типа
+getMatchedTransactions: publicProcedure
+.input(z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+  cabinetIds: z.array(z.number().int().positive()).optional(),
+  transactionType: z.enum(["idex", "bybit"]).default("idex") // Тип транзакций (IDEX или Bybit)
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { 
+      startDate, 
+      endDate, 
+      page, 
+      pageSize, 
+      searchQuery, 
+      sortColumn, 
+      sortDirection,
+      cabinetIds,
+      transactionType
+    } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // В зависимости от типа транзакций выбираем соответствующую логику
+    if (transactionType === "idex") {
+      // Получаем сопоставленные IDEX транзакции
+      let where: any = {
+        approvedAt: {
+          gte: startDateTime.toISOString(),
+          lte: endDateTime.toISOString()
+        },
+        OR: [
+          { matches: { some: {} } }, // Сопоставленные с Telegram
+          { BybitMatch: { some: {} } } // Сопоставленные с Bybit
+        ]
+      };
+      
+      // Добавляем фильтр по кабинетам, если указан
+      if (cabinetIds && cabinetIds.length > 0) {
+        where.cabinetId = { in: cabinetIds };
+      }
+      
+      // Добавляем поиск, если указан
+      if (searchQuery) {
+        const numericQuery = parseFloat(searchQuery);
+        const isNumeric = !isNaN(numericQuery);
+        const orConditions: any[] = [];
+        
+        if (isNumeric) {
+          orConditions.push({ externalId: { equals: BigInt(numericQuery) } });
+          // Добавляем поиск в JSON полях...
+        }
+        
+        orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+        
+        if (orConditions.length > 0) {
+          where.OR = [...(where.OR || []), ...orConditions];
+        }
+      }
+      
+      // Получаем транзакции
+      const transactions = await ctx.db.idexTransaction.findMany({
+        where,
+        orderBy: sortColumn && sortDirection !== "null" ? { [sortColumn]: sortDirection } : { approvedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          cabinet: true,
+          matches: { select: { id: true, transactionId: true } },
+          BybitMatch: { select: { id: true, bybitTransactionId: true } }
+        }
+      });
+      
+      // Считаем общее количество
+      const totalTransactions = await ctx.db.idexTransaction.count({ where });
+      
+      return {
+        success: true,
+        transactions: transactions.map(tx => ({
+          ...tx,
+          approvedAt: tx.approvedAt ? dayjs(tx.approvedAt).tz(MOSCOW_TIMEZONE).format() : null
+        })),
+        pagination: {
+          totalTransactions,
+          totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    } else {
+      // Получаем сопоставленные Bybit транзакции
+      let where: any = {
+        dateTime: {
+          gte: startDateTime,
+          lte: endDateTime
+        },
+        BybitMatch: { some: {} }
+      };
+      
+      // Добавляем поиск, если указан
+      if (searchQuery) {
+        const numericQuery = parseFloat(searchQuery);
+        const isNumeric = !isNaN(numericQuery);
+        const orConditions: any[] = [];
+        
+        orConditions.push(
+          { orderNo: { contains: searchQuery, mode: 'insensitive' } },
+          { counterparty: { contains: searchQuery, mode: 'insensitive' } }
+        );
+        
+        if (isNumeric) {
+          orConditions.push({ totalPrice: { equals: numericQuery } });
+        }
+        
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
+      
+      // Получаем транзакции
+      const transactions = await ctx.db.bybitTransaction.findMany({
+        where,
+        orderBy: sortColumn && sortDirection !== "null" ? { [sortColumn]: sortDirection } : { dateTime: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          user: true,
+          BybitMatch: {
+            select: {
+              id: true,
+              idexTransactionId: true
+            }
+          }
+        }
+      });
+      
+      // Считаем общее количество
+      const totalTransactions = await ctx.db.bybitTransaction.count({ where });
+      
+      return {
+        success: true,
+        transactions: transactions.map(tx => {
+          // Извлекаем поле Time из originalData для корректного отображения даты
+          let transactionTime = tx.dateTime;
+          
+          try {
+            const originalData = typeof tx.originalData === 'string'
+              ? JSON.parse(tx.originalData)
+              : tx.originalData;
+            
+            if (originalData && originalData.Time) {
+              transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+            }
+          } catch (error) {
+            console.error("Error parsing originalData for transaction:", tx.id, error);
+          }
+          
+          return {
+            ...tx,
+            dateTime: dayjs(transactionTime).tz(MOSCOW_TIMEZONE).format()
+          };
+        }),
+        pagination: {
+          totalTransactions,
+          totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+          currentPage: page,
+          pageSize
+        }
+      };
+    }
+  } catch (error) {
+    console.error("Ошибка при получении сопоставленных транзакций:", error);
+    return {
+      success: false,
+      message: "Ошибка при получении сопоставленных транзакций",
+      transactions: [],
+      pagination: {
+        totalTransactions: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
+
+// Получение IDEX транзакций, сопоставленных с Bybit
+getIdexTransactionsMatchedWithBybit: publicProcedure
+.input(z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+  searchQuery: z.string().optional(),
+  sortColumn: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc", "null"]).optional(),
+  cabinetIds: z.array(z.number().int().positive()).optional()
+}))
+.query(async ({ ctx, input }) => {
+  try {
+    const { startDate, endDate, page, pageSize, searchQuery, sortColumn, sortDirection, cabinetIds } = input;
+    
+    // Преобразуем даты с учетом таймзоны
+    const startDateTime = dayjs(startDate).utc().toDate();
+    const endDateTime = dayjs(endDate).utc().toDate();
+    
+    // Базовый фильтр: IDEX транзакции, которые сопоставлены с Bybit
+    let where: any = {
+      approvedAt: {
+        gte: startDateTime.toISOString(),
+        lte: endDateTime.toISOString()
+      },
+      BybitMatch: {
+        some: {} // Только сопоставленные с Bybit
+      }
+    };
+    
+    // Добавляем фильтр по кабинетам, если указан
+    if (cabinetIds && cabinetIds.length > 0) {
+      where.cabinetId = { in: cabinetIds };
+    }
+    
+    // Добавляем поиск, если указан
+    if (searchQuery) {
+      const numericQuery = parseFloat(searchQuery);
+      const isNumeric = !isNaN(numericQuery);
+      const orConditions: any[] = [];
+      
+      if (isNumeric) {
+        orConditions.push({ externalId: { equals: BigInt(numericQuery) } });
+        
+        // Поиск в JSON полях
+        orConditions.push({
+          amount: {
+            path: ['trader', '643'],
+            equals: numericQuery
+          }
+        });
+        
+        orConditions.push({
+          total: {
+            path: ['trader', '000001'],
+            equals: numericQuery
+          }
+        });
+      }
+      
+      // Строковые поиски
+      orConditions.push({ wallet: { contains: searchQuery, mode: 'insensitive' } });
+      
+      if (orConditions.length > 0) {
+        where.OR = orConditions;
+      }
+    }
+    
+    // Формируем объект сортировки
+    let orderBy: any = { approvedAt: 'desc' };
+    
+    if (sortColumn && sortDirection && sortDirection !== "null") {
+      orderBy = {
+        [sortColumn]: sortDirection
+      };
+    }
+    
+    // Получаем транзакции
+    const transactions = await ctx.db.idexTransaction.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        cabinet: true,
+        BybitMatch: {
+          include: {
+            bybitTransaction: {
+              select: {
+                id: true,
+                orderNo: true,
+                totalPrice: true,
+                dateTime: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                },
+                originalData: true
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // Считаем общее количество
+    const totalTransactions = await ctx.db.idexTransaction.count({ where });
+    
+    return {
+      success: true,
+      transactions: transactions.map(tx => ({
+        ...tx,
+        approvedAt: tx.approvedAt ? dayjs(tx.approvedAt).tz(MOSCOW_TIMEZONE).format() : null,
+        // Добавляем информацию о связанных Bybit транзакциях
+        bybitMatches: tx.BybitMatch.map(match => ({
+          id: match.id,
+          bybitTransaction: {
+            ...match.bybitTransaction,
+            dateTime: (() => {
+              // Извлекаем время из originalData, если оно есть
+              try {
+                const originalData = typeof match.bybitTransaction.originalData === 'string'
+                  ? JSON.parse(match.bybitTransaction.originalData)
+                  : match.bybitTransaction.originalData;
+                
+                if (originalData && originalData.Time) {
+                  return dayjs(originalData.Time).add(3, 'hour').tz(MOSCOW_TIMEZONE).format();
+                }
+                return dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format();
+              } catch (error) {
+                return dayjs(match.bybitTransaction.dateTime).tz(MOSCOW_TIMEZONE).format();
+              }
+            })()
+          }
+        }))
+      })),
+      pagination: {
+        totalTransactions,
+        totalPages: Math.ceil(totalTransactions / pageSize) || 1,
+        currentPage: page,
+        pageSize
+      }
+    };
+  } catch (error) {
+    console.error("Ошибка при получении IDEX транзакций, сопоставленных с Bybit:", error);
+    return {
+      success: false,
+      message: "Ошибка при получении IDEX транзакций, сопоставленных с Bybit",
+      transactions: [],
+      pagination: {
+        totalTransactions: 0,
+        totalPages: 0,
+        currentPage: input.page,
+        pageSize: input.pageSize
+      }
+    };
+  }
+}),
 
   // Получение несопоставленных транзакций пользователя
   getUnmatchedUserTransactions: publicProcedure
