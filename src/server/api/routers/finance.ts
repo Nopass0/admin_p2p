@@ -1,6 +1,7 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { z } from "zod";
 import { Prisma, SalarySection } from "@prisma/client";
+import dayjs from "dayjs";
 
 // Определяем схему валидации для валюты
 const currencySchema = z.enum(["RUB", "USDT"]).nullable().default("RUB");
@@ -158,6 +159,8 @@ export const financeRouter = createTRPCRouter({
       usdtAmount: z.number().optional(),
       currency: currencySchema,
       comment: z.string().optional(),
+      exchangeRate: z.number().positive().optional(),
+
       section: sectionSchema
     }))
     .mutation(async ({ ctx, input }) => {
@@ -172,7 +175,9 @@ export const financeRouter = createTRPCRouter({
             endBalance: input.endBalance,
             employeeId: input.employeeId,
             usdtAmount: input.usdtAmount || 0,
-            currency: input.currency,
+            currency: input.currency || "RUB",
+            exchangeRate: input.exchangeRate || null,
+
             section: input.section,
             comment: input.comment || null
           },
@@ -184,7 +189,7 @@ export const financeRouter = createTRPCRouter({
             data: {
               salaryId: input.employeeId,
               amount: input.usdtAmount,
-              currency: input.currency,
+              currency: input.currency || "RUB",
               paymentDate: input.date,
               comment: `Выплата за смену (${input.shift === 'morning' ? 'утро' : 'вечер'})`
             }
@@ -233,7 +238,8 @@ export const financeRouter = createTRPCRouter({
             endBalance: input.endBalance,
             employeeId: input.employeeId,
             usdtAmount: input.usdtAmount || 0,
-            currency: input.currency,
+            currency: input.currency || "RUB",
+            exchangeRate: input.exchangeRate || null,
             section: input.section,
             comment: input.comment || null
           },
@@ -532,6 +538,48 @@ export const financeRouter = createTRPCRouter({
       try {
         const { startDate, endDate, includeFixed, includeVariable, includeSalary, currency, section } = input;
         
+        const globalStartDateTime = dayjs(startDate).utc().toDate();
+        const globalEndDateTime = dayjs(endDate).utc().toDate();  
+
+        let bybitMatchProfitsUSDT = 0;
+        let bybitMatchProfitsRUB = 0;
+        
+        // Query bybit matches within the date range - include the related transaction data
+        const bybitMatches = await ctx.db.bybitMatch.findMany({
+          where: {
+            bybitTransaction: {
+              dateTime: {
+                gte: globalStartDateTime,
+                lte: globalEndDateTime
+              }
+            },
+            idexTransaction: {
+              approvedAt: {
+                gte: globalStartDateTime.toISOString(),
+                lte: globalEndDateTime.toISOString()
+              },
+          
+            }
+          },
+          include: {
+            bybitTransaction: true,
+            idexTransaction: true
+          }
+        });
+                
+        // Разделение профитов по валютам - use the transaction currency
+        bybitMatches.forEach(match => {
+          // Get currency from bybitTransaction or default to USDT based on business logic
+          // Bybit transactions are typically in USDT, but you might need to adjust this logic
+          const currency = match.bybitTransaction?.currency || 'USDT'; 
+          
+          if (currency === 'USDT') {
+            bybitMatchProfitsUSDT += match.grossProfit;
+          } else if (currency === 'RUB') {
+            bybitMatchProfitsRUB += match.grossProfit;
+          }
+        });
+
         // Базовый фильтр по датам для финансовых записей
         let finRowsWhere: Prisma.FinRowWhereInput = {
           date: {
@@ -557,6 +605,10 @@ export const financeRouter = createTRPCRouter({
             expenses: true
           }
         });
+        
+        // Разделение финансовых записей по валютам
+        const finRowsUSDT = finRows.filter(row => row.currency === 'USDT');
+        const finRowsRUB = finRows.filter(row => row.currency === 'RUB');
         
         // Получаем все расходы за период
         let expensesWhere: Prisma.FinRowExpenseWhereInput = {
@@ -586,8 +638,14 @@ export const financeRouter = createTRPCRouter({
           where: expensesWhere
         });
         
+        // Разделение расходов по валютам
+        const expensesUSDT = allExpenses.filter(expense => expense.currency === 'USDT');
+        const expensesRUB = allExpenses.filter(expense => expense.currency === 'RUB');
+        
         // Получаем выплаты по зарплатам за период, если включены
-        let salaryExpenses = 0;
+        let salaryExpensesUSDT = 0;
+        let salaryExpensesRUB = 0;
+        
         if (includeSalary) {
           let salaryWhere: Prisma.SalaryPaymentWhereInput = {
             paymentDate: {
@@ -608,33 +666,51 @@ export const financeRouter = createTRPCRouter({
             }
           });
           
-          // Учитываем фильтр по секции для зарплат
+          // Разделение зарплат по валютам с учетом фильтра по секции
           if (section) {
-            salaryExpenses = salaryPayments
-              .filter(payment => payment.salary.section === section)
+            const filteredPayments = salaryPayments.filter(payment => payment.salary.section === section);
+            salaryExpensesUSDT = filteredPayments
+              .filter(payment => payment.currency === 'USDT')
+              .reduce((sum, payment) => sum + payment.amount, 0);
+            salaryExpensesRUB = filteredPayments
+              .filter(payment => payment.currency === 'RUB')
               .reduce((sum, payment) => sum + payment.amount, 0);
           } else {
-            salaryExpenses = salaryPayments.reduce((sum, payment) => sum + payment.amount, 0);
+            salaryExpensesUSDT = salaryPayments
+              .filter(payment => payment.currency === 'USDT')
+              .reduce((sum, payment) => sum + payment.amount, 0);
+            salaryExpensesRUB = salaryPayments
+              .filter(payment => payment.currency === 'RUB')
+              .reduce((sum, payment) => sum + payment.amount, 0);
           }
         }
         
-        // Считаем общую сумму доходов (разница между конечным и начальным балансом для всех смен)
-        const totalIncome = finRows.reduce((sum, row) => sum + (row.endBalance - row.startBalance), 0);
+        // Считаем общую сумму доходов по валютам
+        const totalIncomeUSDT = finRowsUSDT.reduce((sum, row) => sum + (row.endBalance - row.startBalance), 0) + bybitMatchProfitsUSDT;
+        const totalIncomeRUB = finRowsRUB.reduce((sum, row) => sum + (row.endBalance - row.startBalance), 0) + bybitMatchProfitsRUB;
         
-        // Считаем расходы по типам
-        const fixedExpenses = allExpenses
+        // Считаем расходы по типам и валютам
+        const fixedExpensesUSDT = expensesUSDT
+          .filter(expense => expense.expenseType === 'fixed')
+          .reduce((sum, expense) => sum + expense.amount, 0);
+        const fixedExpensesRUB = expensesRUB
           .filter(expense => expense.expenseType === 'fixed')
           .reduce((sum, expense) => sum + expense.amount, 0);
           
-        const variableExpenses = allExpenses
+        const variableExpensesUSDT = expensesUSDT
+          .filter(expense => expense.expenseType === 'variable')
+          .reduce((sum, expense) => sum + expense.amount, 0);
+        const variableExpensesRUB = expensesRUB
           .filter(expense => expense.expenseType === 'variable')
           .reduce((sum, expense) => sum + expense.amount, 0);
         
-        // Считаем общие расходы
-        const totalExpenses = fixedExpenses + variableExpenses + (includeSalary ? salaryExpenses : 0);
+        // Считаем общие расходы по валютам
+        const totalExpensesUSDT = fixedExpensesUSDT + variableExpensesUSDT + (includeSalary ? salaryExpensesUSDT : 0);
+        const totalExpensesRUB = fixedExpensesRUB + variableExpensesRUB + (includeSalary ? salaryExpensesRUB : 0);
         
-        // Считаем прибыль
-        const profit = totalIncome - totalExpenses;
+        // Считаем прибыль по валютам
+        const profitUSDT = totalIncomeUSDT - totalExpensesUSDT;
+        const profitRUB = totalIncomeRUB - totalExpensesRUB;
         
         return { 
           success: true, 
@@ -646,15 +722,35 @@ export const financeRouter = createTRPCRouter({
             currency: currency || "ALL",
             section: section,
             income: {
-              total: totalIncome
+              USDT: {
+                total: totalIncomeUSDT,
+                finRowIncome: finRowsUSDT.reduce((sum, row) => sum + (row.endBalance - row.startBalance), 0),
+                bybitMatchProfits: bybitMatchProfitsUSDT
+              },
+              RUB: {
+                total: totalIncomeRUB,
+                finRowIncome: finRowsRUB.reduce((sum, row) => sum + (row.endBalance - row.startBalance), 0),
+                bybitMatchProfits: bybitMatchProfitsRUB
+              }
             },
             expenses: {
-              fixed: fixedExpenses,
-              variable: variableExpenses,
-              salary: salaryExpenses,
-              total: totalExpenses
+              USDT: {
+                fixed: fixedExpensesUSDT,
+                variable: variableExpensesUSDT,
+                salary: salaryExpensesUSDT,
+                total: totalExpensesUSDT
+              },
+              RUB: {
+                fixed: fixedExpensesRUB,
+                variable: variableExpensesRUB,
+                salary: salaryExpensesRUB,
+                total: totalExpensesRUB
+              }
             },
-            profit
+            profit: {
+              USDT: profitUSDT,
+              RUB: profitRUB
+            }
           }
         };
       } catch (error) {

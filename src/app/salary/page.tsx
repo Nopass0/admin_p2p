@@ -132,7 +132,8 @@ export default function SalaryPage() {
   const [paymentForm, setPaymentForm] = useState({
     amount: "",
     paymentDate: dayjs().format("YYYY-MM-DD"),
-    comment: ""
+    comment: "",
+    currency: "RUB"
   });
 
   const [debtForm, setDebtForm] = useState({
@@ -594,6 +595,7 @@ export default function SalaryPage() {
         amount: parseFloat(paymentForm.amount),
         paymentDate: new Date(paymentForm.paymentDate),
         comment: paymentForm.comment,
+        currency: paymentForm.currency
       });
     }
   };
@@ -650,7 +652,8 @@ export default function SalaryPage() {
     setPaymentForm({
       amount: payment.amount.toString(),
       paymentDate: dayjs(payment.paymentDate).format("YYYY-MM-DD"),
-      comment: payment.comment || ""
+      comment: payment.comment || "",
+      currency: payment.currency || "RUB"
     });
     setIsEditMode(true);
   };
@@ -687,11 +690,12 @@ export default function SalaryPage() {
     setPaymentForm({
       amount: "",
       paymentDate: dayjs().format("YYYY-MM-DD"),
-      comment: ""
+      comment: "",
+      currency: "RUB"
     });
   };
 
-  // Отмена редактирования заработка
+  // Отмена редактирования заработкаr
   const cancelEditEarning = () => {
     setIsEarningEditMode(false);
     setSelectedEarning(null);
@@ -846,8 +850,8 @@ export default function SalaryPage() {
   };
 
   // Форматирование суммы в российском формате
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(amount);
+  const formatCurrency = (amount: number, currency: string = 'RUB') => {
+    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency }).format(amount);
   };
 
   // Получение текста периода для отображения
@@ -1330,10 +1334,10 @@ export default function SalaryPage() {
                       <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
                       <div>
                         <p className="text-blue-600 dark:text-blue-400 font-medium">
-                          Общая сумма выплат {getPeriodText()}: {formatCurrency(paymentsQuery.data.totalSum)}
+                          Общая сумма выплат {getPeriodText()}: {formatCurrency(paymentsQuery.data?.totalRub || 0, 'RUB')} / {formatCurrency(paymentsQuery.data?.totalUsd || 0, 'USD')} USDT
                         </p>
                         <p className="text-sm text-blue-500 dark:text-zinc-400">
-                          Количество выплат: {paymentsQuery.data.payments.length}
+                          Количество выплат: {paymentsQuery.data?.payments.length || 0}
                         </p>
                       </div>
                     </div>
@@ -1368,7 +1372,7 @@ export default function SalaryPage() {
                           <TableRow key={payment.id}>
                             <TableCell>{formatDate(payment.paymentDate)}</TableCell>
                             <TableCell>
-                              <span className="font-medium">{formatCurrency(payment.amount)}</span>
+                              <span className="font-medium">{formatCurrency(payment.amount, payment.currency)}</span>
                             </TableCell>
                             <TableCell>{payment.comment || "—"}</TableCell>
                             <TableCell>
@@ -1424,7 +1428,30 @@ export default function SalaryPage() {
                         startContent={<DollarSign className="w-4 h-4 text-gray-400" />}
                       />
                     </div>
-                    
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Валюта</label>
+                      <Select
+                        aria-label="Валюта выплаты"
+                        defaultSelectedKeys={["RUB"]}
+                        onChange={(e) => handlePaymentFormChange('currency', e.target.value)}
+                      >
+                        
+                        <SelectItem key="USD"  value="USD">
+                          <div className="flex items-center">
+                            <DollarSign className="w-4 h-4 text-green-500 mr-2" />
+                            USDT
+                          </div>
+                        </SelectItem>
+                        <SelectItem key="RUB" value="RUB">
+                          <div className="flex items-center">
+                            <span className="text-blue-500 mr-2 font-medium">₽</span>
+                            RUB
+                          </div>
+                        </SelectItem>
+                      </Select>
+                    </div>
+
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700">Дата выплаты</label>
                       <Input

@@ -209,7 +209,7 @@ export default function EnhancedMatchingPage() {
   const [pageSize, setPageSize] = useState(10);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all"); // "all", "byUser", "unmatchedIdex", "unmatchedUser", "userStats", "bybit", "bybitMatches", "bybitMatching"
+  const [activeTab, setActiveTab] = useState("bybit"); // "all", "byUser", "unmatchedIdex", "unmatchedUser", "userStats", "bybit", "bybitMatches", "bybitMatching"
   const [isRunningMatch, setIsRunningMatch] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [sortState, setSortState] = useState<SortState>({ column: null, direction: "desc" });
@@ -1585,7 +1585,7 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
         onSelectionChange={(key) => setActiveTab(key as string)}
         className=" "
       >
-        <Tab key="all" title={
+        {/* <Tab key="all" title={
           <div className="flex items-center gap-2">
             <Database className="w-4 h-4" />
             <span>Все Сопоставления</span>
@@ -1596,13 +1596,13 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
             <User className="w-4 h-4" />
             <span>Сопоставления пользователя</span>
           </div>
-        } />
-        <Tab key="unmatchedIdex" title={
+        } /> */}
+        {/* <Tab key="unmatchedIdex" title={
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             <span>Несопоставленные IDEX</span>
           </div>
-        } />
+        } /> */}
         <Tab key="unmatchedUser" title={
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
@@ -1610,23 +1610,23 @@ const matchBybitWithIdexMutation = api.match.matchBybitWithIdex.useMutation({
           </div>
         } />
           <Tab key="bybitMatches" title={
-    <div className="flex items-center gap-2">
-      <Database className="w-4 h-4 text-orange-500" />
-      <span>Сопоставления Bybit</span>
-    </div>
-  } />
-  <Tab key="bybitUserMatches" title={
-  <div className="flex items-center gap-2">
-    <User className="w-4 h-4 text-orange-500" />
-    <span>Bybit по пользователю</span>
-  </div>
-} />
-        <Tab key="userStats" title={
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-orange-500" />
+            <span>Сопоставления Bybit</span>
+          </div>
+        } />
+          <Tab key="bybitUserMatches" title={
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-orange-500" />
+            <span>Bybit по пользователю</span>
+          </div>
+        } />
+        {/* <Tab key="userStats" title={
           <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4" />
             <span>Статистика по пользователям</span>
           </div>
-        } />
+        } /> */}
       </Tabs>
         <div className="flex gap-2">
           <Button

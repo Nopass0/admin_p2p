@@ -56,14 +56,16 @@ export function UserWorkSessionsTab({ userId }: UserWorkSessionsTabProps) {
   };
 
   // Helper function for formatting duration
-  const formatDuration = (durationInMinutes: number | null | undefined) => {
-    if (!durationInMinutes) return "—";
-    
-    const hours = Math.floor(durationInMinutes / 60);
-    const minutes = durationInMinutes % 60;
-    
+  const formatDuration = (durationInMilis: number | null | undefined) => {
+    if (!durationInMilis) return "—";
+
+    console.log(durationInMilis);
+  
+    const hours = Math.floor(durationInMilis / 3600);
+    const minutes = Math.floor((durationInMilis % 3600) / 60);
+  
     return `${hours > 0 ? `${hours} ч ` : ''}${minutes} мин`;
-  };
+};
 
   // Handle page change
   const handlePageChange = (newPage: number) => {

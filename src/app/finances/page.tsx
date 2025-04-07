@@ -6,6 +6,7 @@ import { api } from "@/trpc/react";
 import { 
   Card, 
   CardBody, 
+  CardFooter, 
   CardHeader
 } from "@heroui/card";
 import { 
@@ -75,6 +76,11 @@ export function FinancePageContent() {
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [editingFinRowId, setEditingFinRowId] = useState(null);
   const [editingExpenseId, setEditingExpenseId] = useState(null);
+
+  const [expenseSummaryFilters, setExpenseSummaryFilters] = useState({
+    startDate: dayjs().startOf('month').format("YYYY-MM-DD"),
+    endDate: dayjs().format("YYYY-MM-DD")
+  });
   
   // Filter states
   const [finRowFilters, setFinRowFilters] = useState({
@@ -114,8 +120,10 @@ export function FinancePageContent() {
     shift: "morning",
     startBalanceRUB: "",
     startBalanceUSDT: "",
-    endBalanceRUB: "",
-    endBalanceUSDT: "",
+    exchangeRate: "",
+
+    endBalanceRUB: "0.00",
+    endBalanceUSDT: "0.00",
     employeePayments: [] as EmployeePayment[],
     comment: "",
     section: (sectionFromUrl === "PAYMENTS" || sectionFromUrl === "TRACTOR") ? sectionFromUrl : "PAYMENTS"
@@ -128,6 +136,8 @@ export function FinancePageContent() {
     amountRUB: "",
     amountUSDT: "",
     finRowId: "",
+    convertExchangeRate: "",
+
     period: "monthly",
     description: "",
     section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
@@ -187,6 +197,30 @@ export function FinancePageContent() {
     expenseType: "variable",
     currency: variableExpensesFilters.currency as any,
     section: activeSection !== "ALL" ? activeSection : null,
+  });
+
+  const expenseSummaryRUBQuery = api.finance.getSummaryReport.useQuery({
+    startDate: new Date(expenseSummaryFilters.startDate),
+    endDate: new Date(expenseSummaryFilters.endDate),
+    includeFixed: true,
+    includeVariable: true,
+    includeSalary: true,
+    currency: "RUB",
+    section: activeSection !== "ALL" ? activeSection : null,
+  }, {
+    enabled: activeTab === "expenses",
+  });
+  
+  const expenseSummaryUSDTQuery = api.finance.getSummaryReport.useQuery({
+    startDate: new Date(expenseSummaryFilters.startDate),
+    endDate: new Date(expenseSummaryFilters.endDate),
+    includeFixed: true,
+    includeVariable: true,
+    includeSalary: true,
+    currency: "USDT",
+    section: activeSection !== "ALL" ? activeSection : null,
+  }, {
+    enabled: activeTab === "expenses",
   });
 
   const employeesQuery = api.salary.getAllEmployees.useQuery({ page: 1, pageSize: 100 });
@@ -327,6 +361,8 @@ export function FinancePageContent() {
       time: dayjs().format("HH:mm"),
       shift: "morning",
       startBalanceRUB: "",
+      exchangeRate: "",
+
       startBalanceUSDT: "",
       endBalanceRUB: "",
       endBalanceUSDT: "",
@@ -350,6 +386,16 @@ export function FinancePageContent() {
       section: activeSection !== "ALL" ? activeSection : "PAYMENTS"
     });
     setExpenseErrors({});
+  };
+
+  const handleExpenseSummaryFilterChange = (field, value) => {
+    setExpenseSummaryFilters(prev => ({ ...prev, [field]: value }));
+  };
+  
+  const handleExpenseSummarySubmit = (e) => {
+    e.preventDefault();
+    expenseSummaryRUBQuery.refetch();
+    expenseSummaryUSDTQuery.refetch();
   };
 
   // Employee payment handlers
@@ -587,6 +633,8 @@ export function FinancePageContent() {
       shift: finRow.shift,
       startBalanceRUB: isRUB ? finRow.startBalance?.toString() || "" : "",
       startBalanceUSDT: !isRUB ? finRow.startBalance?.toString() || "" : "",
+      exchangeRate: finRow.exchangeRate?.toString() || "",
+
       endBalanceRUB: isRUB ? finRow.endBalance?.toString() || "" : "",
       endBalanceUSDT: !isRUB ? finRow.endBalance?.toString() || "" : "",
       employeePayments: finRow.employeeId ? [{
@@ -652,6 +700,35 @@ export function FinancePageContent() {
   const getPeriodName = (period) => {
     const found = periodOptions.find(p => p.key === period);
     return found ? found.label : period;
+  };
+
+  const convertExpenseCurrency = () => {
+    if (!expenseForm.convertExchangeRate || isNaN(parseFloat(expenseForm.convertExchangeRate))) {
+      showAlert("Ошибка", "Укажите корректный курс обмена", "danger");
+      return;
+    }
+    
+    const rate = parseFloat(expenseForm.convertExchangeRate);
+    
+    if (expenseForm.amountRUB && !expenseForm.amountUSDT) {
+      // Конвертируем из RUB в USDT
+      const usdtAmount = parseFloat(expenseForm.amountRUB) / rate;
+      setExpenseForm({
+        ...expenseForm,
+        amountUSDT: usdtAmount.toFixed(2),
+        amountRUB: ""
+      });
+    } else if (expenseForm.amountUSDT && !expenseForm.amountRUB) {
+      // Конвертируем из USDT в RUB
+      const rubAmount = parseFloat(expenseForm.amountUSDT) * rate;
+      setExpenseForm({
+        ...expenseForm,
+        amountRUB: rubAmount.toFixed(2),
+        amountUSDT: ""
+      });
+    } else {
+      showAlert("Ошибка", "Укажите сумму только в одной валюте для конвертации", "warning");
+    }
   };
 
   const getCurrencyBadge = (currency) => {
@@ -1190,10 +1267,125 @@ export function FinancePageContent() {
             {/* Expense summary */}
             <Card>
               <CardHeader className="px-6 py-4">
-                <h2 className="text-xl font-bold">Сводная информация по расходам</h2>
-              </CardHeader>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold">Сводная информация по расходам</h2>
+                  <Button 
+                    color="primary"
+                    isIconOnly
+                  onClick={() => document.getElementById('expenseSummaryFilter').classList.toggle('hidden')}
+                >
+                  <Calendar className="w-4 h-4" />
+                </Button>
+              </div>
+              <div id="expenseSummaryFilter" className="mt-4 hidden">
+                <form onSubmit={handleExpenseSummarySubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Начальная дата</label>
+                      <Input
+                        type="date"
+                        value={expenseSummaryFilters.startDate}
+                        onChange={(e) => handleExpenseSummaryFilterChange('startDate', e.target.value)}
+                        startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Конечная дата</label>
+                      <Input
+                        type="date"
+                        value={expenseSummaryFilters.endDate}
+                        onChange={(e) => handleExpenseSummaryFilterChange('endDate', e.target.value)}
+                        startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    color="primary" 
+                    type="submit"
+                    isLoading={expenseSummaryRUBQuery.isLoading || expenseSummaryUSDTQuery.isLoading}
+                  >
+                    Применить
+                  </Button>
+                </form>
+              </div>
+            </CardHeader>
               <CardBody className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <h3 className="text-xl font-semibold col-span-full">Доходы</h3>
+                  
+                  {/* Total income */}
+                  <Card>
+                    <CardHeader className="px-6 py-3">
+                      <h3 className="text-lg font-bold">Общий доход</h3>
+                    </CardHeader>
+                    <CardBody className="px-6 py-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge color="primary">₽</Badge>
+                          <p className="text-lg font-bold">
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.total, "RUB") : '—'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge color="success">USDT</Badge>
+                          <p className="text-lg font-bold">
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.total, "USDT") : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                  
+                  {/* FinRow income */}
+                  <Card>
+                    <CardHeader className="px-6 py-3">
+                      <h3 className="text-lg font-bold">Доход с финансовых строк</h3>
+                    </CardHeader>
+                    <CardBody className="px-6 py-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge color="primary">₽</Badge>
+                          <p className="text-lg font-bold">
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.finRowIncome, "RUB") : '—'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge color="success">USDT</Badge>
+                          <p className="text-lg font-bold">
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.finRowIncome, "USDT") : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                  
+                  {/* Bybit match profits */}
+                  <Card>
+                    <CardHeader className="px-6 py-3">
+                      <h3 className="text-lg font-bold">Прибыль с Bybit</h3>
+                    </CardHeader>
+                    <CardBody className="px-6 py-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge color="primary">₽</Badge>
+                          <p className="text-lg font-bold">
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.bybitMatchProfits, "RUB") : '—'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge color="success">USDT</Badge>
+                          <p className="text-lg font-bold">
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.bybitMatchProfits, "USDT") : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <h3 className="text-xl font-semibold col-span-full">Расходы</h3>
+                  
                   {/* Fixed expenses */}
                   <Card>
                     <CardHeader className="px-6 py-3">
@@ -1204,13 +1396,13 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.fixed, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.fixed, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.fixed, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.fixed, "USDT") : '—'}
                           </p>
                         </div>
                       </div>
@@ -1227,13 +1419,13 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.variable, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.variable, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.variable, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.variable, "USDT") : '—'}
                           </p>
                         </div>
                       </div>
@@ -1250,13 +1442,13 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.salary, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.salary, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.salary, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.salary, "USDT") : '—'}
                           </p>
                         </div>
                       </div>
@@ -1273,15 +1465,49 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.total, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.total, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.total, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.total, "USDT") : '—'}
                           </p>
                         </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <h3 className="text-xl font-semibold col-span-full">Прибыль</h3>
+                  
+                  {/* RUB Profit */}
+                  <Card>
+                    <CardHeader className="px-6 py-3">
+                      <h3 className="text-lg font-bold">Прибыль в рублях</h3>
+                    </CardHeader>
+                    <CardBody className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <Badge color="primary">₽</Badge>
+                        <p className="text-lg font-bold">
+                          {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.profit.RUB, "RUB") : '—'}
+                        </p>
+                      </div>
+                    </CardBody>
+                  </Card>
+                  
+                  {/* USDT Profit */}
+                  <Card>
+                    <CardHeader className="px-6 py-3">
+                      <h3 className="text-lg font-bold">Прибыль в USDT</h3>
+                    </CardHeader>
+                    <CardBody className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <Badge color="success">USDT</Badge>
+                        <p className="text-lg font-bold">
+                          {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.profit.USDT, "USDT") : '—'}
+                        </p>
                       </div>
                     </CardBody>
                   </Card>
@@ -1393,17 +1619,37 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-3xl font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.total, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.total, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-3xl font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.total, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.total, "USDT") : '—'}
                           </p>
                         </div>
                       </div>
                     </CardBody>
+                    <CardFooter className="px-6 py-4 flex flex-col gap-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Доход с FinRow:</span>
+                        <div className="flex items-center gap-2">
+                          <Badge color="primary">₽</Badge>
+                          <p className="font-semibold">
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.finRowIncome, "RUB") : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Доход с Bybit:</span>
+                        <div className="flex items-center gap-2">
+                          <Badge color="success">USDT</Badge>
+                          <p className="font-semibold">
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.bybitMatchProfits, "USDT") : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardFooter>
                   </Card>
                   
                   {/* Expenses card */}
@@ -1416,13 +1662,13 @@ export function FinancePageContent() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge color="primary">₽</Badge>
                           <p className="text-3xl font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.total, "RUB") : '—'}
+                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.total, "RUB") : '—'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge color="success">USDT</Badge>
                           <p className="text-3xl font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.total, "USDT") : '—'}
+                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.total, "USDT") : '—'}
                           </p>
                         </div>
                       </div>
@@ -1433,11 +1679,11 @@ export function FinancePageContent() {
                           <div className="flex flex-col gap-1 items-center mt-2">
                             <div className="flex items-center gap-1">
                               <Badge color="primary" size="sm">₽</Badge>
-                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.fixed, "RUB") : '—'}</p>
+                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.fixed, "RUB") : '—'}</p>
                             </div>
                             <div className="flex items-center gap-1">
                               <Badge color="success" size="sm">USDT</Badge>
-                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.fixed, "USDT") : '—'}</p>
+                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.fixed, "USDT") : '—'}</p>
                             </div>
                           </div>
                         </div>
@@ -1446,11 +1692,11 @@ export function FinancePageContent() {
                           <div className="flex flex-col gap-1 items-center mt-2">
                             <div className="flex items-center gap-1">
                               <Badge color="primary" size="sm">₽</Badge>
-                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.variable, "RUB") : '—'}</p>
+                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.variable, "RUB") : '—'}</p>
                             </div>
                             <div className="flex items-center gap-1">
                               <Badge color="success" size="sm">USDT</Badge>
-                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.variable, "USDT") : '—'}</p>
+                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.variable, "USDT") : '—'}</p>
                             </div>
                           </div>
                         </div>
@@ -1459,11 +1705,11 @@ export function FinancePageContent() {
                           <div className="flex flex-col gap-1 items-center mt-2">
                             <div className="flex items-center gap-1">
                               <Badge color="primary" size="sm">₽</Badge>
-                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.salary, "RUB") : '—'}</p>
+                              <p>{reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.expenses.RUB.salary, "RUB") : '—'}</p>
                             </div>
                             <div className="flex items-center gap-1">
                               <Badge color="success" size="sm">USDT</Badge>
-                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.salary, "USDT") : '—'}</p>
+                              <p>{reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.expenses.USDT.salary, "USDT") : '—'}</p>
                             </div>
                           </div>
                         </div>
@@ -1481,14 +1727,14 @@ export function FinancePageContent() {
                     <div className="flex flex-col gap-4">
                       <div className="flex items-center gap-3">
                         <Badge color="primary" size="lg">₽</Badge>
-                        <p className={`text-4xl font-bold ${reportRUBQuery.data?.report && reportRUBQuery.data.report.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.profit, "RUB") : '—'}
+                        <p className={`text-4xl font-bold ${reportRUBQuery.data?.report && reportRUBQuery.data.report.profit.RUB >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.profit.RUB, "RUB") : '—'}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
                         <Badge color="success" size="lg">USDT</Badge>
-                        <p className={`text-4xl font-bold ${reportUSDTQuery.data?.report && reportUSDTQuery.data.report.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.profit, "USDT") : '—'}
+                        <p className={`text-4xl font-bold ${reportUSDTQuery.data?.report && reportUSDTQuery.data.report.profit.USDT >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.profit.USDT, "USDT") : '—'}
                         </p>
                       </div>
                     </div>
@@ -1523,6 +1769,17 @@ export function FinancePageContent() {
                     isInvalid={!!finRowErrors.date}
                     errorMessage={finRowErrors.date}
                     startContent={<Calendar className="w-4 h-4 text-gray-500" />}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Курс доллара (необязательно)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Курс USD/RUB"
+                    value={finRowForm.exchangeRate}
+                    onChange={(e) => handleFinRowFormChange('exchangeRate', e.target.value)}
                   />
                 </div>
                 
@@ -1839,7 +2096,31 @@ export function FinancePageContent() {
                   />
                 </div>
               </div>
-              
+              <div className="mt-2 p-3 border rounded-md bg-gray-50">
+                <h4 className="font-medium mb-2">Конвертация валюты</h4>
+                <div className="grid grid-cols-5 gap-2 items-end">
+                  <div className="col-span-3">
+                    <label className="block text-sm font-medium text-gray-700">Курс доллара</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Курс USD/RUB"
+                      value={expenseForm.convertExchangeRate}
+                      onChange={(e) => handleExpenseFormChange('convertExchangeRate', e.target.value)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Button 
+                      color="primary" 
+                      variant="flat" 
+                      onClick={convertExpenseCurrency}
+                      className="w-full"
+                    >
+                      Конвертировать
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Описание</label>
                 <Textarea

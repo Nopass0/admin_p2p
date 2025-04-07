@@ -424,18 +424,20 @@ export const salaryRouter = createTRPCRouter({
           orderBy: { paymentDate: 'desc' },
         });
 
-        // Получаем общую сумму выплат
-        const totalSum = await ctx.db.salaryPayment.aggregate({
-          where,
-          _sum: {
-            amount: true
-          }
-        });
+        // Разделяем суммы по валютам
+        const rubPayments = payments.filter(p => p.currency === 'RUB');
+        const usdPayments = payments.filter(p => p.currency === 'USD');
+
+        // Считаем суммы для каждой валюты
+        const totalRub = rubPayments.reduce((sum, p) => sum + p.amount, 0);
+        const totalUsd = usdPayments.reduce((sum, p) => sum + p.amount, 0);
 
         return { 
           success: true, 
           payments,
-          totalSum: totalSum._sum.amount || 0
+          totalRub,
+          totalUsd,
+          totalSum: payments.reduce((sum, p) => sum + p.amount, 0)
         };
       } catch (error) {
         console.error("Ошибка при получении выплат сотрудника:", error);
@@ -443,6 +445,8 @@ export const salaryRouter = createTRPCRouter({
           success: false, 
           message: "Произошла ошибка при получении выплат сотрудника", 
           payments: [],
+          totalRub: 0,
+          totalUsd: 0,
           totalSum: 0
         };
       }
@@ -454,6 +458,7 @@ export const salaryRouter = createTRPCRouter({
       salaryId: z.number().int().positive(),
       amount: z.number().positive(),
       paymentDate: z.date(),
+      currency: z.string().default("RUB"),
       comment: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
@@ -477,6 +482,7 @@ export const salaryRouter = createTRPCRouter({
             salaryId: input.salaryId,
             amount: input.amount,
             paymentDate: input.paymentDate,
+            currency: input.currency,
             comment: input.comment || null
           },
         });
@@ -539,7 +545,8 @@ export const salaryRouter = createTRPCRouter({
       paymentId: z.number().int().positive(),
       amount: z.number().positive(),
       paymentDate: z.date(),
-      comment: z.string().optional()
+      comment: z.string().optional(),
+      currency: z.string().default("RUB")
     }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -562,6 +569,7 @@ export const salaryRouter = createTRPCRouter({
           data: {
             amount: input.amount,
             paymentDate: input.paymentDate,
+            currency: input.currency,
             comment: input.comment || null
           },
         });

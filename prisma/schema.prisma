@@ -307,6 +307,18 @@ model SalaryPayment {
   salary      Salary   @relation(fields: [salaryId], references: [id])
 }
 
+model BalanceEntry {
+  id        Int           @id @default(autoincrement())
+  date      DateTime
+  time      String
+  amount    Float
+  currency  String        @default("RUB")
+  comment   String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  section   SalarySection @default(PAYMENTS)
+}
+
 model FinRow {
   id           Int             @id @default(autoincrement())
   date         DateTime
@@ -319,6 +331,7 @@ model FinRow {
   comment      String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
+  exchangeRate Float?
   currency     String          @default("RUB")
   section      SalarySection   @default(PAYMENTS)
   employee     Salary?         @relation(fields: [employeeId], references: [id])
@@ -326,7 +339,7 @@ model FinRow {
 }
 
 model FinRowExpense {
-  id          Int          @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   finRowId    Int?
   expenseType String
   amount      Float
@@ -334,11 +347,11 @@ model FinRowExpense {
   time        String
   period      String?
   description String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  currency    String       @default("RUB")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  currency    String        @default("RUB")
   section     SalarySection @default(PAYMENTS)
-  finRow      FinRow?      @relation(fields: [finRowId], references: [id])
+  finRow      FinRow?       @relation(fields: [finRowId], references: [id])
 }
 
 model ShiftReport {
