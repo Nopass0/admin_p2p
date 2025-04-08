@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { api } from "@/trpc/react";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
@@ -6,8 +6,8 @@ import { Input } from "@heroui/input";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Pagination } from "@heroui/pagination";
 import { Badge } from "@heroui/badge";
-import { Search, Calendar, RefreshCw, CalendarIcon, Upload, Check, AlertCircle } from "lucide-react";
-import { Card, CardBody } from "@heroui/card";
+import { Search, Calendar, RefreshCw, CalendarIcon, Upload, Check, AlertCircle, Key, Edit2, Lock } from "lucide-react";
+import { Card, CardBody, CardHeader, CardFooter } from "@heroui/card";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
 import { Calendar as CalendarComponent } from "@heroui/calendar";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/modal";
@@ -27,6 +27,18 @@ export function UserBybitTransactionsTab({ userId }) {
   const [uploadResult, setUploadResult] = useState(null);
   const [showUploadResult, setShowUploadResult] = useState(false);
   const fileInputRef = useRef(null);
+  
+  // State for API keys editing
+  const [isEditingKeys, setIsEditingKeys] = useState(false);
+  const [bybitApiToken, setBybitApiToken] = useState("");
+  const [bybitApiSecret, setBybitApiSecret] = useState("");
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
+  
+  // Fetch user details to get API keys and sync status
+  const { data: userData, isLoading: isLoadingUser, refetch: refetchUser } = api.users.getUserById.useQuery(
+    { userId },
+    { enabled: !!userId, refetchOnWindowFocus: false }
+  );
   
   // Fetch transactions
   const { data, isLoading, isError, refetch } = api.bybitTransactions.getUserBybitTransactions.useQuery({
@@ -51,6 +63,7 @@ export function UserBybitTransactionsTab({ userId }) {
       // Refresh the transactions list if upload was successful
       if (data.success) {
         refetch();
+        refetchUser(); // Also refresh user data to update sync status
       }
     },
     onError: (error) => {
@@ -62,6 +75,31 @@ export function UserBybitTransactionsTab({ userId }) {
       setShowUploadResult(true);
     }
   });
+  
+  // Update Bybit API keys mutation
+  const updateKeysMutation = api.users.updateBybitApiKeys.useMutation({
+    onSuccess: (data) => {
+      setIsSavingKeys(false);
+      setIsEditingKeys(false);
+      refetchUser();
+    },
+    onError: (error) => {
+      setIsSavingKeys(false);
+      setUploadResult({ 
+        success: false, 
+        message: error.message || "Ошибка при обновлении API ключей" 
+      });
+      setShowUploadResult(true);
+    }
+  });
+  
+  // Set initial values when user data is loaded
+  useEffect(() => {
+    if (userData?.user) {
+      setBybitApiToken(userData.user.bybitApiToken || "");
+      setBybitApiSecret(userData.user.bybitApiSecret || "");
+    }
+  }, [userData?.user]);
   
   // Function to handle file selection
   const handleFileSelect = async (e) => {
@@ -116,6 +154,25 @@ export function UserBybitTransactionsTab({ userId }) {
     setPage(1);
   };
   
+  // Function to handle saving API keys
+  const handleSaveApiKeys = () => {
+    setIsSavingKeys(true);
+    updateKeysMutation.mutate({
+      userId,
+      bybitApiToken,
+      bybitApiSecret
+    });
+  };
+  
+  // Function to handle canceling API key editing
+  const handleCancelEditKeys = () => {
+    if (userData?.user) {
+      setBybitApiToken(userData.user.bybitApiToken || "");
+      setBybitApiSecret(userData.user.bybitApiSecret || "");
+    }
+    setIsEditingKeys(false);
+  };
+  
   // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
@@ -138,21 +195,21 @@ export function UserBybitTransactionsTab({ userId }) {
     return Number(num).toFixed(decimals);
   };
   
-  if (isLoading) {
+  if (isLoading || isLoadingUser) {
     return (
       <div className="flex justify-center items-center p-8">
-        <Spinner size="lg" color="primary" label="Загрузка транзакций..." />
+        <Spinner size="lg" color="primary" label="Загрузка данных..." />
       </div>
     );
   }
   
-  if (isError || !data) {
+  if ((isError || !data) && (!userData || !userData.user)) {
     return (
       <div className="text-center py-8 text-red-500">
         <Card>
           <CardBody className="text-center py-6">
-            Ошибка при загрузке транзакций. Пожалуйста, попробуйте еще раз.
-            <Button color="primary" variant="flat" size="sm" className="mt-4 mx-auto" onClick={() => refetch()}>
+            Ошибка при загрузке данных. Пожалуйста, попробуйте еще раз.
+            <Button color="primary" variant="flat" size="sm" className="mt-4 mx-auto" onClick={() => { refetch(); refetchUser(); }}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Попробовать снова
             </Button>
@@ -162,7 +219,8 @@ export function UserBybitTransactionsTab({ userId }) {
     );
   }
   
-  const { transactions, pagination } = data;
+  const { transactions, pagination } = data || { transactions: [], pagination: null };
+  const user = userData?.user;
   
   return (
     <div className="space-y-4">
@@ -246,6 +304,120 @@ export function UserBybitTransactionsTab({ userId }) {
               </Button>
             </div>
           </form>
+        </CardBody>
+      </Card>
+      
+      {/* Bybit API Settings and Sync Status */}
+      <Card className="shadow-sm border border-zinc-200 dark:border-zinc-800">
+        <CardHeader className="pb-0">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <h3 className="text-lg font-medium flex items-center gap-2">
+              <Key className="w-5 h-5 text-primary" />
+              API ключи Bybit
+            </h3>
+            {!isEditingKeys && (
+              <Button 
+                size="sm" 
+                variant="flat" 
+                color="primary" 
+                onClick={() => setIsEditingKeys(true)}
+                startContent={<Edit2 className="w-4 h-4" />}
+              >
+                Редактировать
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardBody className="py-3">
+          {isEditingKeys ? (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label htmlFor="bybitApiToken" className="text-sm font-medium">
+                  API Token
+                </label>
+                <Input
+                  id="bybitApiToken"
+                  value={bybitApiToken}
+                  onChange={(e) => setBybitApiToken(e.target.value)}
+                  placeholder="Введите API Token"
+                  startContent={<Key className="text-zinc-400" size={16} />}
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="bybitApiSecret" className="text-sm font-medium">
+                  API Secret
+                </label>
+                <Input
+                  id="bybitApiSecret"
+                  value={bybitApiSecret}
+                  onChange={(e) => setBybitApiSecret(e.target.value)}
+                  placeholder="Введите API Secret"
+                  type="password"
+                  startContent={<Lock className="text-zinc-400" size={16} />}
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  size="sm"
+                  variant="bordered"
+                  onClick={handleCancelEditKeys}
+                  isDisabled={isSavingKeys}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  size="sm"
+                  color="primary"
+                  onClick={handleSaveApiKeys}
+                  isLoading={isSavingKeys}
+                  isDisabled={isSavingKeys}
+                >
+                  Сохранить
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-zinc-500 mb-1">API Token:</p>
+                  <p className="font-mono text-sm">
+                    {user?.bybitApiToken ? 
+                      `${user.bybitApiToken.substring(0, 6)}...${user.bybitApiToken.substring(user.bybitApiToken.length - 4)}` : 
+                      "Не установлен"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-zinc-500 mb-1">API Secret:</p>
+                  <p className="font-mono text-sm">
+                    {user?.bybitApiSecret ? "••••••••••••••••" : "Не установлен"}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <div>
+                  <p className="text-sm text-zinc-500 mb-1">Статус синхронизации:</p>
+                  <div className="flex items-center">
+                    <Badge 
+                      color={
+                        !user?.lastBybitSyncStatus ? "default" :
+                        user.lastBybitSyncStatus.includes("успешно") ? "success" :
+                        user.lastBybitSyncStatus.includes("ошибка") ? "danger" : "warning"
+                      }
+                      variant="flat"
+                    >
+                      {user?.lastBybitSyncStatus || "Не синхронизировано"}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-zinc-500 mb-1">Последняя синхронизация:</p>
+                  <p>{user?.lastBybitSyncAt ? formatDate(user.lastBybitSyncAt) : "Никогда"}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardBody>
       </Card>
       

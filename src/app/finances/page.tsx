@@ -1310,79 +1310,7 @@ export function FinancePageContent() {
               </div>
             </CardHeader>
               <CardBody className="px-6 py-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <h3 className="text-xl font-semibold col-span-full">Доходы</h3>
-                  
-                  {/* Total income */}
-                  <Card>
-                    <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-bold">Общий доход</h3>
-                    </CardHeader>
-                    <CardBody className="px-6 py-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge color="primary">₽</Badge>
-                          <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.total, "RUB") : '—'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge color="success">USDT</Badge>
-                          <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.total, "USDT") : '—'}
-                          </p>
-                        </div>
-                      </div>
-                    </CardBody>
-                  </Card>
-                  
-                  {/* FinRow income */}
-                  <Card>
-                    <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-bold">Доход с финансовых строк</h3>
-                    </CardHeader>
-                    <CardBody className="px-6 py-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge color="primary">₽</Badge>
-                          <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.finRowIncome, "RUB") : '—'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge color="success">USDT</Badge>
-                          <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.finRowIncome, "USDT") : '—'}
-                          </p>
-                        </div>
-                      </div>
-                    </CardBody>
-                  </Card>
-                  
-                  {/* Bybit match profits */}
-                  <Card>
-                    <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-bold">Прибыль с Bybit</h3>
-                    </CardHeader>
-                    <CardBody className="px-6 py-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge color="primary">₽</Badge>
-                          <p className="text-lg font-bold">
-                            {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.income.RUB.bybitMatchProfits, "RUB") : '—'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge color="success">USDT</Badge>
-                          <p className="text-lg font-bold">
-                            {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.income.USDT.bybitMatchProfits, "USDT") : '—'}
-                          </p>
-                        </div>
-                      </div>
-                    </CardBody>
-                  </Card>
-                </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <h3 className="text-xl font-semibold col-span-full">Расходы</h3>
                   
@@ -1479,39 +1407,7 @@ export function FinancePageContent() {
                   </Card>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <h3 className="text-xl font-semibold col-span-full">Прибыль</h3>
-                  
-                  {/* RUB Profit */}
-                  <Card>
-                    <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-bold">Прибыль в рублях</h3>
-                    </CardHeader>
-                    <CardBody className="px-6 py-3">
-                      <div className="flex items-center gap-2">
-                        <Badge color="primary">₽</Badge>
-                        <p className="text-lg font-bold">
-                          {reportRUBQuery.data?.report ? formatMoney(reportRUBQuery.data.report.profit.RUB, "RUB") : '—'}
-                        </p>
-                      </div>
-                    </CardBody>
-                  </Card>
-                  
-                  {/* USDT Profit */}
-                  <Card>
-                    <CardHeader className="px-6 py-3">
-                      <h3 className="text-lg font-bold">Прибыль в USDT</h3>
-                    </CardHeader>
-                    <CardBody className="px-6 py-3">
-                      <div className="flex items-center gap-2">
-                        <Badge color="success">USDT</Badge>
-                        <p className="text-lg font-bold">
-                          {reportUSDTQuery.data?.report ? formatMoney(reportUSDTQuery.data.report.profit.USDT, "USDT") : '—'}
-                        </p>
-                      </div>
-                    </CardBody>
-                  </Card>
-                </div>
+
               </CardBody>
             </Card>
           </>

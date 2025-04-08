@@ -384,4 +384,51 @@ export const usersRouter = createTRPCRouter({
       }
     }),
 
+  // Обновление API ключей Bybit пользователя
+  updateBybitApiKeys: publicProcedure
+    .input(z.object({
+      userId: z.number().int().positive(),
+      bybitApiToken: z.string().nullish(),
+      bybitApiSecret: z.string().nullish()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Проверяем существование пользователя
+        const user = await ctx.db.user.findUnique({
+          where: { id: input.userId }
+        });
+        
+        if (!user) {
+          return { 
+            success: false, 
+            message: "Пользователь не найден",
+            user: null
+          };
+        }
+        
+        // Обновляем API ключи Bybit
+        const updatedUser = await ctx.db.user.update({
+          where: { id: input.userId },
+          data: {
+            bybitApiToken: input.bybitApiToken,
+            bybitApiSecret: input.bybitApiSecret,
+            // При изменении ключей сбрасываем статус синхронизации
+            lastBybitSyncStatus: input.bybitApiToken ? "не синхронизировано" : null
+          }
+        });
+        
+        return { 
+          success: true, 
+          message: "API ключи Bybit успешно обновлены",
+          user: updatedUser
+        };
+      } catch (error) {
+        console.error("Ошибка при обновлении API ключей Bybit:", error);
+        return { 
+          success: false, 
+          message: "Произошла ошибка при обновлении API ключей Bybit", 
+          user: null 
+        };
+      }
+    }),
 });

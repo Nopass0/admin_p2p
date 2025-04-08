@@ -16,6 +16,11 @@ model User {
   updatedAt           DateTime             @updatedAt
   lastNotification    DateTime?
   role                UserRole             @default(USER)
+  bybitApiToken       String?
+  bybitApiSecret      String?
+  lastBybitSyncAt     DateTime?
+  lastBybitSyncStatus String?
+
   AuditLog            AuditLog[]
   bybitTransactions   BybitTransaction[]
   reportNotifications ReportNotification[]
