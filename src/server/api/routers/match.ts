@@ -1347,11 +1347,11 @@ matchBybitWithIdex: publicProcedure
               const parsedTime = dayjs(timeStr).add(3, 'hour'); // Добавляем 3 часа
               txTime = parsedTime.toISOString();
             } else {
-              return tx.dateTime;
+              txTime = tx.dateTime.toISOString();
             }
           } catch (error) {
             console.error("Error parsing originalData:", error);
-            return tx.dateTime;
+            return false;
           }
           
           // Проверяем, находится ли дата в пределах +/- 30 минут
