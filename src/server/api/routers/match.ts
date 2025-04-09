@@ -1337,17 +1337,20 @@ matchBybitWithIdex: publicProcedure
           
           // Получаем время из originalData и добавляем 3 часа
           let txTime;
+          let txTimeType;
           try {
             const originalData = typeof tx.originalData === 'string' 
               ? JSON.parse(tx.originalData) 
               : tx.originalData;
             
-            if (originalData && originalData.Time) {
+            if (originalData && originalData.Time && originalData.Time !== "" && originalData.Time !== null && originalData.Time !== undefined) {
               const timeStr = originalData.Time;
-              const parsedTime = dayjs(timeStr).add(3, 'hour'); // Добавляем 3 часа
+              const parsedTime = dayjs(timeStr).add(3, 'hour');
               txTime = parsedTime.toISOString();
+              txTimeType = "originalData"
             } else {
               txTime = tx.dateTime.toISOString();
+              txTimeType = "dateTime";
             }
           } catch (error) {
             console.error("Error parsing originalData:", error);
@@ -1356,7 +1359,7 @@ matchBybitWithIdex: publicProcedure
           
           // Проверяем, находится ли дата в пределах +/- 30 минут
           const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime);
-          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, txTime: ${txTime} IDEX#${idexTx.id}`);
+          console.log(`Time difference: ${timeDiff} minutes, idexTx.approvedAt: ${idexTx.approvedAt}, txTime: ${txTime} IDEX#${idexTx.id} TIME TYPE: ${txTimeType}`);
           return timeDiff <= MINUTES_THRESHOLD;
         })
         .map(tx => {
