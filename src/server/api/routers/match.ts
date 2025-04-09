@@ -1351,7 +1351,7 @@ matchBybitWithIdex: publicProcedure
             }
           } catch (error) {
             console.error("Error parsing originalData:", error);
-            return false;
+            return tx.dateTime;
           }
           
           // Проверяем, находится ли дата в пределах +/- 30 минут
