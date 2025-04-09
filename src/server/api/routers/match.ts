@@ -1176,6 +1176,16 @@ matchBybitWithIdex: publicProcedure
   try {
     const { startDate, endDate, userId, userIds, cabinetIds, cabinetConfigs } = input;
     
+    // Константа для порога времени в минутах
+    const MINUTES_THRESHOLD = 30; // Максимальная разница во времени (±30 минут)
+    
+    // Функция для вычисления разницы во времени в минутах
+    function getTimeDifferenceInMinutes(date1: string | Date, date2: string | Date): number {
+      const d1 = dayjs(date1);
+      const d2 = dayjs(date2);
+      return Math.abs(d1.diff(d2, 'minute'));
+    }
+    
     // Преобразуем глобальные даты с учетом таймзоны
     const globalStartDateTime = dayjs(startDate).utc().toDate();
     const globalEndDateTime = dayjs(endDate).utc().toDate();
@@ -1272,7 +1282,9 @@ matchBybitWithIdex: publicProcedure
     
     console.log(`После фильтрации осталось ${filteredIdexTransactions.length} IDEX транзакций`);
     
-    // Получаем Bybit транзакции в указанном диапазоне дат
+    // Получаем Bybit транзакции
+    // ВАЖНО: Не ограничиваем временной диапазон Bybit транзакций, 
+    // это будет сделано во время сопоставления
     let bybitTransactionsWhere: any = {
       // Только несопоставленные
       BybitMatch: {
@@ -1303,132 +1315,125 @@ matchBybitWithIdex: publicProcedure
     const matchedBybitTransactions = new Set<number>();
     const matches = [];
     
-    // Категоризация транзакций Bybit на новые и старые форматы
-    const categorizedBybitTransactions = bybitTransactions.map(tx => {
+    // Проверка и подготовка Bybit транзакций
+    const processedBybitTransactions = bybitTransactions.map(tx => {
+      // Определяем, является ли транзакция новым форматом
       let isNewFormat = false;
-      let txTime = null;
+      let transactionTime = null;
+      let totalAmount = tx.totalPrice;
       
       try {
-        // Проверяем, является ли это новым форматом
         if (tx.originalData) {
+          // Парсим originalData
           const originalData = typeof tx.originalData === 'string' 
             ? JSON.parse(tx.originalData) 
             : tx.originalData;
           
-          // Если есть поле 'id' и 'createDate', это, скорее всего, новый формат
-          isNewFormat = originalData && originalData.id && originalData.createDate;
+          // Определяем, является ли это новым форматом
+          isNewFormat = originalData && originalData.id && 
+                       (originalData.createDate || originalData.amount);
           
+          // Для старого формата (с полем Time)
           if (!isNewFormat && originalData && originalData.Time) {
-            // Старый формат с полем Time - добавляем 3 часа
-            txTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+          } 
+          // Для нового формата используем dateTime
+          else if (isNewFormat) {
+            transactionTime = tx.dateTime;
           }
         }
         
-        // Для нового формата используем dateTime поле без модификаций
-        if (isNewFormat || !txTime) {
-          txTime = tx.dateTime;
+        // Если время не определено, используем dateTime
+        if (!transactionTime) {
+          transactionTime = tx.dateTime;
         }
-        
       } catch (error) {
-        console.error(`Ошибка при обработке транзакции Bybit #${tx.id}:`, error);
-        txTime = tx.dateTime; // В случае ошибки используем dateTime
+        console.error(`Ошибка обработки Bybit транзакции #${tx.id}:`, error);
+        transactionTime = tx.dateTime;
       }
       
       return {
+        id: tx.id,
         transaction: tx,
         isNewFormat,
-        txTime
+        time: transactionTime,
+        amount: totalAmount
       };
     });
     
-    console.log(`Категоризировано транзакций: ${categorizedBybitTransactions.length}`);
-    console.log(`Новый формат: ${categorizedBybitTransactions.filter(tx => tx.isNewFormat).length}`);
-    console.log(`Старый формат: ${categorizedBybitTransactions.filter(tx => !tx.isNewFormat).length}`);
+    // Логирование количества транзакций нового и старого формата
+    const newFormatCount = processedBybitTransactions.filter(tx => tx.isNewFormat).length;
+    const oldFormatCount = processedBybitTransactions.filter(tx => !tx.isNewFormat).length;
     
-    // Константа для порога времени в минутах
-    const MINUTES_THRESHOLD = 30; // Максимальная разница во времени (±30 минут)
+    console.log(`Обнаружено ${newFormatCount} транзакций нового формата и ${oldFormatCount} старого формата`);
     
-    // Функция для вычисления разницы во времени в минутах
-    function getTimeDifferenceInMinutes(date1: string | Date, date2: string | Date): number {
-      const d1 = dayjs(date1);
-      const d2 = dayjs(date2);
-      return Math.abs(d1.diff(d2, 'minute'));
-    }
-    
-    // Пытаемся сопоставить каждую IDEX транзакцию с Bybit транзакцией
+    // Для каждой IDEX транзакции находим соответствующую Bybit транзакцию
     for (const idexTx of filteredIdexTransactions) {
-      if (matchedIdexTransactions.has(idexTx.id)) continue;
-      if (!idexTx.approvedAt) continue; // Пропускаем, если нет даты подтверждения
+      // Пропускаем транзакции без даты одобрения или уже сопоставленные
+      if (!idexTx.approvedAt || matchedIdexTransactions.has(idexTx.id)) continue;
       
-      // Парсим поле amount для получения значения
-      let amountValue = 0;
+      // Извлекаем сумму из поля amount
+      let idexAmount = 0;
       try {
-        // Проверяем, является ли amount строкой JSON
         if (typeof idexTx.amount === 'string') {
-          const amountJson = JSON.parse(idexTx.amount as string);
-          amountValue = parseFloat(amountJson.trader?.[643] || 0);
+          const amountJson = JSON.parse(idexTx.amount);
+          idexAmount = parseFloat(amountJson.trader?.[643] || 0);
         } else {
-          // Если amount уже является объектом
           const amountObj = idexTx.amount as any;
-          amountValue = parseFloat(amountObj.trader?.[643] || 0);
+          idexAmount = parseFloat(amountObj.trader?.[643] || 0);
         }
       } catch (error) {
-        console.error(`Ошибка при парсинге JSON поля amount для IDEX #${idexTx.id}:`, error);
+        console.error(`Ошибка при парсинге поля amount для IDEX #${idexTx.id}:`, error);
         continue;
       }
       
-      // Находим потенциальные совпадения Bybit транзакций
-      const potentialMatches = categorizedBybitTransactions
+      console.log(`Обработка IDEX #${idexTx.id}, сумма: ${idexAmount}, дата: ${idexTx.approvedAt}`);
+      
+      // Находим подходящие Bybit транзакции
+      const potentialMatches = processedBybitTransactions
         .filter(item => {
-          const tx = item.transaction;
+          // Пропускаем уже сопоставленные
+          if (matchedBybitTransactions.has(item.id)) return false;
           
-          // Пропускаем уже сопоставленные транзакции
-          if (matchedBybitTransactions.has(tx.id)) return false;
+          // Проверяем совпадение суммы
+          const amountMatch = Math.abs(item.amount - idexAmount) <= 0.01;
+          if (!amountMatch) return false;
           
-          // Проверяем, совпадает ли totalPrice с amountValue
-          if (Math.abs(tx.totalPrice - amountValue) > 0.01) return false;
+          // Проверяем совпадение по времени
+          const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, item.time);
           
-          // Получаем время транзакции (уже было обработано при категоризации)
-          const txTime = item.txTime;
-          if (!txTime) return false;
-          
-          // Проверяем, находится ли дата в пределах +/- 30 минут
-          const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime);
-          
+          // Логируем потенциальные совпадения
           const formatType = item.isNewFormat ? "новый" : "старый";
-          console.log(`[${formatType}] Разница времени: ${timeDiff} минут, IDEX #${idexTx.id} (${idexTx.approvedAt}) с Bybit #${tx.id} (${txTime})`);
+          console.log(`[${formatType}] Совпадение по цене! Разница времени: ${timeDiff} минут, IDEX #${idexTx.id} (${idexTx.approvedAt}) с Bybit #${item.id} (${item.time}), цена: ${item.amount}`);
           
           return timeDiff <= MINUTES_THRESHOLD;
         })
-        .map(item => {
-          const tx = item.transaction;
-          return {
-            transaction: tx,
-            timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, item.txTime!),
-            isNewFormat: item.isNewFormat
-          };
-        })
-        .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени (ближайшая первая)
+        .map(item => ({
+          bybitItem: item,
+          timeDiff: getTimeDifferenceInMinutes(idexTx.approvedAt!, item.time)
+        }))
+        .sort((a, b) => a.timeDiff - b.timeDiff); // Сортировка по разнице во времени
       
-      // Если у нас есть совпадение
+      // Если найдено совпадение, создаем матч
       if (potentialMatches.length > 0) {
-        const match = potentialMatches[0];
-        const tx = match.transaction;
+        const bestMatch = potentialMatches[0];
+        const bybitItem = bestMatch.bybitItem;
+        const tx = bybitItem.transaction;
         
-        // Отмечаем обе транзакции как сопоставленные
+        // Отмечаем транзакции как сопоставленные
         matchedIdexTransactions.add(idexTx.id);
-        matchedBybitTransactions.add(tx.id);
+        matchedBybitTransactions.add(bybitItem.id);
         
-        // Рассчитываем метрики матча
+        // Рассчитываем метрики для матча
         const metrics = calculateBybitMatchMetrics(tx, idexTx);
         
-        console.log(`Сопоставлено: IDEX #${idexTx.id} с Bybit #${tx.id} (${match.isNewFormat ? "новый" : "старый"} формат), разница во времени: ${match.timeDiff} минут`);
+        console.log(`Сопоставлено: IDEX #${idexTx.id} с Bybit #${bybitItem.id} (${bybitItem.isNewFormat ? "новый" : "старый"} формат), разница: ${bestMatch.timeDiff} мин.`);
         
-        // Создаем объект матча для пакетного создания
+        // Создаем запись о матче
         matches.push({
           idexTransactionId: idexTx.id,
-          bybitTransactionId: tx.id,
-          timeDifference: Math.round(match.timeDiff * 60), // Конвертируем минуты в секунды
+          bybitTransactionId: bybitItem.id,
+          timeDifference: Math.round(bestMatch.timeDiff * 60), // Конвертация в секунды
           grossExpense: metrics.grossExpense,
           grossIncome: metrics.grossIncome,
           grossProfit: metrics.grossProfit,
