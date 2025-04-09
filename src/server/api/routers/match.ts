@@ -1315,51 +1315,52 @@ matchBybitWithIdex: publicProcedure
     const matchedBybitTransactions = new Set<number>();
     const matches = [];
     
-    // Проверка и подготовка Bybit транзакций
-    const processedBybitTransactions = bybitTransactions.map(tx => {
-      // Определяем, является ли транзакция новым форматом
-      let isNewFormat = false;
-      let transactionTime = null;
-      let totalAmount = tx.totalPrice;
+// Проверка и подготовка Bybit транзакций
+const processedBybitTransactions = bybitTransactions.map(tx => {
+  // Определяем, является ли транзакция новым форматом
+  let isNewFormat = false;
+  let transactionTime = null;
+  let totalAmount = tx.totalPrice; // Значение по умолчанию (для старого формата)
+  
+  try {
+    if (tx.originalData) {
+      // Парсим originalData
+      const originalData = typeof tx.originalData === 'string' 
+        ? JSON.parse(tx.originalData) 
+        : tx.originalData;
       
-      try {
-        if (tx.originalData) {
-          // Парсим originalData
-          const originalData = typeof tx.originalData === 'string' 
-            ? JSON.parse(tx.originalData) 
-            : tx.originalData;
-          
-          // Определяем, является ли это новым форматом
-          isNewFormat = originalData && originalData.id && 
-                       (originalData.createDate || originalData.amount);
-          
-          // Для старого формата (с полем Time)
-          if (!isNewFormat && originalData && originalData.Time) {
-            transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
-          } 
-          // Для нового формата используем dateTime
-          else if (isNewFormat) {
-            transactionTime = tx.dateTime;
-          }
-        }
-        
-        // Если время не определено, используем dateTime
-        if (!transactionTime) {
-          transactionTime = tx.dateTime;
-        }
-      } catch (error) {
-        console.error(`Ошибка обработки Bybit транзакции #${tx.id}:`, error);
+      // Определяем, является ли это новым форматом
+      isNewFormat = originalData && originalData.id && 
+                   (originalData.createDate || originalData.amount);
+      
+      // Для старого формата (с полем Time)
+      if (!isNewFormat && originalData && originalData.Time) {
+        transactionTime = dayjs(originalData.Time).add(3, 'hour').toDate();
+      } 
+      // Для нового формата используем dateTime
+      else if (isNewFormat) {
         transactionTime = tx.dateTime;
+        totalAmount = tx.amount; // Используем amount для нового формата
       }
-      
-      return {
-        id: tx.id,
-        transaction: tx,
-        isNewFormat,
-        time: transactionTime,
-        amount: totalAmount
-      };
-    });
+    }
+    
+    // Если время не определено, используем dateTime
+    if (!transactionTime) {
+      transactionTime = tx.dateTime;
+    }
+  } catch (error) {
+    console.error(`Ошибка обработки Bybit транзакции #${tx.id}:`, error);
+    transactionTime = tx.dateTime;
+  }
+  
+  return {
+    id: tx.id,
+    transaction: tx,
+    isNewFormat,
+    time: transactionTime,
+    amount: totalAmount
+  };
+});
     
     // Логирование количества транзакций нового и старого формата
     const newFormatCount = processedBybitTransactions.filter(tx => tx.isNewFormat).length;
