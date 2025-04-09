@@ -1338,12 +1338,15 @@ matchBybitWithIdex: publicProcedure
           // Получаем время из originalData и добавляем 3 часа
           let txTime;
           let txTimeType;
-          try {
-            const originalData = typeof tx.originalData === 'string' 
-              ? JSON.parse(tx.originalData) 
-              : tx.originalData;
-            txTime = tx.dateTime.toISOString();
-            txTimeType = "dateTime";
+          txTime = tx.dateTime.toISOString();
+          console.log(`Bybit transaction time: ${txTime} ${txTimeType} and simple time (without iso): ${tx.dateTime}`);
+          txTimeType = "dateTime";
+          // try {
+          //   const originalData = typeof tx.originalData === 'string' 
+          //     ? JSON.parse(tx.originalData) 
+          //     : tx.originalData;
+          //   txTime = tx.dateTime.toISOString();
+          //   txTimeType = "dateTime";
             // if (originalData && originalData.Time && originalData.Time !== "" && originalData.Time !== null && originalData.Time !== undefined) {
             //   const timeStr = originalData.Time;
             //   const parsedTime = dayjs(timeStr).add(3, 'hour');
@@ -1353,10 +1356,10 @@ matchBybitWithIdex: publicProcedure
             //   txTime = tx.dateTime.toISOString();
             //   txTimeType = "dateTime";
             // }
-          } catch (error) {
-            console.error("Error parsing originalData:", error);
-            return false;
-          }
+          // } catch (error) {
+          //   console.error("Error parsing originalData:", error);
+          //   return false;
+          // }
           
           // Проверяем, находится ли дата в пределах +/- 30 минут
           const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt!, txTime);
