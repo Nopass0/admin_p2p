@@ -1347,7 +1347,7 @@ matchBybitWithIdex: publicProcedure
               const parsedTime = dayjs(timeStr).add(3, 'hour'); // Добавляем 3 часа
               txTime = parsedTime.toISOString();
             } else {
-              return false;
+              return tx.dateTime;
             }
           } catch (error) {
             console.error("Error parsing originalData:", error);
