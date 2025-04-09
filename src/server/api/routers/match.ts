@@ -1342,16 +1342,17 @@ matchBybitWithIdex: publicProcedure
             const originalData = typeof tx.originalData === 'string' 
               ? JSON.parse(tx.originalData) 
               : tx.originalData;
-            
-            if (originalData && originalData.Time && originalData.Time !== "" && originalData.Time !== null && originalData.Time !== undefined) {
-              const timeStr = originalData.Time;
-              const parsedTime = dayjs(timeStr).add(3, 'hour');
-              txTime = parsedTime.toISOString();
-              txTimeType = "originalData"
-            } else {
-              txTime = tx.dateTime.toISOString();
-              txTimeType = "dateTime";
-            }
+            txTime = tx.dateTime.toISOString();
+            txTimeType = "dateTime";
+            // if (originalData && originalData.Time && originalData.Time !== "" && originalData.Time !== null && originalData.Time !== undefined) {
+            //   const timeStr = originalData.Time;
+            //   const parsedTime = dayjs(timeStr).add(3, 'hour');
+            //   txTime = parsedTime.toISOString();
+            //   txTimeType = "originalData"
+            // } else {
+            //   txTime = tx.dateTime.toISOString();
+            //   txTimeType = "dateTime";
+            // }
           } catch (error) {
             console.error("Error parsing originalData:", error);
             return false;
