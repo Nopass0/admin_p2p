@@ -27,7 +27,8 @@ import {
   Menu,
   ChevronDown,
   FileText,
-  LockKeyhole
+  LockKeyhole,
+  ArrowRight
 } from "lucide-react";
 import { title } from "process";
 
@@ -104,7 +105,11 @@ const navigationSections = [
         href: "/finances?section=TRACTOR",
         icon: CreditCard
       },
-
+      {
+        title: "БТ-Вход",
+        href: "/bybitinput",
+        icon: ArrowRight
+      }
     ]
   },
   {

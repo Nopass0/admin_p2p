@@ -16,12 +16,12 @@ model User {
   updatedAt           DateTime             @updatedAt
   lastNotification    DateTime?
   role                UserRole             @default(USER)
-  bybitApiToken       String?
   bybitApiSecret      String?
+  bybitApiToken       String?
   lastBybitSyncAt     DateTime?
   lastBybitSyncStatus String?
-
   AuditLog            AuditLog[]
+  BybitOrderInfo      BybitOrderInfo[]
   bybitTransactions   BybitTransaction[]
   reportNotifications ReportNotification[]
   telegramAccounts    TelegramAccount[]
@@ -82,22 +82,25 @@ model Transaction {
 }
 
 model BybitTransaction {
-  id           Int          @id @default(autoincrement())
-  orderNo      String
-  counterparty String?
-  status       String
-  userId       Int
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  amount       Float
-  asset        String
-  dateTime     DateTime
-  originalData Json?
-  totalPrice   Float
-  type         String
-  unitPrice    Float
-  BybitMatch   BybitMatch[]
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               Int          @id @default(autoincrement())
+  orderNo          String       @unique
+  counterparty     String?
+  status           String
+  userId           Int
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  amount           Float
+  asset            String
+  dateTime         DateTime
+  originalData     Json?
+  totalPrice       Float
+  type             String
+  unitPrice        Float
+  processed        Boolean      @default(false)
+  extractedPhones  String[]     @default([])
+  lastAttemptError String?
+  BybitMatch       BybitMatch[]
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([orderNo, userId])
 }
@@ -336,9 +339,9 @@ model FinRow {
   comment      String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
-  exchangeRate Float?
   currency     String          @default("RUB")
   section      SalarySection   @default(PAYMENTS)
+  exchangeRate Float?
   employee     Salary?         @relation(fields: [employeeId], references: [id])
   expenses     FinRowExpense[]
 }
@@ -569,6 +572,19 @@ model SalaryEarning {
   updatedAt   DateTime @updatedAt
   salaryId    Int
   salary      Salary   @relation(fields: [salaryId], references: [id], onDelete: Cascade)
+}
+
+model BybitOrderInfo {
+  id           Int      @id @default(autoincrement())
+  phoneNumbers String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  orderNo      String
+  userId       Int
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orderNo, userId])
+  @@index([userId])
 }
 
 enum SalarySection {

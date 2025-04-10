@@ -13,6 +13,7 @@ import { financeRouter } from "@/server/api/routers/finance";
 import { shiftReportsRouter } from "@/server/api/routers/financeTractor";
 import { tablesRouter } from "@/server/api/routers/tablesRouter";
 import { passwordsRouter } from "@/server/api/routers/passwords";
+import { bybitOrderInfoRouter } from "@/server/api/routers/bybitOrderInfo";
 
 /**
  * This is the primary router for your server.
@@ -33,6 +34,7 @@ export const appRouter = createTRPCRouter({
   finance: financeRouter,
   shiftReports: shiftReportsRouter,
   passwords: passwordsRouter,
+  bybitOrderInfo: bybitOrderInfoRouter,
   tables: tablesRouter
 });
 
