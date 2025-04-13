@@ -39,8 +39,8 @@ export const usersRouter = createTRPCRouter({
           include: {
             telegramAccounts: true,
           },
-          skip: (page - 1) * pageSize,
-          take: pageSize,
+          //skip: (page - 1) * pageSize,
+          //take: pageSize,
           orderBy: { createdAt: 'desc' },
         });
 
