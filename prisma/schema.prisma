@@ -27,6 +27,8 @@ model User {
   telegramAccounts    TelegramAccount[]
   transactions        Transaction[]
   workSessions        WorkSession[]
+  BybitClipMatch      BybitClipMatch[]
+  MatchBybitReport    MatchBybitReport[]
 }
 
 model TelegramAccount {
@@ -105,6 +107,50 @@ model BybitTransaction {
   @@unique([orderNo, userId])
 }
 
+// -----------------------------
+
+model BybitCabinet {
+  id Int @id @default(autoincrement())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bybitEmail          String
+  bybitApiSecret      String?
+  bybitApiToken       String?
+  lastBybitSyncAt     DateTime?
+  lastBybitSyncStatus String?
+
+  BybitTransactionFromCabinet BybitTransactionFromCabinet[]
+}
+
+model BybitTransactionFromCabinet {
+  id           Int     @id @default(autoincrement())
+  orderNo      String  @unique
+  counterparty String?
+  status       String
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  amount           Float
+  asset            String
+  dateTime         DateTime
+  originalData     Json?
+  totalPrice       Float
+  type             String
+  unitPrice        Float
+  processed        Boolean  @default(false)
+  extractedPhones  String[] @default([])
+  lastAttemptError String?
+
+  BybitClipMatch BybitClipMatch[]
+
+  cabinetId Int
+  cabinet   BybitCabinet @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+}
+
+//-----------------------------
+
 model WorkSession {
   id                     Int                      @id @default(autoincrement())
   startTime              DateTime
@@ -152,7 +198,7 @@ model IdexCabinet {
 }
 
 model IdexTransaction {
-  id                Int          @id @default(autoincrement())
+  id                Int              @id @default(autoincrement())
   externalId        BigInt
   paymentMethodId   BigInt
   wallet            String
@@ -165,11 +211,12 @@ model IdexTransaction {
   updatedAtExternal String
   extraData         Json
   cabinetId         Int
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
   BybitMatch        BybitMatch[]
-  cabinet           IdexCabinet  @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  cabinet           IdexCabinet      @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
   matches           Match[]
+  BybitClipMatch    BybitClipMatch[]
 
   @@unique([externalId, cabinetId])
 }
@@ -206,6 +253,44 @@ model BybitMatch {
   idexTransaction    IdexTransaction  @relation(fields: [idexTransactionId], references: [id])
 
   @@unique([idexTransactionId, bybitTransactionId])
+}
+
+model BybitClipMatch {
+  id                 Int                         @id @default(autoincrement())
+  idexTransactionId  Int
+  bybitTransactionId Int
+  timeDifference     Int
+  grossExpense       Float
+  grossIncome        Float
+  grossProfit        Float
+  profitPercentage   Float
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  bybitTransaction   BybitTransactionFromCabinet @relation(fields: [bybitTransactionId], references: [id])
+  idexTransaction    IdexTransaction             @relation(fields: [idexTransactionId], references: [id])
+  MatchBybitReport   MatchBybitReport?           @relation(fields: [matchBybitReportId], references: [id])
+  matchBybitReportId Int?
+  userId             Int
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MatchBybitReport {
+  id             Int      @id @default(autoincrement())
+  reportDate     DateTime
+  totalMatches   Int
+  totalProfit    Float
+  averageProfit  Float
+  successRate    Float
+  timeRangeStart DateTime
+  timeRangeEnd   DateTime
+  notes          String?
+  idexCabinets   Json? // [{idexId: 1, cabinetId: 1, login: "login", timeRangeStart: "2023-01-01T00:00:00.000Z", timeRangeEnd: "2023-01-01T00:00:00.000Z"}...]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  userId         Int @default(1)
+
+  bybitClipMatches BybitClipMatch[]
+  User             User             @relation(fields: [userId], references: [id])
 }
 
 model Card {

@@ -3,6 +3,26 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 export const usersRouter = createTRPCRouter({
+  // Простое получение списка всех пользователей без пагинации
+  getUsers: publicProcedure
+    .query(async ({ ctx }) => {
+      try {
+        const users = await ctx.db.user.findMany({
+          select: {
+            id: true,
+            name: true,
+            passCode: true,
+            isActive: true,
+          },
+          orderBy: { name: 'asc' },
+        });
+        return users;
+      } catch (error) {
+        console.error("Ошибка при получении списка пользователей:", error);
+        return [];
+      }
+    }),
+    
   // Получение списка всех пользователей с пагинацией
   getAllUsers: publicProcedure
     .input(z.object({ 

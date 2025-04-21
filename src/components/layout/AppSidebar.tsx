@@ -28,7 +28,8 @@ import {
   ChevronDown,
   FileText,
   LockKeyhole,
-  ArrowRight
+  ArrowRight,
+  Paperclip
 } from "lucide-react";
 import { title } from "process";
 
@@ -83,6 +84,11 @@ const navigationSections = [
         title: "Финансы",
         href: "/finances?section=PAYMENTS",
         icon: CreditCard
+      },
+      {
+        title: "Bybit отчеты",
+        href: "/bb",
+        icon: Paperclip
       }
     ]
   },
