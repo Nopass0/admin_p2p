@@ -298,85 +298,191 @@ export default function BybitReportsPage() {
                     {isLoading && <Spinner label="Загрузка отчетов..." />}
                     {error && <p className="text-danger">Ошибка загрузки: {error.message}</p>}
                     {!isLoading && !error && data?.reports && (
-                         <>
+                        <>
                             {data.reports.length === 0 ? (
-                                <p>Отчеты еще не созданы.</p>
+                                <div className="p-6 text-center bg-gray-50 dark:bg-zinc-800 rounded-lg">
+                                    <p className="text-lg">Отчеты еще не созданы.</p>
+                                    <Button 
+                                        color="primary" 
+                                        className="mt-4" 
+                                        startContent={<PlusIcon size={18} />}
+                                        onPress={() => router.push('/bb/report/new')}
+                                    >
+                                        Создать первый отчет
+                                    </Button>
+                                </div>
                             ) : (
-                                 <Table aria-label="Список отчетов сопоставления Bybit">
-                                    <TableHeader>
-                                        <TableColumn>ID</TableColumn>
-                                        <TableColumn>Название</TableColumn>
-                                        <TableColumn>Период</TableColumn>
-                                        <TableColumn>ID Пользователя</TableColumn>
-                                        {/* <TableColumn>Кабинеты IDEX</TableColumn> */}
-                                        <TableColumn>Дата создания</TableColumn>
-                                        <TableColumn>Действия</TableColumn>
-                                    </TableHeader>
-                                     <TableBody items={data.reports}>
-                                        {(item: any) => (
-                                            <TableRow key={item.id}>
-                                                <TableCell>{item.id}</TableCell>
-                                                <TableCell>{item.name}</TableCell>
-                                                <TableCell>
-                                                    {dayjs(item.startDate).format("YYYY-MM-DD")} - {dayjs(item.endDate).format("YYYY-MM-DD")}
-                                                </TableCell>
-                                                <TableCell>{item.userId}</TableCell>
-                                                 {/* <TableCell>{item.cabinetConfigs ? 'Конфиги' : 'Нет'} </TableCell> */}
-                                                 <TableCell>{dayjs(item.createdAt).format("YYYY-MM-DD HH:mm")}</TableCell>
-                                                <TableCell className="flex gap-1">
-                                                    <Tooltip content="Открыть отчет">
-                                                        <Button 
-                                                            isIconOnly 
-                                                            variant="light" 
-                                                            size="sm" 
-                                                            onPress={() => router.push(`/bb/report/${item.id}`)}
-                                                        >
-                                                            <Eye size={16} />
-                                                        </Button>
-                                                    </Tooltip>
-                                                     <Tooltip content="Редактировать (параметры)">
-                                                         <Button 
-                                                            isIconOnly 
-                                                            variant="light" 
-                                                            size="sm" 
-                                                            // TODO: Implement edit functionality for report parameters if needed
-                                                            // onPress={() => handleEditReport(item.id)} 
-                                                            isDisabled // Disable for now if only viewing/matching is on the report page
-                                                         >
-                                                             <Edit size={16} />
-                                                         </Button>
-                                                     </Tooltip>
-                                                     <Tooltip content="Удалить отчет">
-                                                         <Button 
-                                                            isIconOnly 
-                                                            color="danger" 
-                                                            variant="light" 
-                                                            size="sm" 
-                                                            onPress={() => handleDeleteReport(item.id)}
-                                                            isLoading={deleteReportMutation.isLoading && deleteReportMutation.variables?.id === item.id}
-                                                        >
-                                                             <Trash size={16} />
-                                                         </Button>
-                                                     </Tooltip>
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
+                                <div className="space-y-6">
+                                    {data.reports.map((report: any) => {
+                                        // Парсим конфигурацию кабинетов
+                                        let idexCabinets: any[] = [];
+                                        let bybitCabinets: any[] = [];
+                                        
+                                        if (report.idexCabinets && typeof report.idexCabinets === 'string') {
+                                            try {
+                                                const configs = JSON.parse(report.idexCabinets);
+                                                // Разделяем на IDEX и Bybit кабинеты
+                                                idexCabinets = configs.filter((c: any) => c.cabinetType === 'idex');
+                                                bybitCabinets = configs.filter((c: any) => c.cabinetType === 'bybit' || !c.cabinetType);
+                                            } catch (e) {
+                                                console.error("Failed to parse cabinets config", e);
+                                            }
+                                        }
+                                        
+                                        return (
+                                            <Card key={report.id} className="hover:shadow-md transition-shadow duration-300 dark:bg-zinc-800 dark:border-zinc-700">
+                                                <CardBody className="p-0">
+                                                    {/* Заголовок карточки */}
+                                                    <div className="p-4 border-b dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 flex items-center justify-between">
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className="bg-gray-200 dark:bg-zinc-700 text-gray-700 dark:text-zinc-300 px-2 py-1 rounded text-xs font-mono">ID: {report.id}</span>
+                                                            <h3 className="text-xl font-semibold">{report.name}</h3>
+                                                        </div>
+                                                        <span className="text-gray-500 dark:text-zinc-400 text-sm">
+                                                            Создан: {dayjs(report.createdAt).format("DD.MM.YYYY HH:mm")}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Основная информация */}
+                                                    <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                        {/* Колонка 1: Информация о пользователе и периоде */}
+                                                        <div className="space-y-4">
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Пользователь:</span>
+                                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-md flex items-center">
+                                                                    <div className="h-6 w-6 rounded-full bg-blue-200 dark:bg-blue-800 flex items-center justify-center mr-2">
+                                                                        <span className="text-xs font-bold">{report.user?.name?.charAt(0) || 'U'}</span>
+                                                                    </div>
+                                                                    <span className="font-medium">
+                                                                        {report.user?.name || `ID: ${report.userId}`}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Период отчета:</span>
+                                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded-md border dark:border-zinc-700 mt-1">
+                                                                    <div className="flex items-center text-sm">
+                                                                        <span className="mr-1">От:</span>
+                                                                        <span className="font-semibold">{dayjs(report.startDate).format("DD.MM.YYYY")}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center text-sm mt-1">
+                                                                        <span className="mr-1">До:</span>
+                                                                        <span className="font-semibold">{dayjs(report.endDate).format("DD.MM.YYYY")}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {report.notes && (
+                                                                <div>
+                                                                    <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Комментарий:</span>
+                                                                    <p className="mt-1 text-sm bg-gray-50 dark:bg-zinc-800 p-2 rounded-md border dark:border-zinc-700">
+                                                                        {report.notes}
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        {/* Колонка 2: Статистика и метрики */}
+                                                        <div className="space-y-4">
+                                                            <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Статистика:</span>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded-md border border-green-100 dark:border-green-800/50">
+                                                                    <span className="text-xs text-gray-500 dark:text-zinc-400 block">Сопоставлений</span>
+                                                                    <span className="text-lg font-bold text-green-600 dark:text-green-400">{report.totalMatches || 0}</span>
+                                                                </div>
+                                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-md border border-blue-100 dark:border-blue-800/50">
+                                                                    <span className="text-xs text-gray-500 dark:text-zinc-400 block">Прибыль</span>
+                                                                    <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{report.totalProfit?.toFixed(2) || 0} USDT</span>
+                                                                </div>
+                                                                <div className="bg-purple-50 dark:bg-purple-900/20 p-2 rounded-md border border-purple-100 dark:border-purple-800/50">
+                                                                    <span className="text-xs text-gray-500 dark:text-zinc-400 block">Успешных</span>
+                                                                    <span className="text-lg font-bold text-purple-600 dark:text-purple-400">{report.successRate?.toFixed(1) || 0}%</span>
+                                                                </div>
+                                                                <div className="bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md border border-amber-100 dark:border-amber-800/50">
+                                                                    <span className="text-xs text-gray-500 dark:text-zinc-400 block">Ср. прибыль</span>
+                                                                    <span className="text-lg font-bold text-amber-600 dark:text-amber-400">{report.averageProfit?.toFixed(2) || 0} USDT</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* Колонка 3: Кабинеты */}
+                                                        <div className="space-y-4">
+                                                            {/* IDEX кабинеты */}
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">IDEX кабинеты:</span>
+                                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                                    {idexCabinets.length > 0 ? idexCabinets.map((cabinet: any, index: number) => (
+                                                                        <Tooltip key={index} content={`Период: ${dayjs(cabinet.startDate).format("DD.MM.YYYY")} - ${dayjs(cabinet.endDate).format("DD.MM.YYYY")}`}>
+                                                                            <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs px-2 py-1 rounded-full">
+                                                                                ID: {cabinet.cabinetId}
+                                                                                {cabinet.idexId && <span className="font-bold"> [{cabinet.idexId}]</span>}
+                                                                            </span>
+                                                                        </Tooltip>
+                                                                    )) : <span className="text-sm text-gray-500 dark:text-zinc-400">Нет кабинетов</span>}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Bybit кабинеты */}
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Bybit кабинеты:</span>
+                                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                                    {bybitCabinets.length > 0 ? bybitCabinets.map((cabinet: any, index: number) => (
+                                                                        <Tooltip key={index} content={`Период: ${dayjs(cabinet.startDate).format("DD.MM.YYYY")} - ${dayjs(cabinet.endDate).format("DD.MM.YYYY")}`}>
+                                                                            <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs px-2 py-1 rounded-full">
+                                                                                ID: {cabinet.cabinetId}
+                                                                            </span>
+                                                                        </Tooltip>
+                                                                    )) : <span className="text-sm text-gray-500 dark:text-zinc-400">Нет кабинетов</span>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Нижняя панель с кнопками */}
+                                                    <div className="p-3 border-t dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 flex justify-end">
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="bordered" 
+                                                                color="primary" 
+                                                                startContent={<Eye size={16} />}
+                                                                onPress={() => router.push(`/bb/report/${report.id}`)}
+                                                            >
+                                                                Открыть
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="flat" 
+                                                                color="danger" 
+                                                                startContent={<Trash size={16} />}
+                                                                onPress={() => handleDeleteReport(report.id)}
+                                                            >
+                                                                Удалить
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </CardBody>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
                             )}
-                         </>
+                            {data.totalPages > 1 && (
+                                <div className="flex justify-center mt-8">
+                                    <Pagination
+                                        total={data.totalPages}
+                                        initialPage={page}
+                                        onChange={handlePageChange}
+                                        size="lg"
+                                        className="mx-auto"
+                                    />
+                                </div>
+                            )}
+                        </>
                     )}
                 </CardBody>
-                 {data && data.totalPages > 1 && (
-                    <CardFooter className="flex justify-center">
-                        <Pagination
-                            total={data.totalPages}
-                            page={page}
-                            onChange={handlePageChange}
-                            color="primary"
-                        />
-                    </CardFooter>
-                 )}
+                 {/* Убираем дубликат пагинации в нижнем колонтитуле, т.к. она уже есть внутри */}
             </Card>
             
              {/* Bybit Cabinet Management Modal */}
