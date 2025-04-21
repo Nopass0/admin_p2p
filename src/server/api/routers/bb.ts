@@ -996,7 +996,7 @@ export const bbRouter = createTRPCRouter({
             if (!bybitTx.dateTime || usedBybitTxIds.has(bybitTx.id)) continue;
             
             // Добавляем 3 часа к времени Bybit транзакции
-            const bybitDateTime = dayjs(bybitTx.dateTime).toISOString(); //! TODO:DELETE 3 hourse /// !!DELETED
+            const bybitDateTime = dayjs(bybitTx.dateTime).add(3, 'hour').toISOString(); //! TODO:DELETE 3 hourse /// !!DELETED
 
             // Проверяем, совпадает ли сумма транзакции (с небольшой погрешностью)
             if (Math.abs(bybitTx.totalPrice - idexAmount) > AMOUNT_THRESHOLD) continue;
