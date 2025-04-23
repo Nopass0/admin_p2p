@@ -42,15 +42,15 @@ export default function NewReportPage() {
     // Получение списка пользователей для выбора
     const { data: users, isLoading: isLoadingUsers } = api.users.getUsers.useQuery();
     
-    // Получение списка Bybit кабинетов для выбранного пользователя
+    // Получение списка Bybit кабинетов
     const { data: bybitCabinets, isLoading: isLoadingBybitCabinets, error: errorBybitCabinets } = api.bb.getBybitCabinets.useQuery(
-        { userId: selectedUserId },
-        { enabled: Boolean(selectedUserId) }
+        undefined,
+        { enabled: true }
     );
     
-    // Получение списка IDEX кабинетов для выбранного пользователя
+    // Получение списка IDEX кабинетов
     const { data: idexCabinetsData, isLoading: isLoadingIdexCabinets, error: errorIdexCabinets } = 
-        api.idex.getAllCabinets.useQuery({ page: 1, perPage: 100, userId: selectedUserId }, { enabled: Boolean(selectedUserId) }); // Запрашиваем до 100 кабинетов
+        api.idex.getAllCabinets.useQuery({ page: 1, perPage: 100 }, { enabled: true }); // Запрашиваем до 100 кабинетов
     
     // Извлекаем список IDEX кабинетов из результата запроса
     const idexCabinets = idexCabinetsData?.cabinets || [];
@@ -93,13 +93,30 @@ export default function NewReportPage() {
         }));
     };
     
+    // Мутация для автоматического сопоставления
+    const autoMatchMutation = api.bb.matchTransactionsAutomatically.useMutation({
+        onSuccess: (result) => {
+            toast.success(`Автоматическое сопоставление выполнено: найдено ${result.stats?.newMatches || 0} совпадений`);
+            // После создания отчета и выполнения автоматического сопоставления возвращаемся на страницу списка отчетов
+            router.push('/bb');
+        },
+        onError: (error) => {
+            toast.error(`Ошибка при автоматическом сопоставлении: ${error.message}`);
+            // Даже при ошибке автоматического сопоставления возвращаемся на страницу списка отчетов
+            router.push('/bb');
+        }
+    });
+
     // Мутация для создания отчета
     const createReportMutation = api.bb.createMatchBybitReport.useMutation({
         onSuccess: (data) => {
-            // Показываем сообщение об успешном создании отчета с информацией об автоматическом мэтчинге
-            toast.success('Отчет успешно сохранен. Автоматический мэтчинг транзакций выполнен.');
-            // После создания отчета возвращаемся на страницу списка отчетов
-            router.push('/bb');
+            toast.success('Отчет успешно сохранен.');
+            
+            // Запускаем автоматическое сопоставление для созданного отчета
+            autoMatchMutation.mutate({ 
+                reportId: data.id,
+                userId: selectedUserId
+            });
         },
         onError: (error) => {
             toast.error(`Ошибка при создании отчета: ${error.message}`);
@@ -252,27 +269,39 @@ export default function NewReportPage() {
                             </div>
                             
                             <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-3 dark:text-zinc-300">
+
+                                <div>
+
+
+                                <label htmlFor="timeRangeStart">Начало периода поиска</label>
                                 <Input 
                                     type="datetime-local"
-                                    label="Начало периода поиска"
+                                    id="timeRangeStart"
                                     value={timeRangeStart}
                                     onChange={(e) => setTimeRangeStart(e.target.value)}
                                     className="dark:bg-zinc-900 dark:border-zinc-700"
                                 />
+                                </div>
+                                <div>
+                                <label htmlFor="timeRangeEnd">Конец периода поиска</label>
                                 <Input 
                                     type="datetime-local"
-                                    label="Конец периода поиска"
+                                    id="timeRangeEnd"
                                     value={timeRangeEnd}
                                     onChange={(e) => setTimeRangeEnd(e.target.value)}
                                     className="dark:bg-zinc-900 dark:border-zinc-700"
                                 />
+                                </div>
+                                <div>
+                                <label htmlFor="reportDate">Дата формирования отчета</label>
                                 <Input 
                                     type="datetime-local"
-                                    label="Дата формирования отчета"
+                                    id="reportDate"
                                     value={reportDate}
                                     onChange={(e) => setReportDate(e.target.value)}
                                     className="dark:bg-zinc-900 dark:border-zinc-700"
                                 />
+                                </div>
                             </div>
                         </div>
                         
@@ -326,7 +355,7 @@ export default function NewReportPage() {
                                         ) : (
                                             <p className="text-sm text-gray-500 p-4 border rounded-md text-center dark:text-zinc-400 dark:border-zinc-700">
                                                 Нет доступных Bybit кабинетов. Пожалуйста, добавьте их сначала через{" "}
-                                                <Button variant="link" size="sm" onClick={() => router.push('/bb')} className="p-0 h-auto inline">
+                                                <Button variant="light" size="sm" onClick={() => router.push('/bb')} className="p-0 h-auto inline">
                                                     управление кабинетами
                                                 </Button>
                                             </p>
@@ -459,7 +488,7 @@ export default function NewReportPage() {
                                                         {cabinetConfigs.filter(c => c.cabinetType === 'idex').map((config, index) => {
                                                             // Находим информацию о кабинете для отображения
                                                             const cabinetInfo = idexCabinets?.find(c => c.id === config.cabinetId);
-                                                            const cabinetName = cabinetInfo?.name || `IDEX ID: ${config.cabinetId}`;
+                                                            const cabinetName = cabinetInfo?.name || `IDEX ID: ${cabinetInfo.idexId}`;
                                                             
                                                             return (
                                                                 <div 
@@ -524,7 +553,7 @@ export default function NewReportPage() {
                                 title="При сохранении отчета будет выполнен автоматический мэтчинг транзакций"
                                 className="dark:bg-blue-700 dark:hover:bg-blue-800"
                             >
-                                Сохранить отчет
+                                Сохранить и выполнить автомэтчинг
                             </Button>
                         </div>
                     </form>

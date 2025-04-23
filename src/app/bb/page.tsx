@@ -258,7 +258,7 @@ export default function BybitReportsPage() {
      const handleDeleteReport = (reportId: number) => {
          const currentUserId = 0; // Placeholder - WILL FAIL
          if (window.confirm("Вы уверены, что хотите удалить этот отчет и все связанные с ним сопоставления?")) {
-             deleteReportMutation.mutate({ id: reportId, userId: currentUserId });
+             deleteReportMutation.mutate({ id: reportId });
          }
      };
 
@@ -364,11 +364,11 @@ export default function BybitReportsPage() {
                                                                 <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded-md border dark:border-zinc-700 mt-1">
                                                                     <div className="flex items-center text-sm">
                                                                         <span className="mr-1">От:</span>
-                                                                        <span className="font-semibold">{dayjs(report.startDate).format("DD.MM.YYYY")}</span>
+                                                                        <span className="font-semibold">{dayjs(report.startDate).format("DD.MM.YYYY HH:mm")}</span>
                                                                     </div>
                                                                     <div className="flex items-center text-sm mt-1">
                                                                         <span className="mr-1">До:</span>
-                                                                        <span className="font-semibold">{dayjs(report.endDate).format("DD.MM.YYYY")}</span>
+                                                                        <span className="font-semibold">{dayjs(report.endDate).format("DD.MM.YYYY HH:mm")}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -412,12 +412,11 @@ export default function BybitReportsPage() {
                                                             <div>
                                                                 <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">IDEX кабинеты:</span>
                                                                 <div className="mt-1 flex flex-wrap gap-1">
-                                                                    {idexCabinets.length > 0 ? idexCabinets.map((cabinet: any, index: number) => (
+                                                                    {report.idexCabinets.length > 0 ? report.idexCabinets.map((cabinet: any, index: number) => (
                                                                         <Tooltip key={index} content={`Период: ${dayjs(cabinet.startDate).format("DD.MM.YYYY")} - ${dayjs(cabinet.endDate).format("DD.MM.YYYY")}`}>
-                                                                            <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs px-2 py-1 rounded-full">
-                                                                                ID: {cabinet.cabinetId}
-                                                                                {cabinet.idexId && <span className="font-bold"> [{cabinet.idexId}]</span>}
-                                                                            </span>
+                                                                <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs px-2 py-1 rounded-full">
+                                                                    ID: {cabinet.idexId}
+                                                                </span>
                                                                         </Tooltip>
                                                                     )) : <span className="text-sm text-gray-500 dark:text-zinc-400">Нет кабинетов</span>}
                                                                 </div>
@@ -427,11 +426,11 @@ export default function BybitReportsPage() {
                                                             <div>
                                                                 <span className="text-sm font-medium text-gray-500 dark:text-zinc-400">Bybit кабинеты:</span>
                                                                 <div className="mt-1 flex flex-wrap gap-1">
-                                                                    {bybitCabinets.length > 0 ? bybitCabinets.map((cabinet: any, index: number) => (
+                                                                    {report.bybitCabinetEmails.length > 0 ? report.bybitCabinetEmails.map((cabinet: any, index: number) => (
                                                                         <Tooltip key={index} content={`Период: ${dayjs(cabinet.startDate).format("DD.MM.YYYY")} - ${dayjs(cabinet.endDate).format("DD.MM.YYYY")}`}>
-                                                                            <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs px-2 py-1 rounded-full">
-                                                                                ID: {cabinet.cabinetId}
-                                                                            </span>
+                                                                <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs px-2 py-1 rounded-full">
+                                                                    {cabinet.email}
+                                                                </span>
                                                                         </Tooltip>
                                                                     )) : <span className="text-sm text-gray-500 dark:text-zinc-400">Нет кабинетов</span>}
                                                                 </div>

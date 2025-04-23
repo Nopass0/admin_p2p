@@ -851,7 +851,7 @@ export default function SalaryPage() {
 
   // Форматирование суммы в российском формате
   const formatCurrency = (amount: number, currency: string = 'RUB') => {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency }).format(amount);
+    return amount + ' ' + currency;
   };
 
   // Получение текста периода для отображения

@@ -36,18 +36,46 @@ export default function ReportDetailPage() {
     const [idexSearch, setIdexSearch] = useState('');
     const [bybitSearch, setBybitSearch] = useState('');
     const itemsPerPage = 10;
+    
+    // Sorting state
+    const [idexSort, setIdexSort] = useState<{column: string, direction: 'asc' | 'desc'} | null>(null);
+    const [bybitSort, setBybitSort] = useState<{column: string, direction: 'asc' | 'desc'} | null>(null);
+    const [matchesSort, setMatchesSort] = useState<{column: string, direction: 'asc' | 'desc'} | null>(null);
 
     const { data: idexData, isLoading: isLoadingIdex, refetch: refetchIdex } = api.bb.getIdexTransactionsForReport.useQuery(
-        { reportId, page: idexPage, limit: itemsPerPage, search: idexSearch }, { enabled: !isNaN(reportId) }
+        { 
+            reportId, 
+            page: idexPage, 
+            limit: itemsPerPage, 
+            search: idexSearch,
+            sortColumn: idexSort?.column,
+            sortDirection: idexSort?.direction
+        }, 
+        { enabled: !isNaN(reportId) }
     );
     const { data: bybitData, isLoading: isLoadingBybit, refetch: refetchBybit } = api.bb.getBybitTransactionsForReport.useQuery(
-        { reportId, page: bybitPage, limit: itemsPerPage, search: bybitSearch }, { enabled: !isNaN(reportId) }
+        { 
+            reportId, 
+            page: bybitPage, 
+            limit: itemsPerPage, 
+            search: bybitSearch,
+            sortColumn: bybitSort?.column,
+            sortDirection: bybitSort?.direction
+        }, 
+        { enabled: !isNaN(reportId) }
     );
     
     // Добавляем запрос для получения данных о сопоставленных транзакциях
     const [matchesPage, setMatchesPage] = useState(1);
     const { data: matchesData, isLoading: isLoadingMatches, refetch: refetchMatches } = api.bb.getMatchedTransactionsForReport.useQuery(
-        { reportId, page: matchesPage, limit: itemsPerPage }, { enabled: !isNaN(reportId) }
+        { 
+            reportId, 
+            page: matchesPage, 
+            limit: itemsPerPage,
+            sortColumn: matchesSort?.column,
+            sortDirection: matchesSort?.direction
+        }, 
+        { enabled: !isNaN(reportId) }
     );
 
     // Selection State
@@ -107,6 +135,55 @@ export default function ReportDetailPage() {
         if (type === 'idex') { setIdexPage(1); refetchIdex(); } 
         else { setBybitPage(1); refetchBybit(); }
     };
+    
+    // Sorting handlers
+    const handleSort = (table: 'idex' | 'bybit' | 'matches', column: string) => {
+        if (table === 'idex') {
+            setIdexSort(prev => {
+                // If clicking the same column, toggle direction or set to asc if null
+                if (prev?.column === column) {
+                    return prev.direction === 'asc' 
+                        ? { column, direction: 'desc' } 
+                        : { column, direction: 'asc' };
+                }
+                // New column, default to asc
+                return { column, direction: 'asc' };
+            });
+            setIdexPage(1);
+            refetchIdex();
+        } else if (table === 'bybit') {
+            setBybitSort(prev => {
+                if (prev?.column === column) {
+                    return prev.direction === 'asc' 
+                        ? { column, direction: 'desc' } 
+                        : { column, direction: 'asc' };
+                }
+                return { column, direction: 'asc' };
+            });
+            setBybitPage(1);
+            refetchBybit();
+        } else if (table === 'matches') {
+            setMatchesSort(prev => {
+                if (prev?.column === column) {
+                    return prev.direction === 'asc' 
+                        ? { column, direction: 'desc' } 
+                        : { column, direction: 'asc' };
+                }
+                return { column, direction: 'asc' };
+            });
+            setMatchesPage(1);
+            refetchMatches();
+        }
+    };
+    
+    // Helper to render sort indicator
+    const renderSortIndicator = (table: 'idex' | 'bybit' | 'matches', column: string) => {
+        const sortState = table === 'idex' ? idexSort : table === 'bybit' ? bybitSort : matchesSort;
+        
+        if (sortState?.column !== column) return null;
+        
+        return sortState.direction === 'asc' ? ' ↑' : ' ↓';
+    };
     const formatAmount = (amount: any): string => {
         const num = typeof amount === 'object' && amount !== null && 'toNumber' in amount ? amount.toNumber() : Number(amount);
         return isNaN(num) ? 'N/A' : num.toFixed(2);
@@ -125,8 +202,8 @@ export default function ReportDetailPage() {
                  <Button variant="light" onPress={() => router.push('/bb')} startContent={<ArrowLeft size={18} />}>Назад</Button>
                  <h1 className="text-2xl font-bold">Отчет: {reportData.name} (ID: {reportData.id})</h1>
                  <div className="flex items-center gap-2">
-                     <span className="text-sm text-gray-600">
-                         {dayjs(reportData.startDate).format("DD.MM.YY")} - {dayjs(reportData.endDate).format("DD.MM.YY")}
+                     <span className="text-sm text-zinc-500">
+                         {dayjs(reportData.startDate).format("DD.MM.YY HH:mm")} - {dayjs(reportData.endDate).format("DD.MM.YY HH:mm")}
                      </span>
                      <Tooltip content="Обновить"><Button isIconOnly variant="light" onPress={() => { refetchReport(); refetchIdex(); refetchBybit(); }}><RefreshCw size={18} /></Button></Tooltip>
                  </div>
@@ -134,7 +211,7 @@ export default function ReportDetailPage() {
 
             {/* Actions */}
              <div className="flex justify-end gap-3">
-                 <Button color="primary" variant="ghost" startContent={<Wand2 size={18}/>} onPress={handleAutoMatch} isLoading={autoMatchMutation.isLoading}>Авто</Button>
+                 {/* <Button color="primary" variant="ghost" startContent={<Wand2 size={18}/>} onPress={handleAutoMatch} isLoading={autoMatchMutation.isLoading}>Авто</Button> */}
                  <Button color="success" startContent={<LinkIcon size={18}/>} onPress={handleManualMatch} isLoading={manualMatchMutation.isLoading} isDisabled={!selectedIdexId || !selectedBybitId}>Вручную</Button>
              </div>
 
@@ -152,7 +229,17 @@ export default function ReportDetailPage() {
                     <CardBody>
                          {isLoadingIdex ? <Spinner size="sm"/> : !idexData || idexData.transactions.length === 0 ? <p>Нет данных.</p> : (
                              <Table aria-label="IDEX" selectionMode="single" selectedKeys={selectedIdexId ? new Set([selectedIdexId.toString()]) : new Set()} onSelectionChange={(keys) => setSelectedIdexId(keys === 'all' ? null : parseInt(Array.from(keys)[0] as string, 10))}>
-                                <TableHeader><TableColumn>ID</TableColumn><TableColumn>Время</TableColumn><TableColumn>Сумма</TableColumn></TableHeader>
+                                <TableHeader>
+                                    <TableColumn onClick={() => handleSort('idex', 'id')} style={{cursor: 'pointer'}}>
+                                        ID {renderSortIndicator('idex', 'id')}
+                                    </TableColumn>
+                                    <TableColumn onClick={() => handleSort('idex', 'approvedAt')} style={{cursor: 'pointer'}}>
+                                        Время {renderSortIndicator('idex', 'approvedAt')}
+                                    </TableColumn>
+                                    <TableColumn onClick={() => handleSort('idex', 'parsedAmount')} style={{cursor: 'pointer'}}>
+                                        Сумма {renderSortIndicator('idex', 'parsedAmount')}
+                                    </TableColumn>
+                                </TableHeader>
                                 <TableBody items={idexData.transactions as IdexTransaction[]}>
                                     {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.approvedAt ? dayjs(item.approvedAt).format('DD.MM.YY HH:mm:ss') : 'N/A'}</TableCell><TableCell>{formatAmount(item.parsedAmount)}</TableCell></TableRow>)}
                                 </TableBody>
@@ -174,7 +261,20 @@ export default function ReportDetailPage() {
                      <CardBody>
                           {isLoadingBybit ? <Spinner size="sm"/> : !bybitData || bybitData.transactions.length === 0 ? <p>Нет данных.</p> : (
                              <Table aria-label="Bybit" selectionMode="single" selectedKeys={selectedBybitId ? new Set([selectedBybitId.toString()]) : new Set()} onSelectionChange={(keys) => setSelectedBybitId(keys === 'all' ? null : parseInt(Array.from(keys)[0] as string, 10))}>
-                                <TableHeader><TableColumn>ID</TableColumn><TableColumn>Email</TableColumn><TableColumn>Время</TableColumn><TableColumn>Сумма</TableColumn></TableHeader>
+                                <TableHeader>
+                                    <TableColumn onClick={() => handleSort('bybit', 'id')} style={{cursor: 'pointer'}}>
+                                        ID {renderSortIndicator('bybit', 'id')}
+                                    </TableColumn>
+                                    <TableColumn onClick={() => handleSort('bybit', 'email')} style={{cursor: 'pointer'}}>
+                                        Email {renderSortIndicator('bybit', 'email')}
+                                    </TableColumn>
+                                    <TableColumn onClick={() => handleSort('bybit', 'dateTime')} style={{cursor: 'pointer'}}>
+                                        Время {renderSortIndicator('bybit', 'dateTime')}
+                                    </TableColumn>
+                                    <TableColumn onClick={() => handleSort('bybit', 'totalPrice')} style={{cursor: 'pointer'}}>
+                                        Сумма {renderSortIndicator('bybit', 'totalPrice')}
+                                    </TableColumn>
+                                </TableHeader>
                                 <TableBody items={bybitData.transactions as BybitTransaction[]}>
                                      {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.email}</TableCell><TableCell>{dayjs(item.dateTime).format('DD.MM.YY HH:mm:ss')}</TableCell><TableCell>{formatAmount(item.totalPrice)}</TableCell></TableRow>)}
                                  </TableBody>
@@ -285,7 +385,7 @@ export default function ReportDetailPage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         {/* Всего сопоставлений */}
                         <div>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm">Спред на ордер</p>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm">Кол-во ордеров</p>
                             <div className="flex items-baseline gap-1">
                                 <p className="text-xl font-bold text-gray-800 dark:text-gray-200">
                                     {reportData?.totalMatches || 0}
@@ -323,15 +423,33 @@ export default function ReportDetailPage() {
                     {isLoadingMatches ? <Spinner size="sm"/> : !matchesData || matchesData.matches.length === 0 ? <p>Нет сопоставленных транзакций.</p> : (
                         <Table aria-label="Сопоставленные транзакции" className="min-w-full">
                             <TableHeader>
-                                <TableColumn>ID</TableColumn>
-                                <TableColumn>Дата Bybit</TableColumn>
-                                <TableColumn>Дата IDEX</TableColumn>
-                                <TableColumn>Сумма Bybit</TableColumn>
-                                <TableColumn>Кабинет IDEX</TableColumn>
-                                <TableColumn>Расход</TableColumn>
-                                <TableColumn>Доход</TableColumn>
-                                <TableColumn>Спред</TableColumn>
-                                <TableColumn>Спред (%)</TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'id')} style={{cursor: 'pointer'}}>
+                                    ID {renderSortIndicator('matches', 'id')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'bybitDateTime')} style={{cursor: 'pointer'}}>
+                                    Дата Bybit {renderSortIndicator('matches', 'bybitDateTime')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'idexDateTime')} style={{cursor: 'pointer'}}>
+                                    Дата IDEX {renderSortIndicator('matches', 'idexDateTime')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'bybitAmount')} style={{cursor: 'pointer'}}>
+                                    Сумма Bybit {renderSortIndicator('matches', 'bybitAmount')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'idexCabinet')} style={{cursor: 'pointer'}}>
+                                    Кабинет IDEX {renderSortIndicator('matches', 'idexCabinet')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'grossExpense')} style={{cursor: 'pointer'}}>
+                                    Расход {renderSortIndicator('matches', 'grossExpense')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'grossIncome')} style={{cursor: 'pointer'}}>
+                                    Доход {renderSortIndicator('matches', 'grossIncome')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'grossProfit')} style={{cursor: 'pointer'}}>
+                                    Спред {renderSortIndicator('matches', 'grossProfit')}
+                                </TableColumn>
+                                <TableColumn onClick={() => handleSort('matches', 'profitPercentage')} style={{cursor: 'pointer'}}>
+                                    Спред (%) {renderSortIndicator('matches', 'profitPercentage')}
+                                </TableColumn>
                                 <TableColumn>Действие</TableColumn>
                             </TableHeader>
                             <TableBody items={matchesData.matches as BybitClipMatch[]}>
@@ -342,8 +460,8 @@ export default function ReportDetailPage() {
                                         <TableCell>{dayjs(match.idexTransaction?.approvedAt).format('DD.MM.YY HH:mm')}</TableCell>
                                         <TableCell>{formatAmount(match.bybitTransaction?.totalPrice)}</TableCell>
                                         <TableCell>{match.idexTransaction?.cabinet?.idexId}</TableCell>
-                                        <TableCell className="text-orange-600">{formatAmount(match.grossExpense)} USDT</TableCell>
-                                        <TableCell className="text-green-600">{formatAmount(match.grossIncome)} USDT</TableCell>
+                                        <TableCell >{formatAmount(match.grossExpense)} USDT</TableCell>
+                                        <TableCell >{formatAmount(match.grossIncome)} USDT</TableCell>
                                         <TableCell className={match.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}>
                                             {formatAmount(match.grossProfit)} USDT
                                         </TableCell>

@@ -279,16 +279,68 @@ export const bbRouter = createTRPCRouter({
                 skip,
                 take: limit,
                 orderBy: { createdAt: 'desc' },
-                 include: { // Include related data if needed on the list view
-                 // user: true, 
-                 // _count: { select: { matches: true } } // Example: count of matches
+                include: { // Include related data if needed on the list view
+                    // user: true, 
+                    // _count: { select: { matches: true } } // Example: count of matches
                 }
             }),
             ctx.db.matchBybitReport.count({ where }),
         ]);
 
+        // Process reports to include idexCabinets and bybitCabinets
+        const processedReports = await Promise.all(reports.map(async (report) => {
+            // Parse cabinet configurations from JSON
+            let cabinetConfigs: any[] = [];
+            let idexCabinets: any[] = [];
+            let bybitCabinetEmails: Array<{id: number, email: string}> = [];
+            
+            if (report.idexCabinets && typeof report.idexCabinets === 'string') {
+                try {
+                    cabinetConfigs = JSON.parse(report.idexCabinets);
+                    
+                    // Get idex cabinet IDs
+                    const idexCabinetIds = cabinetConfigs
+                        .filter((config: any) => config.cabinetType === 'idex')
+                        .map((config: any) => config.cabinetId);
+                    
+                    // Get bybit cabinet IDs
+                    const bybitCabinetIds = cabinetConfigs
+                        .filter((config: any) => config.cabinetType === 'bybit' || !config.cabinetType)
+                        .map((config: any) => config.cabinetId);
+                    
+                    // Fetch idex cabinets
+                    if (idexCabinetIds.length > 0) {
+                        idexCabinets = await ctx.db.idexCabinet.findMany({
+                            where: { id: { in: idexCabinetIds } }
+                        });
+                    }
+                    
+                    // Fetch bybit cabinets
+                    if (bybitCabinetIds.length > 0) {
+                        const bybitCabinets = await ctx.db.bybitCabinet.findMany({
+                            where: { id: { in: bybitCabinetIds } },
+                            select: { id: true, bybitEmail: true }
+                        });
+                        bybitCabinetEmails = bybitCabinets.map(cabinet => ({
+                            id: cabinet.id,
+                            email: cabinet.bybitEmail
+                        }));
+                    }
+                } catch (e) {
+                    console.error("Error parsing cabinet configs:", e);
+                }
+            }
+            
+            return {
+                ...report,
+                parsedCabinetConfigs: cabinetConfigs,
+                idexCabinets,
+                bybitCabinetEmails
+            };
+        }));
+
         return {
-            reports,
+            reports: processedReports,
             totalCount,
             totalPages: Math.ceil(totalCount / limit),
             currentPage: page,
@@ -464,13 +516,12 @@ export const bbRouter = createTRPCRouter({
   deleteMatchBybitReport: publicProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-        // Need to decide if deleting a report also deletes associated BybitClipMatch records
-        // Option 1: Cascade delete (defined in Prisma schema)
-        // Option 2: Manually delete associated matches first (safer if no cascade)
+        // First delete all associated matches
         await ctx.db.bybitClipMatch.deleteMany({
-            where: { reportId: input.id },
+            where: { matchBybitReportId: input.id },
         });
         
+        // Then delete the report itself
         return ctx.db.matchBybitReport.delete({
             where: { id: input.id },
         });
@@ -483,7 +534,9 @@ export const bbRouter = createTRPCRouter({
       reportId: z.number(), // ID отчета, для которого запрашиваются транзакции
       page: z.number().min(1).default(1),
       limit: z.number().min(1).max(100).default(20),
-      search: z.string().optional() // Параметр поиска для фильтрации транзакций
+      search: z.string().optional(), // Параметр поиска для фильтрации транзакций
+      sortColumn: z.string().optional(), // Колонка для сортировки
+      sortDirection: z.enum(['asc', 'desc']).optional() // Направление сортировки
     }))
     .query(async ({ ctx, input }) => {
       const { reportId, page, limit, search } = input;
@@ -627,7 +680,9 @@ export const bbRouter = createTRPCRouter({
       reportId: z.number(), // ID отчета, для которого запрашиваются транзакции
       page: z.number().min(1).default(1),
       limit: z.number().min(1).max(100).default(20),
-      search: z.string().optional() // Параметр поиска для фильтрации транзакций
+      search: z.string().optional(), // Параметр поиска для фильтрации транзакций
+      sortColumn: z.string().optional(), // Колонка для сортировки
+      sortDirection: z.enum(['asc', 'desc']).optional() // Направление сортировки
     }))
     .query(async ({ ctx, input }) => {
       const { reportId, page, limit, search } = input;
@@ -750,9 +805,11 @@ export const bbRouter = createTRPCRouter({
       reportId: z.number(),
       page: z.number().min(1).default(1),
       limit: z.number().min(1).max(100).default(20),
+      sortColumn: z.string().optional(), // Колонка для сортировки
+      sortDirection: z.enum(['asc', 'desc']).optional() // Направление сортировки
     }))
     .query(async ({ ctx, input }) => {
-      const { reportId, page, limit } = input;
+      const { reportId, page, limit, sortColumn, sortDirection } = input;
       const skip = (page - 1) * limit;
       
       try {
@@ -760,6 +817,32 @@ export const bbRouter = createTRPCRouter({
         const totalCount = await ctx.db.bybitClipMatch.count({
           where: { matchBybitReportId: reportId }
         });
+        
+        // Определяем порядок сортировки
+        let orderBy: Prisma.BybitClipMatchOrderByWithRelationInput = { createdAt: 'desc' };
+        
+        // Если указаны параметры сортировки, используем их
+        if (sortColumn) {
+          if (sortColumn === 'id') {
+            orderBy = { id: sortDirection || 'asc' };
+          } else if (sortColumn === 'bybitDateTime') {
+            orderBy = { bybitTransaction: { dateTime: sortDirection || 'desc' } };
+          } else if (sortColumn === 'idexDateTime') {
+            orderBy = { idexTransaction: { approvedAt: sortDirection || 'desc' } };
+          } else if (sortColumn === 'bybitAmount') {
+            orderBy = { bybitTransaction: { totalPrice: sortDirection || 'desc' } };
+          } else if (sortColumn === 'idexCabinet') {
+            orderBy = { idexTransaction: { cabinet: { idexId: sortDirection || 'asc' } } };
+          } else if (sortColumn === 'grossExpense') {
+            orderBy = { grossExpense: sortDirection || 'desc' };
+          } else if (sortColumn === 'grossIncome') {
+            orderBy = { grossIncome: sortDirection || 'desc' };
+          } else if (sortColumn === 'grossProfit') {
+            orderBy = { grossProfit: sortDirection || 'desc' };
+          } else if (sortColumn === 'profitPercentage') {
+            orderBy = { profitPercentage: sortDirection || 'desc' };
+          }
+        }
         
         // Получаем список сопоставлений с включением связанных транзакций
         const matches = await ctx.db.bybitClipMatch.findMany({
@@ -772,7 +855,7 @@ export const bbRouter = createTRPCRouter({
               }
             }
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy,
           skip,
           take: limit
         });
