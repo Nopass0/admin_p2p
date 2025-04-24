@@ -241,7 +241,7 @@ export default function ReportDetailPage() {
                                     </TableColumn>
                                 </TableHeader>
                                 <TableBody items={idexData.transactions as IdexTransaction[]}>
-                                    {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.approvedAt ? dayjs(item.approvedAt).format('DD.MM.YY HH:mm:ss') : 'N/A'}</TableCell><TableCell>{formatAmount(item.parsedAmount)}</TableCell></TableRow>)}
+                                    {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.approvedAt ? dayjs(item.approvedAt).subtract(3, 'hour').format('DD.MM.YYYY HH:mm') : 'N/A'}</TableCell><TableCell>{formatAmount(item.parsedAmount)}</TableCell></TableRow>)}
                                 </TableBody>
                              </Table>
                          )}
