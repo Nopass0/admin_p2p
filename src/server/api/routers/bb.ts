@@ -1100,6 +1100,7 @@ getMatchBybitReportById: publicProcedure
     }),
     
   // Автоматическое сопоставление транзакций для отчета
+  // Автоматическое сопоставление транзакций для отчета
   matchTransactionsAutomatically: publicProcedure
     .input(z.object({
       reportId: z.number().int().positive(),
@@ -1143,12 +1144,12 @@ getMatchBybitReportById: publicProcedure
 
         // Получаем списки кабинетов по типам
         const idexCabinetIds = cabinetConfigs
-          .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'idex')
-          .map((config: {cabinetId: number}) => config.cabinetId);
+          .filter(config => config.cabinetType === 'idex')
+          .map(config => config.cabinetId);
 
         const bybitCabinetIds = cabinetConfigs
-          .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'bybit' || !config.cabinetType)
-          .map((config: {cabinetId: number}) => config.cabinetId);
+          .filter(config => config.cabinetType === 'bybit' || !config.cabinetType)
+          .map(config => config.cabinetId);
 
         if (idexCabinetIds.length === 0 || bybitCabinetIds.length === 0) {
           return { 
@@ -1238,7 +1239,7 @@ getMatchBybitReportById: publicProcedure
             if (!bybitTx.dateTime || usedBybitTxIds.has(bybitTx.id)) continue;
             
             // Добавляем 3 часа к времени Bybit транзакции
-            const bybitDateTime = new Date(dayjs(bybitTx.dateTime).add(3, 'hour').toISOString()); //! TODO:DELETE 3 hourse /// !!DELETED
+            const bybitDateTime = dayjs(bybitTx.dateTime).add(3, 'hour').toISOString(); //! TODO:DELETE 3 hourse /// !!DELETED
 
             // Проверяем, совпадает ли сумма транзакции (с небольшой погрешностью)
             if (Math.abs(bybitTx.totalPrice - idexAmount) > AMOUNT_THRESHOLD) continue;
@@ -1258,11 +1259,7 @@ getMatchBybitReportById: publicProcedure
           if (bestMatch.bybitTx) {
             const bybitMatchTx = bestMatch.bybitTx;
             const idexTxWithAmount = { ...idexTx, parsedAmount: idexAmountTotalUsdt };
-            // Ensure bybitMatchTx has the correct format for calculateClipMatchMetrics
-            const bybitTxForMetrics = {
-              amount: Prisma.Decimal.from(bybitMatchTx.amount)
-            };
-            const metrics = calculateClipMatchMetrics(bybitTxForMetrics, idexTxWithAmount);
+            const metrics = calculateClipMatchMetrics(bybitMatchTx, idexTxWithAmount);
             
             // Помечаем транзакции как использованные
             usedIdexTxIds.add(idexTx.id);
