@@ -30,6 +30,8 @@ export default function ReportDetailPage() {
         { id: reportId }, { enabled: !isNaN(reportId) }
     );
 
+
+
     // Transaction State & Fetching (simplified for brevity)
     const [idexPage, setIdexPage] = useState(1);
     const [bybitPage, setBybitPage] = useState(1);
