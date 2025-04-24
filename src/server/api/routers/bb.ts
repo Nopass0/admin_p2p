@@ -1101,268 +1101,257 @@ export const bbRouter = createTRPCRouter({
     
   // Автоматическое сопоставление транзакций для отчета
   matchTransactionsAutomatically: publicProcedure
-  .input(z.object({
-    reportId: z.number().int().positive(),
-    userId: z.number().int().positive().optional(),
-  }))
-  .mutation(async ({ ctx, input }) => {
-    try {
-      const { reportId, userId } = input;
+    .input(z.object({
+      reportId: z.number().int().positive(),
+      userId: z.number().int().positive().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { reportId, userId } = input;
 
-      // Get report data
-      const report = await ctx.db.matchBybitReport.findUnique({
-        where: { id: reportId }
-      });
+        // Получаем данные отчета
+        const report = await ctx.db.matchBybitReport.findUnique({
+          where: { id: reportId }
+        });
 
-      if (!report) {
-        return { 
-          success: false, 
-          message: "Отчет не найден", 
-          stats: null 
-        };
-      }
-      
-      // Parse cabinet configurations from report
-      let cabinetConfigs = [];
-      if (report.idexCabinets) {
-        try {
-          cabinetConfigs = JSON.parse(report.idexCabinets as string);
-        } catch (error) {
-          console.error('Ошибка при парсинге конфигурации кабинетов:', error);
+        if (!report) {
           return { 
             success: false, 
-            message: "Ошибка при парсинге конфигурации кабинетов", 
+            message: "Отчет не найден", 
             stats: null 
           };
         }
-      }
+        
+        // Парсим конфигурацию кабинетов из отчета
+        let cabinetConfigs = [];
+        if (report.idexCabinets) {
+          try {
+            cabinetConfigs = JSON.parse(report.idexCabinets as string);
+          } catch (error) {
+            console.error('Ошибка при парсинге конфигурации кабинетов:', error);
+            return { 
+              success: false, 
+              message: "Ошибка при парсинге конфигурации кабинетов", 
+              stats: null 
+            };
+          }
+        }
 
-      console.log(`Начинаем автоматическое сопоставление для отчета #${reportId}`);
-      console.log(`Период: с ${report.timeRangeStart} по ${report.timeRangeEnd}`);
-      console.log(`Конфигурации кабинетов: ${cabinetConfigs.length}`);
+        console.log(`Начинаем автоматическое сопоставление для отчета #${reportId}`);
+        console.log(`Период: с ${report.timeRangeStart} по ${report.timeRangeEnd} ISO format: ${dayjs(report.timeRangeStart).toISOString()} - ${dayjs(report.timeRangeEnd).toISOString()}`);
+        console.log(`Конфигурации кабинетов: ${cabinetConfigs.length}`);
 
-      // Get cabinet IDs by type
-      const idexCabinetIds = cabinetConfigs
-        .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'idex')
-        .map((config: {cabinetId: number}) => config.cabinetId);
+        // Получаем списки кабинетов по типам
+        const idexCabinetIds = cabinetConfigs
+          .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'idex')
+          .map((config: {cabinetId: number}) => config.cabinetId);
 
-      const bybitCabinetIds = cabinetConfigs
-        .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'bybit' || !config.cabinetType)
-        .map((config: {cabinetId: number}) => config.cabinetId);
+        const bybitCabinetIds = cabinetConfigs
+          .filter((config: {cabinetType?: string, cabinetId: number}) => config.cabinetType === 'bybit' || !config.cabinetType)
+          .map((config: {cabinetId: number}) => config.cabinetId);
 
-      if (idexCabinetIds.length === 0 || bybitCabinetIds.length === 0) {
+        if (idexCabinetIds.length === 0 || bybitCabinetIds.length === 0) {
+          return { 
+            success: false, 
+            message: "Не указаны кабинеты обоих типов для сопоставления", 
+            stats: null 
+          };
+        }
+        
+        // Получаем IDEX транзакции, которые еще не сопоставлены в этом отчете
+        const idexTransactions = await ctx.db.idexTransaction.findMany({
+          where: {
+            cabinetId: { in: idexCabinetIds },
+            approvedAt: {
+              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
+            },
+            // Не должны уже иметь сопоставление в этом отчете
+            NOT: {
+              BybitClipMatch: {
+                some: {
+                  matchBybitReportId: reportId
+                }
+              }
+            }
+          },
+        });
+
+        // Получаем Bybit транзакции, которые еще не сопоставлены в этом отчете
+        const bybitTransactions = await ctx.db.bybitTransactionFromCabinet.findMany({
+          where: {
+            cabinetId: { in: bybitCabinetIds },
+            dateTime: {
+              gte: dayjs(report.timeRangeStart).toISOString(),
+              lte: dayjs(report.timeRangeEnd).toISOString(),
+            },
+            // Не должны уже иметь сопоставление в этом отчете
+            NOT: {
+              BybitClipMatch: {
+                some: {
+                  matchBybitReportId: reportId
+                }
+              }
+            }
+          },
+        });
+
+        console.log(`Найдено ${idexTransactions.length} IDEX транзакций и ${bybitTransactions.length} Bybit транзакций для сопоставления`);
+
+        // Массив для новых сопоставлений
+        const newMatchesData = [];
+        
+        // Создаем множества для отслеживания уже использованных транзакций
+        const usedIdexTxIds = new Set();
+        const usedBybitTxIds = new Set();
+        
+        // Получаем список всех уже сопоставленных транзакций в этом отчете
+        const existingMatches = await ctx.db.bybitClipMatch.findMany({
+          where: {
+            matchBybitReportId: reportId
+          },
+          select: {
+            idexTransactionId: true,
+            bybitTransactionId: true
+          }
+        });
+        
+        // Добавляем их в множества использованных
+        existingMatches.forEach(match => {
+          if (match.idexTransactionId) usedIdexTxIds.add(match.idexTransactionId);
+          if (match.bybitTransactionId) usedBybitTxIds.add(match.bybitTransactionId);
+        });
+        
+        // Перебираем все IDEX транзакции для сопоставления
+        for (const idexTx of idexTransactions) {
+          if (!idexTx.approvedAt || usedIdexTxIds.has(idexTx.id)) continue;
+          
+          // Получаем сумму из IDEX транзакции
+          const idexAmount = getIdexAmount(idexTx.amount);
+          const idexAmountTotalUsdt = getIdexAmountTotalUsdt(idexTx.total)
+          if (idexAmount <= 0) continue;
+          
+          // Проверяем возможные совпадения с Bybit транзакциями
+          let bestMatch = { bybitTx: null, timeDiff: Infinity };
+          
+          for (const bybitTx of bybitTransactions) {
+            if (!bybitTx.dateTime || usedBybitTxIds.has(bybitTx.id)) continue;
+            
+            // Добавляем 3 часа к времени Bybit транзакции
+            const bybitDateTime = new Date(dayjs(bybitTx.dateTime).add(3, 'hour').toISOString()); //! TODO:DELETE 3 hourse /// !!DELETED
+
+            // Проверяем, совпадает ли сумма транзакции (с небольшой погрешностью)
+            if (Math.abs(bybitTx.totalPrice - idexAmount) > AMOUNT_THRESHOLD) continue;
+            
+            // Проверяем временную разницу между транзакциями
+            const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAt, bybitDateTime);
+            
+            // Если разница в пределах порога и лучше предыдущего совпадения
+            if (timeDiff <= MINUTES_THRESHOLD && timeDiff < bestMatch.timeDiff) {
+              bestMatch = { bybitTx, timeDiff };
+            }
+            console.log(`\n--------------------------\nСопоставление для транзакции ${idexTx.id} (BB: ${bybitTx.orderNo}): ${bestMatch.bybitTx ? 'Найдено' : 'Нет'}\n---------------------\nIDEX TIME: ${idexTx.approvedAt}\nBYBIT TIME: ${bybitDateTime}\n-------------------------------\nIDEX AMOUNT: ${idexAmount}\nBYBIT AMOUNT: ${bybitTx.totalPrice}\n-------------------------------\n`);
+          }
+
+          
+          // Если нашли подходящее совпадение, создаем запись
+          if (bestMatch.bybitTx) {
+            const bybitMatchTx = bestMatch.bybitTx;
+            const idexTxWithAmount = { ...idexTx, parsedAmount: idexAmountTotalUsdt };
+            // Ensure bybitMatchTx has the correct format for calculateClipMatchMetrics
+            const bybitTxForMetrics = {
+              amount: Prisma.Decimal.from(bybitMatchTx.amount)
+            };
+            const metrics = calculateClipMatchMetrics(bybitTxForMetrics, idexTxWithAmount);
+            
+            // Помечаем транзакции как использованные
+            usedIdexTxIds.add(idexTx.id);
+            usedBybitTxIds.add(bybitMatchTx.id);
+            
+            newMatchesData.push({
+              matchBybitReportId: reportId,
+              idexTransactionId: idexTx.id,
+              bybitTransactionId: bybitMatchTx.id,
+              timeDifference: Math.round(bestMatch.timeDiff * 60), // Переводим минуты в секунды
+              grossExpense: metrics.grossExpense,
+              grossIncome: metrics.grossIncome,
+              grossProfit: metrics.grossProfit,
+              profitPercentage: metrics.profitPercentage,
+
+              userId: userId || report.userId, // Используем переданный userId или берем из отчета
+            });
+          }
+        }
+        
+        console.log(`Найдено ${newMatchesData.length} сопоставлений для добавления в отчет`);
+        
+        // Создаем сопоставления в БД
+        let createdMatches = 0;
+        if (newMatchesData.length > 0) {
+          const result = await ctx.db.bybitClipMatch.createMany({
+            data: newMatchesData,
+            skipDuplicates: true,
+          });
+          
+          createdMatches = result.count;
+          console.log(`Создано ${createdMatches} новых сопоставлений`);
+          
+          // Обновляем статистику отчета
+          if (createdMatches > 0) {
+            // Получаем все сопоставления для расчета статистики
+            const allMatches = await ctx.db.bybitClipMatch.findMany({
+              where: { matchBybitReportId: reportId }
+            });
+            
+            // Рассчитываем статистику
+            const stats = calculateReportStats(allMatches);
+            
+            // Обновляем отчет
+            await ctx.db.matchBybitReport.update({
+              where: { id: reportId },
+              data: {
+                totalMatches: stats.totalMatches,
+                totalProfit: stats.totalProfit,
+                averageProfit: stats.averageProfit,
+                successRate: stats.successRate,
+              }
+            });
+            
+            return {
+              success: true,
+              message: `Успешно создано ${createdMatches} новых сопоставлений`,
+              stats: {
+                newMatches: createdMatches,
+                totalMatches: stats.totalMatches,
+                totalProfit: stats.totalProfit,
+                averageProfit: stats.averageProfit,
+                successRate: stats.successRate,
+              }
+            };
+          }
+        }
+        
+        // Если не было создано новых сопоставлений
+        return {
+          success: true,
+          message: "Новых сопоставлений не найдено",
+          stats: {
+            newMatches: 0,
+            totalMatches: report.totalMatches,
+            totalProfit: report.totalProfit,
+            averageProfit: report.averageProfit,
+            successRate: report.successRate,
+          }
+        };
+      } catch (error) {
+        console.error('Ошибка при автоматическом сопоставлении транзакций:', error);
         return { 
           success: false, 
-          message: "Не указаны кабинеты обоих типов для сопоставления", 
+          message: `Ошибка при автоматическом сопоставлении: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`, 
           stats: null 
         };
       }
-      
-      // Get already matched transactions in this report
-      const existingMatches = await ctx.db.bybitClipMatch.findMany({
-        where: { matchBybitReportId: reportId },
-        select: {
-          idexTransactionId: true,
-          bybitTransactionId: true
-        }
-      });
-      
-      // Create sets for tracking already matched transactions
-      const matchedIdexIds = new Set(existingMatches.map(m => m.idexTransactionId).filter(Boolean));
-      const matchedBybitIds = new Set(existingMatches.map(m => m.bybitTransactionId).filter(Boolean));
-      
-      // Get unmatched IDEX transactions
-      const idexTransactions = await ctx.db.idexTransaction.findMany({
-        where: {
-          cabinetId: { in: idexCabinetIds },
-          approvedAt: {
-            gte: dayjs(report.timeRangeStart).toISOString(),
-            lte: dayjs(report.timeRangeEnd).toISOString(),
-          },
-          id: { notIn: Array.from(matchedIdexIds) }
-        },
-      });
-
-      // Get unmatched Bybit transactions
-      const bybitTransactions = await ctx.db.bybitTransactionFromCabinet.findMany({
-        where: {
-          cabinetId: { in: bybitCabinetIds },
-          dateTime: {
-            gte: report.timeRangeStart,
-            lte: report.timeRangeEnd,
-          },
-          id: { notIn: Array.from(matchedBybitIds) }
-        },
-      });
-
-      console.log(`Найдено ${idexTransactions.length} неспоставленных IDEX транзакций и ${bybitTransactions.length} неспоставленных Bybit транзакций`);
-
-      // Pre-process IDEX transactions to extract amounts
-      const processedIdexTransactions = idexTransactions
-        .filter(tx => tx.approvedAt) // Only include transactions with approval date
-        .map(tx => {
-          const amount = getIdexAmount(tx.amount);
-          const amountTotalUsdt = getIdexAmountTotalUsdt(tx.total);
-          return { 
-            ...tx, 
-            parsedAmount: amount,
-            parsedAmountTotalUsdt: amountTotalUsdt,
-            approvedAtDate: new Date(tx.approvedAt)
-          };
-        })
-        .filter(tx => tx.parsedAmount > 0); // Only include transactions with positive amount
-
-      // Sort both transaction arrays by date to optimize matching
-      processedIdexTransactions.sort((a, b) => a.approvedAtDate.getTime() - b.approvedAtDate.getTime());
-      bybitTransactions.sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
-      
-      // Store all potential matches with their time differences
-      type PotentialMatch = {
-        idexTx: typeof processedIdexTransactions[0];
-        bybitTx: typeof bybitTransactions[0];
-        timeDiff: number;
-      };
-      
-      const potentialMatches: PotentialMatch[] = [];
-      
-      // Find all potential matches that meet our criteria
-      for (const idexTx of processedIdexTransactions) {
-        for (const bybitTx of bybitTransactions) {
-          // Adjust Bybit transaction time by adding 3 hours if needed (timezone adjustment)
-          const bybitDateTime = new Date(bybitTx.dateTime);
-          
-          // Check if amounts match within tolerance
-          if (Math.abs(bybitTx.totalPrice - idexTx.parsedAmount) <= AMOUNT_THRESHOLD) {
-            // Calculate time difference
-            const timeDiff = getTimeDifferenceInMinutes(idexTx.approvedAtDate, bybitDateTime);
-            
-            // If time difference is within threshold, add to potential matches
-            if (timeDiff <= MINUTES_THRESHOLD) {
-              potentialMatches.push({ idexTx, bybitTx, timeDiff });
-              
-              // Log match for debugging
-              console.log(`Потенциальное сопоставление найдено: IDEX #${idexTx.id} (${idexTx.parsedAmount}) с Bybit #${bybitTx.id} (${bybitTx.totalPrice}), разница времени: ${timeDiff} мин`);
-            }
-          }
-        }
-      }
-      
-      // Sort potential matches by time difference (closest first)
-      potentialMatches.sort((a, b) => a.timeDiff - b.timeDiff);
-      
-      // Now create actual matches, ensuring each transaction is used only once
-      const usedIdexIds = new Set<number>(matchedIdexIds);
-      const usedBybitIds = new Set<number>(matchedBybitIds);
-      const newMatchesData = [];
-      
-      for (const match of potentialMatches) {
-        // Skip if either transaction has already been matched
-        if (usedIdexIds.has(match.idexTx.id) || usedBybitIds.has(match.bybitTx.id)) {
-          continue;
-        }
-        
-        // Calculate match metrics
-        const bybitTxForMetrics = {
-          amount: Prisma.Decimal.from(match.bybitTx.amount)
-        };
-        const idexTxWithAmount = { 
-          ...match.idexTx, 
-          parsedAmount: match.idexTx.parsedAmountTotalUsdt
-        };
-        const metrics = calculateClipMatchMetrics(bybitTxForMetrics, idexTxWithAmount);
-        
-        // Add to list of new matches
-        newMatchesData.push({
-          matchBybitReportId: reportId,
-          idexTransactionId: match.idexTx.id,
-          bybitTransactionId: match.bybitTx.id,
-          timeDifference: Math.round(match.timeDiff * 60), // Convert minutes to seconds
-          grossExpense: metrics.grossExpense,
-          grossIncome: metrics.grossIncome,
-          grossProfit: metrics.grossProfit,
-          profitPercentage: metrics.profitPercentage,
-          userId: userId || report.userId,
-        });
-        
-        // Mark both transactions as used
-        usedIdexIds.add(match.idexTx.id);
-        usedBybitIds.add(match.bybitTx.id);
-        
-        console.log(`Сопоставление создано: IDEX #${match.idexTx.id} с Bybit #${match.bybitTx.id}, разница времени: ${match.timeDiff} мин`);
-      }
-      
-      console.log(`Подготовлено ${newMatchesData.length} новых сопоставлений для добавления в отчет`);
-      
-      // Create matches in database
-      let createdMatches = 0;
-      if (newMatchesData.length > 0) {
-        const result = await ctx.db.bybitClipMatch.createMany({
-          data: newMatchesData,
-          skipDuplicates: true,
-        });
-        
-        createdMatches = result.count;
-        console.log(`Создано ${createdMatches} новых сопоставлений в базе данных`);
-        
-        // Update report statistics if any matches were created
-        if (createdMatches > 0) {
-          // Get all matches for statistics calculation
-          const allMatches = await ctx.db.bybitClipMatch.findMany({
-            where: { matchBybitReportId: reportId }
-          });
-          
-          // Calculate statistics
-          const stats = calculateReportStats(allMatches);
-          
-          // Update report
-          await ctx.db.matchBybitReport.update({
-            where: { id: reportId },
-            data: {
-              totalMatches: stats.totalMatches,
-              totalProfit: stats.totalProfit,
-              averageProfit: stats.averageProfit,
-              successRate: stats.successRate,
-            }
-          });
-          
-          return {
-            success: true,
-            message: `Успешно создано ${createdMatches} новых сопоставлений`,
-            count: createdMatches,
-            stats: {
-              newMatches: createdMatches,
-              totalMatches: stats.totalMatches,
-              totalProfit: stats.totalProfit,
-              averageProfit: stats.averageProfit,
-              successRate: stats.successRate,
-            }
-          };
-        }
-      }
-      
-      // Return if no new matches were created
-      return {
-        success: true,
-        message: "Новых сопоставлений не найдено",
-        count: 0,
-        stats: {
-          newMatches: 0,
-          totalMatches: report.totalMatches,
-          totalProfit: report.totalProfit,
-          averageProfit: report.averageProfit,
-          successRate: report.successRate,
-        }
-      };
-    } catch (error) {
-      console.error('Ошибка при автоматическом сопоставлении транзакций:', error);
-      return { 
-        success: false, 
-        message: `Ошибка при автоматическом сопоставлении: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`, 
-        stats: null 
-      };
-    }
-  }),
-
+    }),
   
   // Ручное сопоставление транзакций
 
