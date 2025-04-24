@@ -347,298 +347,298 @@ export const bbRouter = createTRPCRouter({
         };
     }),
 
-    getMatchBybitReportById: publicProcedure
-    .input(z.object({ id: z.number() }))
-    .query(async ({ ctx, input }) => {
-      try {
-        // Получаем отчет с включением всех связанных сопоставлений
-        const report = await ctx.db.matchBybitReport.findUnique({
-          where: { id: input.id },
-          include: {
-            bybitClipMatches: { // Включаем все сопоставления
-              include: {
-                idexTransaction: {
-                  include: { 
-                    cabinet: true // Включаем данные о кабинете IDEX
-                  }
-                },
-                bybitTransaction: true,
-              }
-            },
-            User: true // Включаем информацию о пользователе (используем User с большой буквы)
-          }
-        });
-        
-        if (!report) {
-          throw new Error("Отчет не найден");
-        }
-        
-        // Парсим конфигурацию кабинетов, если она хранится как JSON
-        let parsedCabinetConfigs = null;
-        if (report.idexCabinets && typeof report.idexCabinets === 'string') {
-          try {
-            parsedCabinetConfigs = JSON.parse(report.idexCabinets);
-          } catch (e) {
-            console.error("Ошибка при парсинге JSON конфигурации кабинетов", e);
-          }
-        }
-        
-        // Получаем информацию о сопоставлениях
-        const matches = report.bybitClipMatches || [];
-        
-        // Выводим отладочную информацию о сопоставлениях
-        console.log(`Report ID: ${input.id}`);
-        console.log(`Total matches in report: ${matches.length}`);
-        
-        // Получаем списки ID сопоставленных транзакций
-        const matchedIdexIds = matches.map(match => match.idexTransactionId).filter(Boolean) as number[];
-        const matchedBybitIds = matches.map(match => match.bybitTransactionId).filter(Boolean) as number[];
-        
-        console.log(`Matched IDEX IDs count: ${matchedIdexIds.length}`);
-        console.log(`Matched Bybit IDs count: ${matchedBybitIds.length}`);
-        
-        // Получаем ID кабинетов из конфигурации отчета
-        let idexCabinetIds: number[] = [];
-        let bybitCabinetIds: number[] = [];
-        
-        if (report.idexCabinets && typeof report.idexCabinets === 'string') {
-          try {
-            const configs = JSON.parse(report.idexCabinets);
-            
-            // Фильтруем кабинеты по типу
-            idexCabinetIds = configs
-              .filter((config: any) => config.cabinetType === 'idex')
-              .map((config: any) => config.cabinetId);
-            
-            bybitCabinetIds = configs
-              .filter((config: any) => config.cabinetType === 'bybit' || !config.cabinetType)
-              .map((config: any) => config.cabinetId);
-              
-            console.log(`IDEX cabinet IDs in config: ${idexCabinetIds.join(', ')}`);
-            console.log(`Bybit cabinet IDs in config: ${bybitCabinetIds.join(', ')}`);
-          } catch (e) {
-            console.error("Ошибка при парсинге конфигурации кабинетов:", e);
-          }
-        }
-        
-        // Выводим информацию о диапазоне дат
-        console.log(`Date range start: ${report.timeRangeStart}`);
-        console.log(`Date range end: ${report.timeRangeEnd}`);
-        console.log(`ISO format start: ${dayjs(report.timeRangeStart).toISOString()}`);
-        console.log(`ISO format end: ${dayjs(report.timeRangeEnd).toISOString()}`);
-        
-        // Для отладки получим несколько примеров сопоставленных транзакций
-        if (matchedIdexIds.length > 0) {
-          const sampleIdex = await ctx.db.idexTransaction.findMany({
-            where: { id: { in: matchedIdexIds.slice(0, 3) } },
-            select: { id: true, approvedAt: true, cabinetId: true }
-          });
-          
-          console.log('Sample IDEX transactions:');
-          console.log(JSON.stringify(sampleIdex, null, 2));
-        }
-        
-        if (matchedBybitIds.length > 0) {
-          const sampleBybit = await ctx.db.bybitTransactionFromCabinet.findMany({
-            where: { id: { in: matchedBybitIds.slice(0, 3) } },
-            select: { id: true, dateTime: true, cabinetId: true }
-          });
-          
-          console.log('Sample Bybit transactions:');
-          console.log(JSON.stringify(sampleBybit, null, 2));
-        }
-        
-        // Подсчет всех транзакций IDEX в пределах диапазона дат и кабинетов
-        const totalIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            approvedAt: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
-            },
-            cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
-          }
-        });
-        
-        // Подсчет всех транзакций Bybit в пределах диапазона дат и кабинетов
-        const totalBybitTransactions = await ctx.db.bybitTransactionFromCabinet.count({
-          where: {
-            dateTime: {
-              gte: report.timeRangeStart,
-              lte: report.timeRangeEnd,
-            },
-            cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
-          }
-        });
-        
-        console.log(`Total IDEX transactions in range: ${totalIdexTransactions}`);
-        console.log(`Total Bybit transactions in range: ${totalBybitTransactions}`);
-        
-        // Подсчет количества сопоставленных транзакций, которые входят в диапазон дат и кабинетов
-        const matchedIdexInRange = await ctx.db.idexTransaction.count({
-          where: {
-            id: { in: matchedIdexIds },
-            approvedAt: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
-            },
-            cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
-          }
-        });
-        
-        const matchedBybitInRange = await ctx.db.bybitTransactionFromCabinet.count({
-          where: {
-            id: { in: matchedBybitIds },
-            dateTime: {
-              gte: report.timeRangeStart,
-              lte: report.timeRangeEnd,
-            },
-            cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
-          }
-        });
-        
-        console.log(`Matched IDEX transactions in range: ${matchedIdexInRange}`);
-        console.log(`Matched Bybit transactions in range: ${matchedBybitInRange}`);
-        
-        // Проверка на транзакции взятые из более старых отчетов
-        const matchesWithoutRangeCheck = matches.length;
-        
-        // Проверяем, сколько именно сопоставлений имеет транзакции, которые находятся в диапазоне
-        const matchesWithinRange = await ctx.db.bybitClipMatch.count({
-          where: {
-            matchBybitReportId: input.id,
-            idexTransaction: {
-              approvedAt: {
-                gte: dayjs(report.timeRangeStart).toISOString(),
-                lte: dayjs(report.timeRangeEnd).toISOString(),
+getMatchBybitReportById: publicProcedure
+  .input(z.object({ id: z.number() }))
+  .query(async ({ ctx, input }) => {
+    try {
+      // Получаем отчет с включением всех связанных сопоставлений
+      const report = await ctx.db.matchBybitReport.findUnique({
+        where: { id: input.id },
+        include: {
+          bybitClipMatches: { // Включаем все сопоставления
+            include: {
+              idexTransaction: {
+                include: { 
+                  cabinet: true // Включаем данные о кабинете IDEX
+                }
               },
-              cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
-            },
-            bybitTransaction: {
-              dateTime: {
-                gte: report.timeRangeStart,
-                lte: report.timeRangeEnd,
-              },
-              cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
+              bybitTransaction: true,
             }
-          }
-        });
-        
-        console.log(`Matches with both transactions in range: ${matchesWithinRange}`);
-        
-        // Расчет основных показателей из сопоставлений
-        const totalMatches = matches.length;
-        let totalExpense = 0;
-        let totalIncome = 0;
-        let totalProfit = 0;
-        let successfulMatches = 0;
-        
-        // Собираем данные из всех сопоставлений
-        matches.forEach(match => {
-          const expense = match.grossExpense || 0;
-          const income = match.grossIncome || 0;
-          const profit = match.grossProfit || 0;
-          
-          totalExpense += expense;
-          totalIncome += income;
-          totalProfit += profit;
-          
-          if (profit > 0) {
-            successfulMatches++;
-          }
-        });
-        
-        // Рассчитываем производные показатели
-        const averageExpense = totalMatches > 0 ? totalExpense / totalMatches : 0;
-        const averageIncome = totalMatches > 0 ? totalIncome / totalMatches : 0;
-        const averageProfit = totalMatches > 0 ? totalProfit / totalMatches : 0;
-        const successRate = totalMatches > 0 ? (successfulMatches / totalMatches) * 100 : 0;
-        const totalProfitPercentage = totalExpense > 0 ? (totalProfit / totalExpense) * 100 : 0;
-        
-        // Рассчитываем количество несопоставленных транзакций
-        const unmatchedIdexTransactions = totalIdexTransactions - matchedIdexInRange;
-        const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitInRange;
-        
-        // Для отладки проверяем, есть ли транзакции, которые сопоставлены, но не найдены в БД
-        const nonExistentIdexIds = await Promise.all(
-          matchedIdexIds.map(async id => {
-            const exists = await ctx.db.idexTransaction.findUnique({
-              where: { id },
-              select: { id: true }
-            });
-            return exists ? null : id;
-          })
-        ).then(ids => ids.filter(Boolean));
-        
-        const nonExistentBybitIds = await Promise.all(
-          matchedBybitIds.map(async id => {
-            const exists = await ctx.db.bybitTransactionFromCabinet.findUnique({
-              where: { id },
-              select: { id: true }
-            });
-            return exists ? null : id;
-          })
-        ).then(ids => ids.filter(Boolean));
-        
-        if (nonExistentIdexIds.length > 0) {
-          console.warn(`Warning: Found ${nonExistentIdexIds.length} matched IDEX transactions that don't exist in the database`);
-          console.log(`Non-existent IDEX IDs: ${nonExistentIdexIds.join(', ')}`);
+          },
+          User: true // Включаем информацию о пользователе (используем User с большой буквы)
         }
-        
-        if (nonExistentBybitIds.length > 0) {
-          console.warn(`Warning: Found ${nonExistentBybitIds.length} matched Bybit transactions that don't exist in the database`);
-          console.log(`Non-existent Bybit IDs: ${nonExistentBybitIds.join(', ')}`);
-        }
-        
-        // Проверяем, есть ли несоответствия между количеством сопоставлений и количеством найденных транзакций
-        if (matchedIdexIds.length !== matchedBybitIds.length) {
-          console.warn(`Warning: Mismatch between matched IDEX count (${matchedIdexIds.length}) and matched Bybit count (${matchedBybitIds.length})`);
-        }
-        
-        if (matchedIdexIds.length !== totalMatches) {
-          console.warn(`Warning: Mismatch between total matches (${totalMatches}) and matched IDEX IDs (${matchedIdexIds.length})`);
-        }
-        
-        if (matchedBybitIds.length !== totalMatches) {
-          console.warn(`Warning: Mismatch between total matches (${totalMatches}) and matched Bybit IDs (${matchedBybitIds.length})`);
-        }
-        
-        // Возвращаем отчет с расширенной статистикой
-        return {
-          ...report,
-          cabinetConfigs: parsedCabinetConfigs,
-          // Добавляем расширенную статистику
-          totalExpense,
-          totalIncome,
-          averageExpense,
-          averageIncome,
-          averageProfit,
-          totalProfitPercentage,
-          // Добавляем исправленную статистику по транзакциям
-          totalIdexTransactions,
-          totalBybitTransactions,
-          matchedIdexCount: matchedIdexInRange,
-          matchedBybitCount: matchedBybitInRange,
-          unmatchedIdexTransactions,
-          unmatchedBybitTransactions,
-          // Информация о сопоставлениях
-          totalMatches,
-          matchesWithinRange,
-          successRate,
-          // Добавляем информацию о возможных проблемах
-          dataIssues: {
-            nonExistentIdexCount: nonExistentIdexIds.length,
-            nonExistentBybitCount: nonExistentBybitIds.length,
-            hasIdexBybitCountMismatch: matchedIdexIds.length !== matchedBybitIds.length,
-            hasMatchesCountMismatch: matchedIdexIds.length !== totalMatches || matchedBybitIds.length !== totalMatches
-          }
-        };
-        
-      } catch (error) {
-        console.error("Ошибка при получении отчета:", error);
-        throw error;
+      });
+      
+      if (!report) {
+        throw new Error("Отчет не найден");
       }
-    }),
-  
+      
+      // Парсим конфигурацию кабинетов, если она хранится как JSON
+      let parsedCabinetConfigs = null;
+      if (report.idexCabinets && typeof report.idexCabinets === 'string') {
+        try {
+          parsedCabinetConfigs = JSON.parse(report.idexCabinets);
+        } catch (e) {
+          console.error("Ошибка при парсинге JSON конфигурации кабинетов", e);
+        }
+      }
+      
+      // Получаем информацию о сопоставлениях
+      const matches = report.bybitClipMatches || [];
+      
+      // Выводим отладочную информацию о сопоставлениях
+      console.log(`Report ID: ${input.id}`);
+      console.log(`Total matches in report: ${matches.length}`);
+      
+      // Получаем списки ID сопоставленных транзакций
+      const matchedIdexIds = matches.map(match => match.idexTransactionId).filter(Boolean) as number[];
+      const matchedBybitIds = matches.map(match => match.bybitTransactionId).filter(Boolean) as number[];
+      
+      console.log(`Matched IDEX IDs count: ${matchedIdexIds.length}`);
+      console.log(`Matched Bybit IDs count: ${matchedBybitIds.length}`);
+      
+      // Получаем ID кабинетов из конфигурации отчета
+      let idexCabinetIds: number[] = [];
+      let bybitCabinetIds: number[] = [];
+      
+      if (report.idexCabinets && typeof report.idexCabinets === 'string') {
+        try {
+          const configs = JSON.parse(report.idexCabinets);
+          
+          // Фильтруем кабинеты по типу
+          idexCabinetIds = configs
+            .filter((config: any) => config.cabinetType === 'idex')
+            .map((config: any) => config.cabinetId);
+          
+          bybitCabinetIds = configs
+            .filter((config: any) => config.cabinetType === 'bybit' || !config.cabinetType)
+            .map((config: any) => config.cabinetId);
+            
+          console.log(`IDEX cabinet IDs in config: ${idexCabinetIds.join(', ')}`);
+          console.log(`Bybit cabinet IDs in config: ${bybitCabinetIds.join(', ')}`);
+        } catch (e) {
+          console.error("Ошибка при парсинге конфигурации кабинетов:", e);
+        }
+      }
+      
+      // Выводим информацию о диапазоне дат
+      console.log(`Date range start: ${report.timeRangeStart}`);
+      console.log(`Date range end: ${report.timeRangeEnd}`);
+      console.log(`ISO format start: ${dayjs(report.timeRangeStart).toISOString()}`);
+      console.log(`ISO format end: ${dayjs(report.timeRangeEnd).toISOString()}`);
+      
+      // Для отладки получим несколько примеров сопоставленных транзакций
+      if (matchedIdexIds.length > 0) {
+        const sampleIdex = await ctx.db.idexTransaction.findMany({
+          where: { id: { in: matchedIdexIds.slice(0, 3) } },
+          select: { id: true, approvedAt: true, cabinetId: true }
+        });
+        
+        console.log('Sample IDEX transactions:');
+        console.log(JSON.stringify(sampleIdex, null, 2));
+      }
+      
+      if (matchedBybitIds.length > 0) {
+        const sampleBybit = await ctx.db.bybitTransactionFromCabinet.findMany({
+          where: { id: { in: matchedBybitIds.slice(0, 3) } },
+          select: { id: true, dateTime: true, cabinetId: true }
+        });
+        
+        console.log('Sample Bybit transactions:');
+        console.log(JSON.stringify(sampleBybit, null, 2));
+      }
+      
+      // Подсчет всех транзакций IDEX в пределах диапазона дат и кабинетов
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({
+        where: {
+          approvedAt: {
+            gte: dayjs(report.timeRangeStart).toISOString(),
+            lte: dayjs(report.timeRangeEnd).toISOString(),
+          },
+          cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
+        }
+      });
+      
+      // Подсчет всех транзакций Bybit в пределах диапазона дат и кабинетов
+      const totalBybitTransactions = await ctx.db.bybitTransactionFromCabinet.count({
+        where: {
+          dateTime: {
+            gte: report.timeRangeStart,
+            lte: report.timeRangeEnd,
+          },
+          cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
+        }
+      });
+      
+      console.log(`Total IDEX transactions in range: ${totalIdexTransactions}`);
+      console.log(`Total Bybit transactions in range: ${totalBybitTransactions}`);
+      
+      // Подсчет количества сопоставленных транзакций, которые входят в диапазон дат и кабинетов
+      const matchedIdexInRange = await ctx.db.idexTransaction.count({
+        where: {
+          id: { in: matchedIdexIds },
+          approvedAt: {
+            gte: dayjs(report.timeRangeStart).toISOString(),
+            lte: dayjs(report.timeRangeEnd).toISOString(),
+          },
+          cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
+        }
+      });
+      
+      const matchedBybitInRange = await ctx.db.bybitTransactionFromCabinet.count({
+        where: {
+          id: { in: matchedBybitIds },
+          dateTime: {
+            gte: report.timeRangeStart,
+            lte: report.timeRangeEnd,
+          },
+          cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
+        }
+      });
+      
+      console.log(`Matched IDEX transactions in range: ${matchedIdexInRange}`);
+      console.log(`Matched Bybit transactions in range: ${matchedBybitInRange}`);
+      
+      // Проверка на транзакции взятые из более старых отчетов
+      const matchesWithoutRangeCheck = matches.length;
+      
+      // Проверяем, сколько именно сопоставлений имеет транзакции, которые находятся в диапазоне
+      const matchesWithinRange = await ctx.db.bybitClipMatch.count({
+        where: {
+          matchBybitReportId: input.id,
+          idexTransaction: {
+            approvedAt: {
+              gte: dayjs(report.timeRangeStart).toISOString(),
+              lte: dayjs(report.timeRangeEnd).toISOString(),
+            },
+            cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
+          },
+          bybitTransaction: {
+            dateTime: {
+              gte: report.timeRangeStart,
+              lte: report.timeRangeEnd,
+            },
+            cabinetId: bybitCabinetIds.length > 0 ? { in: bybitCabinetIds } : undefined
+          }
+        }
+      });
+      
+      console.log(`Matches with both transactions in range: ${matchesWithinRange}`);
+      
+      // Расчет основных показателей из сопоставлений
+      const totalMatches = matches.length;
+      let totalExpense = 0;
+      let totalIncome = 0;
+      let totalProfit = 0;
+      let successfulMatches = 0;
+      
+      // Собираем данные из всех сопоставлений
+      matches.forEach(match => {
+        const expense = match.grossExpense || 0;
+        const income = match.grossIncome || 0;
+        const profit = match.grossProfit || 0;
+        
+        totalExpense += expense;
+        totalIncome += income;
+        totalProfit += profit;
+        
+        if (profit > 0) {
+          successfulMatches++;
+        }
+      });
+      
+      // Рассчитываем производные показатели
+      const averageExpense = totalMatches > 0 ? totalExpense / totalMatches : 0;
+      const averageIncome = totalMatches > 0 ? totalIncome / totalMatches : 0;
+      const averageProfit = totalMatches > 0 ? totalProfit / totalMatches : 0;
+      const successRate = totalMatches > 0 ? (successfulMatches / totalMatches) * 100 : 0;
+      const totalProfitPercentage = totalExpense > 0 ? (totalProfit / totalExpense) * 100 : 0;
+      
+      // Рассчитываем количество несопоставленных транзакций
+      const unmatchedIdexTransactions = totalIdexTransactions - matchedIdexInRange;
+      const unmatchedBybitTransactions = totalBybitTransactions - matchedBybitInRange;
+      
+      // Для отладки проверяем, есть ли транзакции, которые сопоставлены, но не найдены в БД
+      const nonExistentIdexIds = await Promise.all(
+        matchedIdexIds.map(async id => {
+          const exists = await ctx.db.idexTransaction.findUnique({
+            where: { id },
+            select: { id: true }
+          });
+          return exists ? null : id;
+        })
+      ).then(ids => ids.filter(Boolean));
+      
+      const nonExistentBybitIds = await Promise.all(
+        matchedBybitIds.map(async id => {
+          const exists = await ctx.db.bybitTransactionFromCabinet.findUnique({
+            where: { id },
+            select: { id: true }
+          });
+          return exists ? null : id;
+        })
+      ).then(ids => ids.filter(Boolean));
+      
+      if (nonExistentIdexIds.length > 0) {
+        console.warn(`Warning: Found ${nonExistentIdexIds.length} matched IDEX transactions that don't exist in the database`);
+        console.log(`Non-existent IDEX IDs: ${nonExistentIdexIds.join(', ')}`);
+      }
+      
+      if (nonExistentBybitIds.length > 0) {
+        console.warn(`Warning: Found ${nonExistentBybitIds.length} matched Bybit transactions that don't exist in the database`);
+        console.log(`Non-existent Bybit IDs: ${nonExistentBybitIds.join(', ')}`);
+      }
+      
+      // Проверяем, есть ли несоответствия между количеством сопоставлений и количеством найденных транзакций
+      if (matchedIdexIds.length !== matchedBybitIds.length) {
+        console.warn(`Warning: Mismatch between matched IDEX count (${matchedIdexIds.length}) and matched Bybit count (${matchedBybitIds.length})`);
+      }
+      
+      if (matchedIdexIds.length !== totalMatches) {
+        console.warn(`Warning: Mismatch between total matches (${totalMatches}) and matched IDEX IDs (${matchedIdexIds.length})`);
+      }
+      
+      if (matchedBybitIds.length !== totalMatches) {
+        console.warn(`Warning: Mismatch between total matches (${totalMatches}) and matched Bybit IDs (${matchedBybitIds.length})`);
+      }
+      
+      // Возвращаем отчет с расширенной статистикой
+      return {
+        ...report,
+        cabinetConfigs: parsedCabinetConfigs,
+        // Добавляем расширенную статистику
+        totalExpense,
+        totalIncome,
+        averageExpense,
+        averageIncome,
+        averageProfit,
+        totalProfitPercentage,
+        // Добавляем исправленную статистику по транзакциям
+        totalIdexTransactions,
+        totalBybitTransactions,
+        matchedIdexCount: matchedIdexInRange,
+        matchedBybitCount: matchedBybitInRange,
+        unmatchedIdexTransactions,
+        unmatchedBybitTransactions,
+        // Информация о сопоставлениях
+        totalMatches,
+        matchesWithinRange,
+        successRate,
+        // Добавляем информацию о возможных проблемах
+        dataIssues: {
+          nonExistentIdexCount: nonExistentIdexIds.length,
+          nonExistentBybitCount: nonExistentBybitIds.length,
+          hasIdexBybitCountMismatch: matchedIdexIds.length !== matchedBybitIds.length,
+          hasMatchesCountMismatch: matchedIdexIds.length !== totalMatches || matchedBybitIds.length !== totalMatches
+        }
+      };
+      
+    } catch (error) {
+      console.error("Ошибка при получении отчета:", error);
+      throw error;
+    }
+  }),
+
   
 
   updateMatchBybitReport: publicProcedure
