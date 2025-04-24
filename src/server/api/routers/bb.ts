@@ -979,7 +979,7 @@ export const bbRouter = createTRPCRouter({
         }
 
         console.log(`Начинаем автоматическое сопоставление для отчета #${reportId}`);
-        console.log(`Период: с ${report.timeRangeStart} по ${report.timeRangeEnd}`);
+        console.log(`Период: с ${report.timeRangeStart} по ${report.timeRangeEnd} ISO format: ${dayjs(report.timeRangeStart).toISOString()} - ${dayjs(report.timeRangeEnd).toISOString()}`);
         console.log(`Конфигурации кабинетов: ${cabinetConfigs.length}`);
 
         // Получаем списки кабинетов по типам
@@ -1004,8 +1004,8 @@ export const bbRouter = createTRPCRouter({
           where: {
             cabinetId: { in: idexCabinetIds },
             approvedAt: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
+              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
             NOT: {
@@ -1023,8 +1023,8 @@ export const bbRouter = createTRPCRouter({
           where: {
             cabinetId: { in: bybitCabinetIds },
             dateTime: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
+              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
             NOT: {
