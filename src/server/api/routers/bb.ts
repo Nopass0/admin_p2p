@@ -673,290 +673,238 @@ getMatchBybitReportById: publicProcedure
   // --- Transaction Fetching Procedures ---
 
   getIdexTransactionsForReport: publicProcedure
-    .input(z.object({
-      reportId: z.number(), // ID отчета, для которого запрашиваются транзакции
+  .input(
+    z.object({
+      reportId: z.number().int().positive(),
       page: z.number().min(1).default(1),
-      limit: z.number().min(1).max(100).default(20),
-      search: z.string().optional(), // Параметр поиска для фильтрации транзакций
-      sortColumn: z.string().optional(), // Колонка для сортировки
-      sortDirection: z.enum(['asc', 'desc']).optional() // Направление сортировки
-    }))
-    .query(async ({ ctx, input }) => {
-      const { reportId, page, limit, search } = input;
-      const skip = (page - 1) * limit;
-      
-      try {
-        // Сначала получим информацию об отчете
-        const report = await ctx.db.matchBybitReport.findUnique({
-          where: { id: reportId },
-          select: {
-            timeRangeStart: true,
-            timeRangeEnd: true,
-            idexCabinets: true
-          }
-        });
-        
-        if (!report) {
-          throw new Error(`Отчет с ID ${reportId} не найден`);
-        }
-        
-        // Получаем конфигурации кабинетов из отчета
-        let cabinetIds: number[] = [];
-        if (report.idexCabinets && typeof report.idexCabinets === 'string') {
-          try {
-            const configs = JSON.parse(report.idexCabinets);
-            // Фильтруем только IDEX кабинеты
-            cabinetIds = configs
-              .filter((config: any) => config.cabinetType === 'idex')
-              .map((config: any) => config.cabinetId);
-          } catch (e) {
-            console.error("Failed to parse idexCabinets JSON", e);
-          }
-        }
-        
-        // Находим ID транзакций, которые уже сопоставлены в этом отчете
-        const existingMatches = await ctx.db.bybitClipMatch.findMany({
-          where: { matchBybitReportId: reportId },
-          select: { idexTransactionId: true },
-        });
-        const matchedIdexIds = existingMatches.map(m => m.idexTransactionId).filter(Boolean);
-        
-        // Получаем общее количество IDEX транзакций в рамках отчета (для точной статистики)
-        const totalIdexTransactions = await ctx.db.idexTransaction.count({
-          where: {
-            cabinetId: cabinetIds.length > 0 ? { in: cabinetIds } : undefined,
-            approvedAt: {
-              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
-              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
-            },
-          }
-        });
-        
-        console.log(`[DEBUG] Total IDEX transactions in range: ${totalIdexTransactions}; Range: ${report.timeRangeStart} - ${report.timeRangeEnd}; IN ISO: ${dayjs(report.timeRangeStart).toISOString()} - ${dayjs(report.timeRangeEnd).toISOString()}`)
-        
-        // Строим условия запроса для неспоставленных транзакций
-        const where: Prisma.IdexTransactionWhereInput = {
-          // Фильтруем по дате (поле approvedAt имеет тип String в модели)
-          approvedAt: {
-            gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
-            lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
-          },
-          // Фильтруем по кабинетам
-          cabinetId: cabinetIds.length > 0 ? { in: cabinetIds } : undefined
-        };
-        
-        // Исключаем транзакции, которые уже сопоставлены (только если есть сопоставленные)
-        if (matchedIdexIds.length > 0) {
-          where.id = { notIn: matchedIdexIds };
-        }
-        
-        // Добавляем условие поиска, если указано
-        if (search && search.trim()) {
-          const searchTerm = search.trim();
-          const searchId = !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined;
-          
-          // Расширенный поиск по всем возможным полям
-          where.OR = [
-            searchId ? { id: searchId } : undefined,
-            { wallet: { contains: searchTerm } },
-            { status: searchTerm ? parseInt(searchTerm) : undefined }
-          ].filter(Boolean) as any;
-        }
-        
-        // Получаем количество несопоставленных транзакций
-        const unmatchedCount = await ctx.db.idexTransaction.count({ where });
-        
-        // Получаем транзакции с пагинацией
-        const transactions = await ctx.db.idexTransaction.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { approvedAt: 'desc' },
-          select: {
-            id: true,
-            amount: true,  // JSON поле с суммой
-            total: true,   // Добавляем поле total для расчета parsedAmountTotalUsdt
-            approvedAt: true,
-            cabinetId: true,
-            externalId: true,
-            status: true,
-            wallet: true
-          }
-        });
-        
-        // Добавляем включение данных кабинета для поиска по idexId
-        const transactionsWithDetails = await Promise.all(transactions.map(async tx => {
-          // Получаем данные кабинета
-          const cabinet = await ctx.db.idexCabinet.findUnique({
-            where: { id: tx.cabinetId },
-            select: { idexId: true }
-          });
-          
-          try {
-            // Проверяем, что amount и total существуют и являются JSON-объектами
-            const parsedAmount = tx.amount ? getIdexAmount(tx.amount) : 0;
-            const parsedAmountTotalUsdt = tx.total ? getIdexAmountTotalUsdt(tx.total) : 0;
-            return { 
-              ...tx, 
-              parsedAmount,
-              parsedAmountTotalUsdt,
-              cabinet
-            };
-          } catch (error) {
-            console.error('Error parsing IDEX transaction amount:', error);
-            // В случае ошибки возвращаем транзакцию с parsedAmount = 0
-            return { 
-              ...tx, 
-              parsedAmount: 0,
-              parsedAmountTotalUsdt: 0,
-              cabinet
-            };
-          }
-        }));
-        
-        return {
-          success: true,
-          transactions: transactionsWithDetails,
-          totalCount: unmatchedCount,                      // Возвращаем количество несопоставленных транзакций
-          totalIdexTransactions: totalIdexTransactions,    // Общее количество транзакций в отчете
-          matchedCount: matchedIdexIds.length,             // Количество сопоставленных транзакций
-          totalPages: Math.ceil(unmatchedCount / limit),
-          currentPage: page,
-        };
-      } catch (error) {
-        console.error("Ошибка при получении IDEX транзакций:", error);
-        return {
-          success: false,
-          message: `Ошибка при получении IDEX транзакций: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
-          transactions: [],
-          totalCount: 0,
-          totalPages: 0,
-          currentPage: page,
-        };
-      }
+      limit: z.number().min(1).max(10).default(10),
+      search: z.string().optional(),
+      sortColumn: z.string().optional(),
+      sortDirection: z.enum(['asc', 'desc']).optional(),
     }),
+  )
+  .query(async ({ ctx, input }) => {
+    const { reportId, page, limit, search } = input;
+    const skip = (page - 1) * limit;
+
+    /** 1. Берём отчёт */
+    const report = await ctx.db.matchBybitReport.findUnique({
+      where: { id: reportId },
+      select: {
+        timeRangeStart: true,
+        timeRangeEnd: true,
+        idexCabinets: true,
+      },
+    });
+
+    if (!report) throw new Error(`Отчёт #${reportId} не найден`);
+
+    /** 2. Парсим idexCabinets */
+    const idexCabinetIds: number[] = (() => {
+      if (!report.idexCabinets || typeof report.idexCabinets !== 'string') return [];
+      try {
+        return JSON.parse(report.idexCabinets)
+          .filter((c: any) => c.cabinetType === 'idex')
+          .map((c: any) => c.cabinetId);
+      } catch (e) {
+        console.error('Failed to parse idexCabinets', e);
+        return [];
+      }
+    })();
+
+    /** 3. Все сопоставленные в этом отчёте */
+    const matchedRows = await ctx.db.bybitClipMatch.findMany({
+      where: { matchBybitReportId: reportId },
+      select: { idexTransactionId: true },
+    });
+    const matchedIdexIds = matchedRows.map((m) => m.idexTransactionId);
+
+    /** 4. К-во всех IDEX транзакций в диапазоне */
+    const totalIdexTransactions = await ctx.db.idexTransaction.count({
+      where: {
+        cabinetId: idexCabinetIds.length ? { in: idexCabinetIds } : undefined,
+        approvedAt: {
+          gte: dayjs(report.timeRangeStart).toISOString(),
+          lte: dayjs(report.timeRangeEnd).toISOString(),
+        },
+      },
+    });
+
+    /** 5. where для НЕсопоставлённых (в таблицах) */
+    const where: Prisma.IdexTransactionWhereInput = {
+      approvedAt: {
+        gte: dayjs(report.timeRangeStart).toISOString(),
+        lte: dayjs(report.timeRangeEnd).toISOString(),
+      },
+      cabinetId: idexCabinetIds.length ? { in: idexCabinetIds } : undefined,
+      id: matchedIdexIds.length ? { notIn: matchedIdexIds } : undefined,
+    };
+
+    /** 6. Поиск */
+    if (search?.trim()) {
+      const term = search.trim();
+      const num = Number(term);
+      where.OR = [
+        !isNaN(num) ? { id: num } : undefined,
+        { wallet: { contains: term } },
+        !isNaN(num) ? { status: num } : undefined,
+      ].filter(Boolean) as any;
+    }
+
+    /** 7. Пагинация + сортировка */
+    const totalUnmatched = await ctx.db.idexTransaction.count({ where });
+
+    const transactions = await ctx.db.idexTransaction.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { approvedAt: 'desc' },
+      select: {
+        id: true,
+        amount: true,
+        total: true,
+        approvedAt: true,
+        cabinetId: true,
+        externalId: true,
+        status: true,
+        wallet: true,
+      },
+    });
+
+    /** 8. Обогащаем данными кабинета + парсим суммы */
+    const detailed = await Promise.all(
+      transactions.map(async (tx) => {
+        const cabinet = await ctx.db.idexCabinet.findUnique({
+          where: { id: tx.cabinetId },
+          select: { idexId: true },
+        });
+        return {
+          ...tx,
+          parsedAmount: getIdexAmount(tx.amount),
+          parsedAmountTotalUsdt: getIdexAmountTotalUsdt(tx.total),
+          cabinet,
+        };
+      }),
+    );
+
+    return {
+      success: true,
+      transactions: detailed,
+      totalPages: Math.ceil(totalUnmatched / limit),
+      currentPage: page,
+      totalIdexTransactions,
+      matchedCount: matchedIdexIds.length,
+      unmatchedCount: totalIdexTransactions - matchedIdexIds.length,
+    };
+  }),
 
   getBybitTransactionsForReport: publicProcedure
-    .input(z.object({
-      reportId: z.number(), // ID отчета, для которого запрашиваются транзакции
+  .input(
+    z.object({
+      reportId: z.number().int().positive(),
       page: z.number().min(1).default(1),
-      limit: z.number().min(1).max(100).default(20),
-      search: z.string().optional(), // Параметр поиска для фильтрации транзакций
-      sortColumn: z.string().optional(), // Колонка для сортировки
-      sortDirection: z.enum(['asc', 'desc']).optional() // Направление сортировки
-    }))
-    .query(async ({ ctx, input }) => {
-      const { reportId, page, limit, search } = input;
-      const skip = (page - 1) * limit;
-      
-      try {
-        // Сначала получим информацию об отчете
-        const report = await ctx.db.matchBybitReport.findUnique({
-          where: { id: reportId },
-          select: {
-            timeRangeStart: true,
-            timeRangeEnd: true,
-            idexCabinets: true
-          }
-        });
-        
-        if (!report) {
-          throw new Error(`Отчет с ID ${reportId} не найден`);
-        }
-        
-        // Получаем конфигурации кабинетов из отчета
-        let cabinetIds: number[] = [];
-        if (report.idexCabinets && typeof report.idexCabinets === 'string') {
-          try {
-            const configs = JSON.parse(report.idexCabinets);
-            // Фильтруем только Bybit кабинеты
-            cabinetIds = configs
-              .filter((config: any) => config.cabinetType === 'bybit' || !config.cabinetType)
-              .map((config: any) => config.cabinetId);
-          } catch (e) {
-            console.error("Failed to parse cabinetConfigs JSON", e);
-          }
-        }
-        
-        // Находим ID транзакций, которые уже сопоставлены в этом отчете
-        const existingMatches = await ctx.db.bybitClipMatch.findMany({
-          where: { matchBybitReportId: reportId },
-          select: { bybitTransactionId: true },
-        });
-        const matchedBybitIds = existingMatches.map(m => m.bybitTransactionId).filter(id => id !== null) as number[];
-        
-        // Строим условия запроса
-        const where: Prisma.BybitTransactionFromCabinetWhereInput = {
-          // Обязательно исключаем транзакции, которые уже были сопоставлены
-          id: matchedBybitIds.length > 0 ? { notIn: matchedBybitIds } : undefined,
-          // Фильтруем по дате
-          dateTime: {
-            gte: report.timeRangeStart,
-            lte: report.timeRangeEnd,
-          },
-          // Фильтруем по кабинетам
-          cabinetId: cabinetIds.length > 0 ? { in: cabinetIds } : undefined
-        };
-        
-        // Добавляем условие поиска, если указано
-        if (search && search.trim()) {
-          const searchTerm = search.trim();
-          const searchId = !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined;
-          const searchAmount = !isNaN(parseFloat(searchTerm)) ? parseFloat(searchTerm) : undefined;
-          
-          // Расширенный поиск по всем столбцам
-          where.OR = [
-            { id: searchId },
-            { orderNo: { contains: searchTerm } },
-            { counterparty: { contains: searchTerm } },
-            { totalPrice: searchAmount ? { gte: searchAmount - 0.01, lte: searchAmount + 0.01 } : undefined },
-            { asset: { contains: searchTerm } }
-          ].filter(Boolean);
-        }
-        
-        // Получаем общее количество транзакций, соответствующих запросу
-        const totalCount = await ctx.db.bybitTransactionFromCabinet.count({ where });
-        
-        // Получаем транзакции с пагинацией
-        const transactions = await ctx.db.bybitTransactionFromCabinet.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { dateTime: 'desc' },
-          include: {
-            cabinet: {
-              select: {
-                bybitEmail: true
-              }
-            }
-          }
-        });
-        
-        // Добавляем email для удобства отображения
-        const transactionsWithEmail = transactions.map(tx => ({
-          ...tx,
-          email: tx.cabinet?.bybitEmail || 'Unknown'
-        }));
-        
-        return {
-          success: true,
-          transactions: transactionsWithEmail,
-          totalCount,
-          totalPages: Math.ceil(totalCount / limit),
-          currentPage: page,
-        };
-      } catch (error) {
-        console.error("Ошибка при получении Bybit транзакций:", error);
-        return {
-          success: false,
-          message: `Ошибка при получении Bybit транзакций: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
-          transactions: [],
-          totalCount: 0,
-          totalPages: 0,
-          currentPage: page,
-        };
-      }
+      limit: z.number().min(1).max(10).default(10),
+      search: z.string().optional(),
+      sortColumn: z.string().optional(),
+      sortDirection: z.enum(['asc', 'desc']).optional(),
     }),
+  )
+  .query(async ({ ctx, input }) => {
+    const { reportId, page, limit, search } = input;
+    const skip = (page - 1) * limit;
+
+    /** 1. Отчёт */
+    const report = await ctx.db.matchBybitReport.findUnique({
+      where: { id: reportId },
+      select: { timeRangeStart: true, timeRangeEnd: true, idexCabinets: true },
+    });
+    if (!report) throw new Error(`Отчёт #${reportId} не найден`);
+
+    /** 2. Кабинеты Bybit */
+    const bybitCabinetIds: number[] = (() => {
+      if (!report.idexCabinets || typeof report.idexCabinets !== 'string') return [];
+      try {
+        return JSON.parse(report.idexCabinets)
+          .filter((c: any) => c.cabinetType === 'bybit' || !c.cabinetType)
+          .map((c: any) => c.cabinetId);
+      } catch (e) {
+        console.error('Failed to parse bybitCabinets', e);
+        return [];
+      }
+    })();
+
+    /** 3. Сопоставленные */
+    const matchedRows = await ctx.db.bybitClipMatch.findMany({
+      where: { matchBybitReportId: reportId },
+      select: { bybitTransactionId: true },
+    });
+    const matchedBybitIds = matchedRows.map((r) => r.bybitTransactionId);
+
+    /** 4. Диапазон с учётом сдвига –3 ч */
+    const rangeStart = dayjs(report.timeRangeStart).subtract(3, 'hour').toISOString();
+    const rangeEnd = dayjs(report.timeRangeEnd).subtract(3, 'hour').toISOString();
+
+    /** 5. Общее кол-во транзакций Bybit в диапазоне */
+    const totalBybitTransactions = await ctx.db.bybitTransactionFromCabinet.count({
+      where: {
+        cabinetId: bybitCabinetIds.length ? { in: bybitCabinetIds } : undefined,
+        dateTime: { gte: rangeStart, lte: rangeEnd },
+      },
+    });
+
+    /** 6. where для не сопоставлённых */
+    const where: Prisma.BybitTransactionFromCabinetWhereInput = {
+      id: matchedBybitIds.length ? { notIn: matchedBybitIds } : undefined,
+      dateTime: { gte: rangeStart, lte: rangeEnd },
+      cabinetId: bybitCabinetIds.length ? { in: bybitCabinetIds } : undefined,
+    };
+
+    /** 7. Поиск */
+    if (search?.trim()) {
+      const term = search.trim();
+      const num = Number(term);
+      const numFloat = parseFloat(term);
+      where.OR = [
+        !isNaN(num) ? { id: num } : undefined,
+        { orderNo: { contains: term } },
+        { counterparty: { contains: term } },
+        !isNaN(numFloat) ? {
+          totalPrice: { gte: numFloat - 0.01, lte: numFloat + 0.01 },
+        } : undefined,
+        { asset: { contains: term } },
+      ].filter(Boolean) as any;
+    }
+
+    /** 8. Пагинация */
+    const totalUnmatched = await ctx.db.bybitTransactionFromCabinet.count({ where });
+
+    const transactions = await ctx.db.bybitTransactionFromCabinet.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { dateTime: 'desc' },
+      include: {
+        cabinet: {
+          select: { bybitEmail: true },
+        },
+      },
+    });
+
+    const detailed = transactions.map((t) => ({
+      ...t,
+      email: t.cabinet?.bybitEmail ?? 'Unknown',
+    }));
+
+    return {
+      success: true,
+      transactions: detailed,
+      totalPages: Math.ceil(totalUnmatched / limit),
+      currentPage: page,
+      totalBybitTransactions,
+      matchedCount: matchedBybitIds.length,
+      unmatchedCount: totalBybitTransactions - matchedBybitIds.length,
+    };
+  }),
 
   // --- Методы для работы с сопоставлениями ---
 
