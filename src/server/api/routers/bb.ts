@@ -1189,13 +1189,13 @@ getMatchBybitReportById: publicProcedure
               lte: dayjs(report.timeRangeEnd).clone().add(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
-            // NOT: {
-            //   BybitClipMatch: {
-            //     some: {
-            //       matchBybitReportId: reportId
-            //     }
-            //   }
-            // }
+            NOT: {
+              BybitClipMatch: {
+                some: {
+                  matchBybitReportId: reportId
+                }
+              }
+            }
           },
         });
 
