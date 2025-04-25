@@ -1185,8 +1185,8 @@ getMatchBybitReportById: publicProcedure
           where: {
             cabinetId: { in: bybitCabinetIds },
             dateTime: {
-              gte: dayjs(report.timeRangeStart).clone().add(3, 'hour').toISOString(),
-              lte: dayjs(report.timeRangeEnd).clone().add(3, 'hour').toISOString(),
+              gte: dayjs(report.timeRangeStart).subtract(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).subtract(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
             NOT: {
@@ -1254,9 +1254,14 @@ getMatchBybitReportById: publicProcedure
             if (timeDiff <= MINUTES_THRESHOLD && timeDiff < bestMatch.timeDiff) {
               bestMatch = { bybitTx, timeDiff };
             }
-            console.log(`\n--------------------------\nСопоставление для транзакции ${idexTx.id} (BB: ${bybitTx.orderNo}): ${bestMatch.bybitTx ? 'Найдено' : 'Нет'}\n---------------------\nIDEX TIME: ${idexTx.approvedAt}\nBYBIT TIME: ${bybitDateTime}\n-------------------------------\nIDEX AMOUNT: ${idexAmount}\nBYBIT AMOUNT: ${bybitTx.totalPrice}\n-------------------------------\n`);
+            // console.log(`\n--------------------------\nСопоставление для транзакции ${idexTx.id} (BB: ${bybitTx.orderNo}): ${bestMatch.bybitTx ? 'Найдено' : 'Нет'}\n---------------------\nIDEX TIME: ${idexTx.approvedAt}\nBYBIT TIME: ${bybitDateTime}\n-------------------------------\nIDEX AMOUNT: ${idexAmount}\nBYBIT AMOUNT: ${bybitTx.totalPrice}\n-------------------------------\n`);
           }
 
+          if (bestMatch.bybitTx) {
+            console.log(
+              `✔ match IDEX#${idexTx.id} ⇄ BYBIT#${bestMatch.bybitTx.orderNo}  Δ=${bestMatch.timeDiff} мин`
+            );
+          }
           
           // Если нашли подходящее совпадение, создаем запись
           if (bestMatch.bybitTx) {

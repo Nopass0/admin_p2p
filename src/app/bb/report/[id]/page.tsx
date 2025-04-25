@@ -213,7 +213,7 @@ export default function ReportDetailPage() {
 
             {/* Actions */}
              <div className="flex justify-end gap-3">
-                 {/* <Button color="primary" variant="ghost" startContent={<Wand2 size={18}/>} onPress={handleAutoMatch} isLoading={autoMatchMutation.isLoading}>Авто</Button> */}
+                 <Button color="primary" variant="ghost" startContent={<Wand2 size={18}/>} onPress={handleAutoMatch} isLoading={autoMatchMutation.isLoading}>Авто</Button>
                  <Button color="success" startContent={<LinkIcon size={18}/>} onPress={handleManualMatch} isLoading={manualMatchMutation.isLoading} isDisabled={!selectedIdexId || !selectedBybitId}>Вручную</Button>
              </div>
 
