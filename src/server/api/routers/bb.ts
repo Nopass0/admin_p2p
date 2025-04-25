@@ -1200,6 +1200,7 @@ getMatchBybitReportById: publicProcedure
         });
 
         console.log(`Найдено ${idexTransactions.length} IDEX транзакций и ${bybitTransactions.length} Bybit транзакций для сопоставления`);
+        console.log(JSON.stringify(bybitTransactions, null, 2));
 
         // Массив для новых сопоставлений
         const newMatchesData = [];
