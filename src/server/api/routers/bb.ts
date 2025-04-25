@@ -1185,17 +1185,17 @@ getMatchBybitReportById: publicProcedure
           where: {
             cabinetId: { in: bybitCabinetIds },
             dateTime: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
+              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
-            NOT: {
-              BybitClipMatch: {
-                some: {
-                  matchBybitReportId: reportId
-                }
-              }
-            }
+            // NOT: {
+            //   BybitClipMatch: {
+            //     some: {
+            //       matchBybitReportId: reportId
+            //     }
+            //   }
+            // }
           },
         });
 
