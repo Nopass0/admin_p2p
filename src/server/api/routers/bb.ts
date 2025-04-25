@@ -394,8 +394,8 @@ getMatchBybitReportById: publicProcedure
       const matchedIdexIds = matches.map(match => match.idexTransactionId).filter(Boolean) as number[];
       const matchedBybitIds = matches.map(match => match.bybitTransactionId).filter(Boolean) as number[];
       
-      console.log(`Matched IDEX IDs count: ${matchedIdexIds.length}`);
-      console.log(`Matched Bybit IDs count: ${matchedBybitIds.length}`);
+      console.log(`Matched IDEX IDs count: ${matchedIdexIds.length} Unique: ${new Set(matchedIdexIds).size}`);
+      console.log(`Matched Bybit IDs count: ${matchedBybitIds.length} Unique: ${new Set(matchedBybitIds).size}`);
       
       // Получаем ID кабинетов из конфигурации отчета
       let idexCabinetIds: number[] = [];
@@ -452,8 +452,8 @@ getMatchBybitReportById: publicProcedure
       const totalIdexTransactions = await ctx.db.idexTransaction.count({
         where: {
           approvedAt: {
-            gte: dayjs(report.timeRangeStart).toISOString(),
-            lte: dayjs(report.timeRangeEnd).toISOString(),
+            gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+            lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
           },
           cabinetId: idexCabinetIds.length > 0 ? { in: idexCabinetIds } : undefined
         }
@@ -726,18 +726,20 @@ getMatchBybitReportById: publicProcedure
           where: {
             cabinetId: cabinetIds.length > 0 ? { in: cabinetIds } : undefined,
             approvedAt: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
+              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
             },
           }
         });
+        
+        console.log(`[DEBUG] Total IDEX transactions in range: ${totalIdexTransactions}; Range: ${report.timeRangeStart} - ${report.timeRangeEnd}; IN ISO: ${dayjs(report.timeRangeStart).toISOString()} - ${dayjs(report.timeRangeEnd).toISOString()}`)
         
         // Строим условия запроса для неспоставленных транзакций
         const where: Prisma.IdexTransactionWhereInput = {
           // Фильтруем по дате (поле approvedAt имеет тип String в модели)
           approvedAt: {
-            gte: dayjs(report.timeRangeStart).toISOString(),
-            lte: dayjs(report.timeRangeEnd).toISOString(),
+            gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
+            lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
           },
           // Фильтруем по кабинетам
           cabinetId: cabinetIds.length > 0 ? { in: cabinetIds } : undefined

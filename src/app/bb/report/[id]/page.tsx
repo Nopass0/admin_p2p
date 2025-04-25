@@ -297,19 +297,19 @@ export default function ReportDetailPage() {
                             <div>
                                 <p className="text-gray-500 dark:text-gray-400 text-sm">Всего</p>
                                 <p className="text-3xl font-bold text-blue-700 dark:text-blue-300">
-                                    {reportData?.totalIdexTransactions || 0}
+                                    {idexData?.totalIdexTransactions || 0}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-gray-500 dark:text-gray-400 text-sm">Сопоставлено</p>
                                 <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                                    {reportData?.matchedIdexCount || 0}
+                                    {idexData?.matchedCount || 0}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-gray-500 dark:text-gray-400 text-sm">Не сопоставлено</p>
                                 <p className="text-3xl font-bold text-orange-500 dark:text-orange-400">
-                                    {reportData?.unmatchedIdexTransactions || 0}
+                                    {idexData?.totalCount || 0}
                                 </p>
                             </div>
                         </div>
