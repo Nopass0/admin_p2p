@@ -59,10 +59,15 @@ const navigationSections = [
     id: "payments",
     title: "Выплаты",
     items: [
+      // {
+      //   title: "Сопоставления",
+      //   href: "/matches",
+      //   icon: ArrowRightLeft,
+      // },
       {
-        title: "Сопоставления",
-        href: "/matches",
-        icon: ArrowRightLeft,
+        title: "Bybit отчеты",
+        href: "/bb",
+        icon: Paperclip
       },
       {
         title: "Пользователи",
@@ -85,11 +90,7 @@ const navigationSections = [
         href: "/finances?section=PAYMENTS",
         icon: CreditCard
       },
-      {
-        title: "Bybit отчеты",
-        href: "/bb",
-        icon: Paperclip
-      }
+
     ]
   },
   {
