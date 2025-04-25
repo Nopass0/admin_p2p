@@ -1185,8 +1185,8 @@ getMatchBybitReportById: publicProcedure
           where: {
             cabinetId: { in: bybitCabinetIds },
             dateTime: {
-              gte: dayjs(report.timeRangeStart).add(3, 'hour').toISOString(),
-              lte: dayjs(report.timeRangeEnd).add(3, 'hour').toISOString(),
+              gte: dayjs(report.timeRangeStart).clone().add(3, 'hour').toISOString(),
+              lte: dayjs(report.timeRangeEnd).clone().add(3, 'hour').toISOString(),
             },
             // Не должны уже иметь сопоставление в этом отчете
             // NOT: {
