@@ -69,21 +69,13 @@ const navigationSections = [
         href: "/bb",
         icon: Paperclip
       },
-      {
-        title: "Vires-Bybit отчеты",
-        href: "/vv",
-        icon: Paperclip
-      },
+
       {
         title: "Пользователи",
         href: "/users",
         icon: Users,
       },
-      {
-        title: "Vires кабинеты",
-        href: "/vires-cabinets",
-        icon: Globe,
-      },
+
       {
         title: "IDEX Кабинеты",
         href: "/idex-cabinets",
@@ -126,7 +118,17 @@ const navigationSections = [
         title: "БТ-Вход",
         href: "/bybitinput",
         icon: ArrowRight
-      }
+      },
+      {
+        title: "Vires кабинеты",
+        href: "/vires-cabinets",
+        icon: Globe,
+      },
+      {
+        title: "Vires-Bybit отчеты",
+        href: "/vv",
+        icon: Paperclip
+      },
     ]
   },
   {
