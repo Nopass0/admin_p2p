@@ -15,6 +15,8 @@ import { tablesRouter } from "@/server/api/routers/tablesRouter";
 import { passwordsRouter } from "@/server/api/routers/passwords";
 import { bybitOrderInfoRouter } from "@/server/api/routers/bybitOrderInfo";
 import { bbRouter } from "@/server/api/routers/bb";
+import { viresRouter } from "@/server/api/routers/vires";
+import { vvRouter } from "@/server/api/routers/vv";
 
 /**
  * This is the primary router for your server.
@@ -37,7 +39,9 @@ export const appRouter = createTRPCRouter({
   passwords: passwordsRouter,
   bybitOrderInfo: bybitOrderInfoRouter,
   tables: tablesRouter,
-  bb: bbRouter
+  bb: bbRouter,
+  vires: viresRouter,
+  vv: vvRouter
 });
 
 // export type definition of API

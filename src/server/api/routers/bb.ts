@@ -639,6 +639,125 @@ getMatchBybitReportById: publicProcedure
     }
   }),
 
+  getReportsSummary: publicProcedure
+  .input(
+    z.object({
+      reportIds: z.array(z.number().int().positive()).nonempty(),
+    })
+  )
+  .query(async ({ ctx, input }) => {
+    const { reportIds } = input;
+
+    /* ------------------------------------------------------------------
+     * 1. Fetch *all* clip‑matches belonging to the selected reports.
+     * ------------------------------------------------------------------ */
+    const matches = await ctx.db.bybitClipMatch.findMany({
+      where: { matchBybitReportId: { in: reportIds } },
+      select: {
+        grossExpense: true,
+        grossIncome: true,
+        grossProfit: true,
+        idexTransactionId: true,
+        bybitTransactionId: true,
+        matchBybitReportId: true,
+      },
+    });
+
+    const totalMatches = matches.length;
+    const totalExpense = matches.reduce((s, m) => s + (m.grossExpense ?? 0), 0);
+    const totalIncome = matches.reduce((s, m) => s + (m.grossIncome ?? 0), 0);
+    const totalProfit = matches.reduce((s, m) => s + (m.grossProfit ?? 0), 0);
+    const profitPercentage = totalExpense ? (totalProfit / totalExpense) * 100 : 0;
+
+    const matchedIdexIds = new Set(matches.map((m) => m.idexTransactionId));
+    const matchedBybitIds = new Set(matches.map((m) => m.bybitTransactionId));
+
+    /* ------------------------------------------------------------------
+     * 2. Compute *unmatched* transactions for each report in parallel.
+     *    We reuse (a simplified version of) the logic you already had in
+     *    getMatchBybitReportById.
+     * ------------------------------------------------------------------ */
+    let unmatchedIdexTransactions = 0;
+    let unmatchedBybitTransactions = 0;
+
+    await Promise.all(
+      reportIds.map(async (reportId) => {
+        const report = await ctx.db.matchBybitReport.findUnique({
+          where: { id: reportId },
+          select: {
+            timeRangeStart: true,
+            timeRangeEnd: true,
+            idexCabinets: true,
+          },
+        });
+        if (!report) return;
+
+        // Parse cabinet config → idex / bybit cabinet IDs
+        let idexCabinetIds: number[] = [];
+        let bybitCabinetIds: number[] = [];
+        if (report.idexCabinets && typeof report.idexCabinets === "string") {
+          try {
+            const cfg = JSON.parse(report.idexCabinets as string);
+            idexCabinetIds = cfg
+              .filter((c: any) => c.cabinetType === "idex")
+              .map((c: any) => c.cabinetId);
+            bybitCabinetIds = cfg
+              .filter((c: any) => c.cabinetType === "bybit" || !c.cabinetType)
+              .map((c: any) => c.cabinetId);
+          } catch {/* ignore bad json */}
+        }
+
+        // Count total IDEX transactions in the report window
+        const totalIdex = await ctx.db.idexTransaction.count({
+          where: {
+            cabinetId: idexCabinetIds.length ? { in: idexCabinetIds } : undefined,
+            approvedAt: {
+              gte: dayjs(report.timeRangeStart).toISOString(),
+              lte: dayjs(report.timeRangeEnd).toISOString(),
+            },
+          },
+        });
+
+        // Count total Bybit transactions (note the −3 h shift that existed elsewhere)
+        const totalBybit = await ctx.db.bybitTransactionFromCabinet.count({
+          where: {
+            cabinetId: bybitCabinetIds.length ? { in: bybitCabinetIds } : undefined,
+            dateTime: {
+              gte: dayjs(report.timeRangeStart).subtract(3, "hour").toISOString(),
+              lte: dayjs(report.timeRangeEnd).subtract(3, "hour").toISOString(),
+            },
+          },
+        });
+
+        // Already‑matched counts *within this report* (cheaper than re‑counting)
+        const matchedForThisReport = matches.filter(
+          (m) => m.matchBybitReportId === reportId
+        );
+        const matchedIdex = new Set(
+          matchedForThisReport.map((m) => m.idexTransactionId)
+        ).size;
+        const matchedBybit = new Set(
+          matchedForThisReport.map((m) => m.bybitTransactionId)
+        ).size;
+
+        unmatchedIdexTransactions += Math.max(totalIdex - matchedIdex, 0);
+        unmatchedBybitTransactions += Math.max(totalBybit - matchedBybit, 0);
+      })
+    );
+
+    return {
+      totalMatches,
+      totalExpense,
+      totalIncome,
+      totalProfit,
+      profitPercentage,
+      matchedIdexCount: matchedIdexIds.size,
+      matchedBybitCount: matchedBybitIds.size,
+      unmatchedIdexTransactions,
+      unmatchedBybitTransactions,
+    };
+  }),
+
   
 
   updateMatchBybitReport: publicProcedure
