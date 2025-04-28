@@ -273,6 +273,7 @@ export default function ReportDetailPage() {
                                         Сумма (USDT) {renderSortIndicator('vires', 'sum_usdt')}
                                     </TableColumn>
                                     <TableColumn>Карта/Телефон</TableColumn>
+                                    <TableColumn>Email</TableColumn>
                                 </TableHeader>
                                 <TableBody items={viresData.transactions as ViresTransaction[]}>
                                     {(item) => (
@@ -282,6 +283,7 @@ export default function ReportDetailPage() {
                                         <TableCell>{formatAmount(Math.abs(item.sum_rub))}</TableCell>
                                         <TableCell>{formatAmount(Math.abs(item.sum_usdt))}</TableCell>
                                         <TableCell className="max-w-[150px] truncate">{item.card}</TableCell>
+                                        <TableCell>{item.cabinet.login}</TableCell>
                                       </TableRow>
                                     )}
                                 </TableBody>
@@ -316,14 +318,19 @@ export default function ReportDetailPage() {
                                     <TableColumn onClick={() => handleSort('bybit', 'totalPrice')} style={{cursor: 'pointer'}}>
                                         Сумма {renderSortIndicator('bybit', 'totalPrice')}
                                     </TableColumn>
+                                    <TableColumn>
+                                        Номера Телефонов
+                                    </TableColumn>
                                 </TableHeader>
                                 <TableBody items={bybitData.transactions as BybitTransaction[]}>
                                      {(item) => (
                                        <TableRow key={item.id}>
                                           <TableCell>{item.id}</TableCell>
                                           <TableCell>{item.email}</TableCell>
+
                                           <TableCell>{dayjs(item.dateTime).format('DD.MM.YY HH:mm:ss')}</TableCell>
                                           <TableCell>{formatAmount(item.totalPrice)}</TableCell>
+                                          <TableCell>{String(item.phoneNumbers)}</TableCell>
                                        </TableRow>
                                      )}
                                  </TableBody>

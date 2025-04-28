@@ -318,7 +318,7 @@ export default function PasswordsPage() {
         transition={{ duration: 0.4 }}
       >
         <Card className="shadow-lg">
-          <CardHeader className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b">
+          <CardHeader className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b dark:border-b-zinc-700">
             <div className="flex justify-between w-full items-center">
               <h1 className="text-xl md:text-2xl font-bold">Управление паролями</h1>
               <Button
@@ -338,13 +338,7 @@ export default function PasswordsPage() {
               >
                 Добавить пароль
               </Button>
-              <Button
-                size="md"
-                variant="light"
-                onClick={toggleTheme}
-                startIcon={isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-                className="hidden md:flex"
-              />
+
             </div>
           </CardHeader>
           
@@ -379,19 +373,21 @@ export default function PasswordsPage() {
                   <Button
                     color="default"
                     onClick={() => setOrderDirection(prev => prev === "asc" ? "desc" : "asc")}
-                    startIcon={orderDirection === "asc" ? <SortAsc /> : <SortDesc />}
                     className="h-10 w-10"
-                  />
+                  >
+                    {orderDirection === "asc" ? <SortAsc /> : <SortDesc />}
+                  </Button>
                 </Tooltip>
                 
                 <Tooltip content="Обновить">
                   <Button
                     color="default"
                     onClick={() => passwordsQuery.refetch()}
-                    startIcon={<RefreshCw />}
                     isLoading={passwordsQuery.isLoading}
                     className="h-10 w-10"
-                  />
+                  >
+                    {<RefreshCw />}
+                  </Button>
                 </Tooltip>
               </div>
             </div>
@@ -449,10 +445,10 @@ export default function PasswordsPage() {
                               <Tooltip content={copyFeedback[password.id + 'login'] ? "Скопировано!" : "Копировать логин"}>
                                 <Button 
                                   size="sm" 
-                                  variant="text" 
                                   onClick={() => copyToClipboard(password.login, password.id, 'login')}
-                                  startIcon={copyFeedback[password.id + 'login'] ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} />}
-                                />
+                                >
+                                  {copyFeedback[password.id + 'login'] ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} />}
+                                </Button>
                               </Tooltip>
                             </div>
                           )}
@@ -469,16 +465,18 @@ export default function PasswordsPage() {
                                 size="sm" 
                                 variant="text" 
                                 onClick={() => togglePasswordVisibility(password.id)}
-                                startIcon={visiblePasswords[password.id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                              />
+                              >
+                                {visiblePasswords[password.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </Button>
                             </Tooltip>
                             <Tooltip content={copyFeedback[password.id + 'password'] ? "Скопировано!" : "Копировать пароль"}>
                               <Button 
                                 size="sm" 
                                 variant="text" 
                                 onClick={() => copyToClipboard(password.password, password.id, 'password')}
-                                startIcon={copyFeedback[password.id + 'password'] ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} />}
-                              />
+                              >
+                                {copyFeedback[password.id + 'password'] ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} />}
+                              </Button>
                             </Tooltip>
                           </div>
                         </TableCell>
@@ -491,9 +489,9 @@ export default function PasswordsPage() {
                                   size="xs" 
                                   variant="text" 
                                   onClick={() => toggleCommentExpansion(password.id)}
-                                  endIcon={expandedComments[password.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                   className="mt-1"
                                 >
+                                  {expandedComments[password.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                   {expandedComments[password.id] ? "Скрыть" : "Читать полностью"}
                                 </Button>
                               )}
@@ -510,18 +508,20 @@ export default function PasswordsPage() {
                                 size="sm" 
                                 color="primary" 
                                 variant="light" 
-                                startIcon={<Edit size={16} />}
                                 onClick={() => openEditModal(password)}
-                              />
+                              >
+                                <Edit size={16} />
+                              </Button>
                             </Tooltip>
                             <Tooltip content="Удалить">
                               <Button 
                                 size="sm" 
                                 color="danger" 
                                 variant="light" 
-                                startIcon={<Trash size={16} />}
                                 onClick={() => openDeleteModal(password)}
-                              />
+                              >
+                                <Trash size={16} />
+                              </Button>
                             </Tooltip>
                           </div>
                         </TableCell>

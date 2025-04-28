@@ -276,9 +276,10 @@ export default function ReportDetailPage() {
                                     <TableColumn onClick={() => handleSort('bybit', 'totalPrice')} style={{cursor: 'pointer'}}>
                                         Сумма {renderSortIndicator('bybit', 'totalPrice')}
                                     </TableColumn>
+                                    <TableColumn>Статус</TableColumn>
                                 </TableHeader>
                                 <TableBody items={bybitData.transactions as BybitTransaction[]}>
-                                     {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.email}</TableCell><TableCell>{dayjs(item.dateTime).format('DD.MM.YY HH:mm:ss')}</TableCell><TableCell>{formatAmount(item.totalPrice)}</TableCell></TableRow>)}
+                                     {(item) => (<TableRow key={item.id}><TableCell>{item.id}</TableCell><TableCell>{item.email}</TableCell><TableCell>{dayjs(item.dateTime).format('DD.MM.YY HH:mm:ss')}</TableCell><TableCell>{formatAmount(item.totalPrice)}</TableCell><TableCell>{item.originalData?.status === 50 ? 'Завершен' : 'Отменено или другое'}</TableCell></TableRow>)}
                                  </TableBody>
                              </Table>
                          )}
