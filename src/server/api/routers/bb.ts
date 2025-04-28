@@ -1485,7 +1485,7 @@ matchTransactionManually: publicProcedure
       return Number.isFinite(n) ? n : 0;
     };
 
-    const grossExpense = toNumber(bybitTx.totalPrice);        // расход BYBIT
+    const grossExpense = toNumber(bybitTx.amount);        // расход BYBIT
     const grossIncome  = toNumber(getIdexAmountTotalUsdt(idexTx.total)); // доход IDEX
     const grossProfit  = grossIncome - grossExpense;
     const profitPercentage = grossExpense
