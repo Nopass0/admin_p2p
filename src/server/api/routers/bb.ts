@@ -17,7 +17,7 @@ function getTimeDifferenceInMinutes(date1: Date, date2: Date): number {
 // Helper function to calculate match metrics (adapt fields as needed)
 function calculateClipMatchMetrics(bybitTx: { amount: Prisma.Decimal }, idexTx: { parsedAmount: number }) {
     const grossExpense = Number(bybitTx.amount); // Bybit amount is expense
-    const grossIncome = idexTx.parsedAmount; // Idex amount is income
+    const grossIncome = Number(idexTx.parsedAmount); // Idex amount is income
     const grossProfit = grossIncome - grossExpense;
     const profitPercentage = grossExpense !== 0 ? (grossProfit / grossExpense) * 100 : 0;
 
@@ -1428,82 +1428,94 @@ getMatchBybitReportById: publicProcedure
   // Ручное сопоставление транзакций
 
 
-  matchTransactionManually: publicProcedure
-    .input(z.object({
+// ─────────────────────────────────────────────────────────────────────────────
+//  matchTransactionManually  (замените весь блок на этот)
+// ─────────────────────────────────────────────────────────────────────────────
+matchTransactionManually: publicProcedure
+  .input(
+    z.object({
       reportId: z.number(),
       idexTransactionId: z.number(),
       bybitTransactionId: z.number(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      const { reportId, idexTransactionId, bybitTransactionId } = input;
-
-      // 1. Validation
-      const [idexTx, bybitTx, existingMatch] = await Promise.all([
-          ctx.db.idexTransaction.findUnique({ where: { id: idexTransactionId } }),
-          ctx.db.bybitTransactionFromCabinet.findUnique({ where: { id: bybitTransactionId } }),
-          ctx.db.bybitClipMatch.findFirst({
-              where: {
-                  matchBybitReportId: reportId,
-                  OR: [
-                      { idexTransactionId },
-                      { bybitTransactionId },
-                  ],
-              },
-          }),
-      ]);
-
-      if (!idexTx) throw new Error(`IDEX транзакция #${idexTransactionId} не найдена.`);
-      if (!bybitTx) throw new Error(`Bybit транзакция #${bybitTransactionId} не найдена.`);
-      if (!idexTx.approvedAt) throw new Error(`IDEX транзакция #${idexTransactionId} не имеет даты подтверждения.`);
-       if (!bybitTx.dateTime) throw new Error(`Bybit транзакция #${bybitTransactionId} не имеет времени транзакции.`);
-
-      if (existingMatch) {
-          if (existingMatch.idexTransactionId === idexTransactionId) {
-              throw new Error(`IDEX транзакция #${idexTransactionId} уже сопоставлена в этом отчете.`);
-          } else {
-               throw new Error(`Bybit транзакция #${bybitTransactionId} уже сопоставлена в этом отчете.`);
-          }
-      }
-
-      // 2. Calculate Metrics
-
-      //get report and get userId
-      const report = await ctx.db.matchBybitReport.findUnique({
-        where: { id: reportId },
-        select: { userId: true },
-      });
-      if (!report) throw new Error(`Отчет #${reportId} не найден.`);
-      
-      // Проверяем, что пользователь существует
-      const userExists = await ctx.db.user.findUnique({
-        where: { id: report.userId },
-        select: { id: true }
-      });
-      
-      // Если пользователь не найден, используем стандартное значение (1)
-      const userId = userExists ? report.userId : 1;
-
-
-      // 3. Create Match
-      const newMatch = await ctx.db.bybitClipMatch.create({
-        data: {
-          matchBybitReportId: reportId,
-          idexTransactionId,
-          bybitTransactionId,
-          timeDifference: timeDiff,
-          // Store calculated metrics
-          grossExpense: metrics.grossExpense,
-          grossIncome: metrics.grossIncome,
-          grossProfit: metrics.grossProfit,
-          profitPercentage: metrics.profitPercentage,
-          userId: userId // Используем проверенный userId
-        },
-      });
-
-      console.log(`Создано ручное сопоставление ID ${newMatch.id} для отчета ${reportId}.`);
-
-      return { success: true, matchId: newMatch.id };
     }),
+  )
+  .mutation(async ({ ctx, input }) => {
+    const { reportId, idexTransactionId, bybitTransactionId } = input;
+
+    /* ── 1. Проверяем сущности и двойные матчи ────────────────────────────── */
+    const [idexTx, bybitTx, duplicate] = await Promise.all([
+      ctx.db.idexTransaction.findUnique({ where: { id: idexTransactionId } }),
+      ctx.db.bybitTransactionFromCabinet.findUnique({
+        where: { id: bybitTransactionId },
+      }),
+      ctx.db.bybitClipMatch.findFirst({
+        where: {
+          matchBybitReportId: reportId,
+          OR: [
+            { idexTransactionId },
+            { bybitTransactionId },
+          ],
+        },
+      }),
+    ]);
+
+    if (!idexTx)  throw new Error(`IDEX транзакция #${idexTransactionId} не найдена`);
+    if (!bybitTx) throw new Error(`Bybit транзакция #${bybitTransactionId} не найдена`);
+    if (duplicate) throw new Error('Одна из транзакций уже сопоставлена в этом отчёте');
+
+    /* ── 2. Получаем userId отчёта (для связи) ────────────────────────────── */
+    const { userId } = await ctx.db.matchBybitReport.findUniqueOrThrow({
+      where: { id: reportId },
+      select: { userId: true },
+    });
+
+    /* ── 3. Считаем разницу времени (сек) ─────────────────────────────────── */
+    // approvedAt хранится строкой ISO; приводим к Date
+    if (!idexTx.approvedAt) throw new Error('IDEX транзакция без approvedAt');
+    const idexTime  = dayjs(idexTx.approvedAt).toDate();
+    const bybitTime = dayjs(bybitTx.dateTime).add(3, 'hour').toDate(); // +3 ч
+
+    const timeDifference = Math.round(
+      getTimeDifferenceInMinutes(idexTime, bybitTime) * 60,
+    );
+
+    /* ── 4. Считаем метрики (числа, а не NaN) ─────────────────────────────── */
+    const toNumber = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const grossExpense = toNumber(bybitTx.totalPrice);        // расход BYBIT
+    const grossIncome  = toNumber(getIdexAmountTotalUsdt(idexTx.total)); // доход IDEX
+    const grossProfit  = grossIncome - grossExpense;
+    const profitPercentage = grossExpense
+      ? (grossProfit / grossExpense) * 100
+      : 0;
+
+    /* ── 5. Пишем матч ────────────────────────────────────────────────────── */
+    const newMatch = await ctx.db.bybitClipMatch.create({
+      data: {
+        timeDifference,
+        grossExpense,
+        grossIncome,
+        grossProfit,
+        profitPercentage,
+    
+        /* ← исправлено: заглавная М */
+        MatchBybitReport: { connect: { id: reportId } },
+    
+        bybitTransaction: { connect: { id: bybitTransactionId } },
+        idexTransaction:  { connect: { id: idexTransactionId  } },
+        user:             { connect: { id: userId             } },
+      },
+    });
+    
+
+    return { success: true, matchId: newMatch.id };
+  }),
+// ─────────────────────────────────────────────────────────────────────────────
+
+
 
 });
 
