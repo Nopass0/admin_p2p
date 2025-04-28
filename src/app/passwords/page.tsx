@@ -666,7 +666,7 @@ export default function PasswordsPage() {
                 placeholder="Введите пароль"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                type={visiblePasswords[-1] ? "text" : "password"}
+                type={"text"}
                 endIcon={
                   <Button 
                     variant="text" 
