@@ -310,7 +310,7 @@ export default function ReportDetailPage() {
                             <div>
                                 <p className="text-gray-500 dark:text-gray-400 text-sm">Не сопоставлено</p>
                                 <p className="text-3xl font-bold text-orange-500 dark:text-orange-400">
-                                    {idexData?.totalCount || 0}
+                                    {idexData?.unmatchedCount || 0}
                                 </p>
                             </div>
                         </div>
