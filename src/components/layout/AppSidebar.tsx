@@ -114,11 +114,12 @@ const navigationSections = [
         href: "/finances?section=TRACTOR",
         icon: CreditCard
       },
-      {
-        title: "БТ-Вход",
-        href: "/bybitinput",
-        icon: ArrowRight
-      },
+    ]
+  },
+  {
+    id: "bt-input",
+    title: "БТ-Вход",
+    items: [
       {
         title: "Vires кабинеты",
         href: "/vires-cabinets",
