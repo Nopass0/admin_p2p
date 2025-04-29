@@ -358,13 +358,13 @@ function UserBlock({ report }: { report: any }) {
         <p>
           <span className="mr-1">От:</span>
           <span className="font-semibold">
-            {dayjs(report.timeRangeStart).format("DD.MM.YYYY HH:mm")}
+            {dayjs(report.timeRangeStart).subtract(3, 'hour').format("DD.MM.YYYY HH:mm")}
           </span>
         </p>
         <p className="mt-1">
           <span className="mr-1">До:</span>
           <span className="font-semibold">
-            {dayjs(report.timeRangeEnd).format("DD.MM.YYYY HH:mm")}
+            {dayjs(report.timeRangeEnd).subtract(3, 'hour').format("DD.MM.YYYY HH:mm")}
           </span>
         </p>
       </div>
