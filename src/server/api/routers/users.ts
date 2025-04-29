@@ -370,40 +370,33 @@ export const usersRouter = createTRPCRouter({
 
   // Удаление пользователя
   deleteUser: publicProcedure
-    .input(z.object({ 
-      userId: z.number().int().positive() 
-    }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        // Проверяем существование пользователя
-        const user = await ctx.db.user.findUnique({
-          where: { id: input.userId }
-        });
-        
-        if (!user) {
-          return { 
-            success: false, 
-            message: "Пользователь не найден" 
-          };
-        }
-        
-        // Удаляем пользователя
-        await ctx.db.user.delete({
-          where: { id: input.userId }
-        });
-        
-        return { 
-          success: true, 
-          message: "Пользователь успешно удален" 
-        };
-      } catch (error) {
-        console.error("Ошибка при удалении пользователя:", error);
-        return { 
-          success: false, 
-          message: "Произошла ошибка при удалении пользователя" 
-        };
-      }
-    }),
+  .input(z.object({ userId: z.number().int().positive() }))
+  .mutation(async ({ ctx, input }) => {
+    const { userId } = input;
+
+    const exists = await ctx.db.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!exists) {
+      return { success: false, message: "Пользователь не найден" };
+    }
+
+    try {
+      await deleteUserWithDependencies(userId);
+      return {
+        success: true,
+        message: "Пользователь и все связанные записи удалены",
+      };
+    } catch (err) {
+      ctx.log.error({ err }, "Ошибка при удалении пользователя");
+      return {
+        success: false,
+        message: "Не удалось удалить пользователя",
+      };
+    }
+  }),
+
 
   
 
