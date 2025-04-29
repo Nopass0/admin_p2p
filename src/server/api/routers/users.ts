@@ -2,6 +2,31 @@ import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
+
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
+
+export async function deleteUserWithDependencies(userId: number) {
+  return prisma.$transaction(async (tx) => {
+    // 1. дочерние таблицы — deleteMany
+    await Promise.all([
+      tx.telegramAccount.deleteMany({ where: { userId } }),
+      tx.reportNotification.deleteMany({ where: { userId } }),
+      tx.bybitTransaction.deleteMany({ where: { userId } }),
+      tx.bybitClipMatch.deleteMany({ where: { userId } }),
+      tx.viresClipMatch.deleteMany({ where: { userId } }),
+      tx.workSession.deleteMany({ where: { userId } }),
+      tx.viresCabinet.deleteMany({ where: { userId } }),
+      tx.matchBybitReport.deleteMany({ where: { userId } }),
+      tx.matchViresReport.deleteMany({ where: { userId } }),
+      tx.auditLog.deleteMany({ where: { userId } }),
+      // добавляйте новые модели здесь
+    ]);
+
+    // 2. сама запись пользователя
+    await tx.user.delete({ where: { id: userId } });
+  });
+}
 export const usersRouter = createTRPCRouter({
   // Простое получение списка всех пользователей без пагинации
   getUsers: publicProcedure
