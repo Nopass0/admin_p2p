@@ -8,29 +8,30 @@ datasource db {
 }
 
 model User {
-  id                  Int                  @id @default(autoincrement())
-  name                String
-  passCode            String               @unique
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  lastNotification    DateTime?
-  role                UserRole             @default(USER)
-  bybitApiSecret      String?
-  bybitApiToken       String?
-  lastBybitSyncAt     DateTime?
-  lastBybitSyncStatus String?
-  AuditLog            AuditLog[]
-  BybitClipMatch      BybitClipMatch[]
-  bybitTransactions   BybitTransaction[]
-  MatchBybitReport    MatchBybitReport[]
-  MatchViresReport    MatchViresReport[]
-  reportNotifications ReportNotification[]
-  telegramAccounts    TelegramAccount[]
-  transactions        Transaction[]
-  ViresCabinet        ViresCabinet[]
-  ViresClipMatch      ViresClipMatch[]
-  workSessions        WorkSession[]
+  id                          Int                           @id @default(autoincrement())
+  name                        String
+  passCode                    String                        @unique
+  isActive                    Boolean                       @default(true)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  lastNotification            DateTime?
+  role                        UserRole                      @default(USER)
+  bybitApiSecret              String?
+  bybitApiToken               String?
+  lastBybitSyncAt             DateTime?
+  lastBybitSyncStatus         String?
+  AuditLog                    AuditLog[]
+  BybitClipMatch              BybitClipMatch[]
+  bybitTransactions           BybitTransaction[]
+  MatchBybitReport            MatchBybitReport[]
+  MatchViresReport            MatchViresReport[]
+  reportNotifications         ReportNotification[]
+  telegramAccounts            TelegramAccount[]
+  transactions                Transaction[]
+  ViresCabinet                ViresCabinet[]
+  ViresClipMatch              ViresClipMatch[]
+  workSessions                WorkSession[]
+  BybitCabinetChainedWithUser BybitCabinetChainedWithUser[]
 }
 
 model TelegramAccount {
@@ -120,6 +121,7 @@ model BybitCabinet {
   lastBybitSyncStatus         String?
   BybitOrderInfo              BybitOrderInfo[]
   BybitTransactionFromCabinet BybitTransactionFromCabinet[]
+  BybitCabinetChainedWithUser BybitCabinetChainedWithUser[]
 }
 
 model BybitTransactionFromCabinet {
@@ -807,4 +809,19 @@ enum AuditAction {
 enum UserRole {
   USER
   USERCARDS
+}
+
+model BybitCabinetChainedWithUser {
+  id             Int          @id @default(autoincrement())
+  bybitCabinetId Int
+  userId         Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  bybitCabinet   BybitCabinet @relation(fields: [bybitCabinetId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bybitCabinetId, userId])
+  @@index([bybitCabinetId])
+  @@index([userId])
+  @@index([bybitCabinetId, userId])
 }

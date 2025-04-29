@@ -47,6 +47,16 @@ export default function NewReportPage() {
         undefined,
         { enabled: true }
     );
+
+    /* ➜  ← НОВОЕ: получаем цепочки “user ↔ Bybit cabinet” */
+    const {
+        data: userBybitChains,
+        refetch: refetchUserBybitChains,
+        isFetching: isFetchingChains,
+    } = api.users.getBybitCabinetChainedWithUser.useQuery(
+        { userId: selectedUserId },   // сам параметр не важен – внутри API игнорируется bybitCabinetId
+        { enabled: !!selectedUserId }
+    );
     
     // Получение списка IDEX кабинетов
     const { data: idexCabinetsData, isLoading: isLoadingIdexCabinets, error: errorIdexCabinets } = 
@@ -189,6 +199,31 @@ export default function NewReportPage() {
             userId: selectedUserId // Добавляем userId выбранного пользователя
         });
     };
+
+    /* ── EFFECT: когда выбрали пользователя или пришли новые цепочки,
+    автоматически добавляем его кабинеты в config. ─────────────── */
+    useEffect(() => {
+        if (!userBybitChains?.length || !bybitCabinets?.length) return;
+
+        const defaults = {
+        startDate: timeRangeStart || dayjs().format("YYYY-MM-DDTHH:mm"),
+        endDate:   timeRangeEnd   || dayjs().add(1, "day").format("YYYY-MM-DDTHH:mm"),
+        };
+
+        const newConfigs: CabinetConfig[] = [];
+        userBybitChains.forEach((ch) => {
+        if (!cabinetConfigs.some(c => c.cabinetId === ch.bybitCabinetId && c.cabinetType === "bybit")) {
+            newConfigs.push({
+            cabinetId: ch.bybitCabinetId,
+            cabinetType: "bybit",
+            ...defaults,
+            });
+        }
+        });
+
+        if (newConfigs.length) setCabinetConfigs(prev => [...prev, ...newConfigs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userBybitChains]);
     
     return (
         <div className="container mx-auto p-4">

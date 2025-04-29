@@ -102,6 +102,7 @@ export const usersRouter = createTRPCRouter({
           where: { id: input.userId },
           include: {
             telegramAccounts: true,
+            BybitCabinetChainedWithUser: true,    
             transactions: {
               take: 5,
               orderBy: { dateTime: 'desc' }
@@ -404,6 +405,8 @@ export const usersRouter = createTRPCRouter({
       }
     }),
 
+  
+
   // Обновление API ключей Bybit пользователя
   updateBybitApiKeys: publicProcedure
     .input(z.object({
@@ -451,4 +454,69 @@ export const usersRouter = createTRPCRouter({
         };
       }
     }),
+
+    updateOrCreateChainWithBybitCabinet: publicProcedure
+    .input(z.object({
+      userId: z.number().int().positive(),
+      bybitCabinetId: z.number().int().positive()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      let [bybitCabinet, user] = await Promise.all([
+        ctx.db.bybitCabinet.findUnique({
+          where: { id: input.bybitCabinetId }
+        }),
+        ctx.db.user.findUnique({
+          where: { id: input.userId }
+        })
+      ]);
+
+      if (!bybitCabinet || !user) {
+        return { 
+          success: false, 
+          message: "Bybit кабинет или пользователь не найден",
+          bybitCabinet: null,
+          user: null
+        };
+      }
+
+      const chain = await ctx.db.bybitCabinetChainedWithUser.upsert({
+        where: {
+          bybitCabinetId_userId: {
+            bybitCabinetId: input.bybitCabinetId,
+            userId: input.userId
+          }
+        },
+        update: {
+          bybitCabinetId: input.bybitCabinetId,
+          userId: input.userId
+        },
+        create: {
+          bybitCabinetId: input.bybitCabinetId,
+          userId: input.userId
+        }
+      });
+
+      return { 
+        success: true, 
+        message: "Bybit кабинет успешно привязан к пользователю",
+        bybitCabinet: bybitCabinet,
+        user: user,
+        chain: chain
+      };
+    }),
+
+    getBybitCabinetChainedWithUser: publicProcedure
+    .input(z.object({
+      userId: z.number().int().positive()
+    }))
+    .query(async ({ ctx, input }) => {
+      const chains = await ctx.db.bybitCabinetChainedWithUser.findMany({
+        where: { userId: input.userId }
+      });
+      return chains;
+    }),
+
+    getAllBybitCabinets: publicProcedure.query(({ ctx }) =>
+      ctx.db.bybitCabinet.findMany({ select: { id: true, bybitEmail: true } })
+    )
 });
