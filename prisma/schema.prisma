@@ -284,7 +284,7 @@ model MatchBybitReport {
   updatedAt        DateTime         @updatedAt
   userId           Int              @default(1)
   bybitClipMatches BybitClipMatch[]
-  User             User             @relation(fields: [userId], references: [id])
+  User             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Card {
@@ -613,7 +613,7 @@ model AuditLog {
   CardBalance   CardBalance? @relation(fields: [cardBalanceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   Card          Card?        @relation(fields: [cardId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   CardPouring   CardPouring? @relation(fields: [cardPouringId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  User          User         @relation(fields: [userId], references: [id])
+  User          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([cardBalanceId])
   @@index([cardId])
@@ -719,7 +719,7 @@ model MatchViresReport {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   userId           Int              @default(1)
-  User             User             @relation(fields: [userId], references: [id])
+  User             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   viresClipMatches ViresClipMatch[]
 }
 
