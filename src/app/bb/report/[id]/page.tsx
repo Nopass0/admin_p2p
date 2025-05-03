@@ -459,8 +459,8 @@ export default function ReportDetailPage() {
                                 {(match) => (
                                     <TableRow key={match.id}>
                                         <TableCell>{match.id}</TableCell>
-                                        <TableCell>{dayjs(match.bybitTransaction?.dateTime).add(3, 'hour').format('DD.MM.YY HH:mm')}</TableCell>
-                                        <TableCell>{dayjs(match.idexTransaction?.approvedAt).format('DD.MM.YY HH:mm')}</TableCell>
+                                        <TableCell>{dayjs(match.bybitTransaction?.dateTime).format('DD.MM.YY HH:mm')}</TableCell>
+                                        <TableCell>{dayjs(match.idexTransaction?.approvedAt).substract(3, 'hour').format('DD.MM.YY HH:mm')}</TableCell>
                                         <TableCell>{formatAmount(match.bybitTransaction?.totalPrice)}</TableCell>
                                         <TableCell>{match.idexTransaction?.cabinet?.idexId}</TableCell>
                                         <TableCell >{formatAmount(match.grossExpense)} USDT</TableCell>
