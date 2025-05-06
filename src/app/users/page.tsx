@@ -11,13 +11,13 @@ import { Search, PlusIcon, X } from "lucide-react";
 export default function UsersPage() {
   // State for search functionality
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   // State for modal visibility
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   // State for the new user's name
   const [newUserName, setNewUserName] = useState("");
-  
+
   // State to show created user details
   const [createdUser, setCreatedUser] = useState(null);
 
@@ -55,60 +55,39 @@ export default function UsersPage() {
   return (
     <div className="p-6">
       {/* Header with title and add button */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Управление пользователями</h1>
         <Button color="primary" onClick={() => setIsModalOpen(true)}>
-          <PlusIcon className="w-4 h-4 mr-2" />
+          <PlusIcon className="mr-2 h-4 w-4" />
           Добавить пользователя
         </Button>
       </div>
-      
-      {/* Search bar */}
-      <div className="mb-6">
-        <div className="flex gap-2">
-          <div className="flex-grow">
-            <Input
-              placeholder="Поиск по имени или коду доступа..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              startContent={<Search className="text-gray-400 w-5 h-5" />}
-              className="w-full"
-            />
-          </div>
-          <Button
-            color="primary"
-            onClick={handleSearch}
-          >
-            Поиск
-          </Button>
-        </div>
-      </div>
-      
+
       {/* Users table */}
-      <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-sm p-6">
+      <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-zinc-800">
         <UsersTable searchQuery={searchQuery} />
       </div>
 
       {/* Add User Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 dark:bg-zinc-800">
+            <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold">
                 {createdUser ? "Пользователь создан" : "Добавить пользователя"}
               </h2>
-              <button 
+              <button
                 onClick={closeModal}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             {!createdUser ? (
               <form onSubmit={handleCreateUser}>
                 <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1">
+                  <label className="mb-1 block text-sm font-medium">
                     Имя пользователя
                   </label>
                   <Input
@@ -121,11 +100,7 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    color="default"
-                    onClick={closeModal}
-                  >
+                  <Button type="button" color="default" onClick={closeModal}>
                     Отмена
                   </Button>
                   <Button
@@ -135,7 +110,7 @@ export default function UsersPage() {
                   >
                     {createUserMutation.isLoading ? (
                       <>
-                        <Spinner className="w-4 h-4 mr-2" />
+                        <Spinner className="mr-2 h-4 w-4" />
                         Создание...
                       </>
                     ) : (
@@ -146,15 +121,19 @@ export default function UsersPage() {
               </form>
             ) : (
               <div>
-                <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <p className="mb-2 font-medium">Пользователь успешно создан!</p>
+                <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+                  <p className="mb-2 font-medium">
+                    Пользователь успешно создан!
+                  </p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-gray-500 dark:text-gray-400">Имя:</p>
                       <p className="font-medium">{createdUser.name}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500 dark:text-gray-400">Код доступа:</p>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        Код доступа:
+                      </p>
                       <p className="font-medium">{createdUser.passCode}</p>
                     </div>
                   </div>
