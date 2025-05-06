@@ -58,7 +58,9 @@ export const cardsRouter = createTRPCRouter({
       // Apply search query if provided
       if (searchQuery) {
         whereClause.OR = [
-          ...(isNaN(Number(searchQuery)) ? [] : [{ id: Number(searchQuery) }]),
+          ...(isNaN(Number(searchQuery))
+            ? []
+            : [{ externalId: Number(searchQuery) }]),
           { provider: { contains: searchQuery, mode: "insensitive" } },
           { bank: { contains: searchQuery, mode: "insensitive" } },
           { cardNumber: { contains: searchQuery, mode: "insensitive" } },

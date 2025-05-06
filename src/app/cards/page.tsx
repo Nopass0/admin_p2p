@@ -6,7 +6,13 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Spinner } from "@heroui/spinner";
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
 import { Tooltip } from "@heroui/tooltip";
 import { Tabs, Tab } from "@heroui/tabs";
@@ -14,22 +20,22 @@ import { Chip } from "@heroui/chip";
 import { Switch } from "@heroui/switch";
 import { Badge } from "@heroui/badge";
 import { Pagination } from "@heroui/pagination";
-import { 
-  PlusIcon, 
-  Search, 
-  RefreshCw, 
-  Edit, 
-  Trash, 
-  CreditCard, 
-  Filter, 
+import {
+  PlusIcon,
+  Search,
+  RefreshCw,
+  Edit,
+  Trash,
+  CreditCard,
+  Filter,
   AlertCircle,
-  CheckCircle, 
-  XCircle, 
-  Calendar, 
+  CheckCircle,
+  XCircle,
+  Calendar,
   DollarSign,
   Info,
   Eye,
-  ArrowUpDown
+  ArrowUpDown,
 } from "lucide-react";
 
 export default function Cards() {
@@ -38,16 +44,16 @@ export default function Cards() {
   const [pageSize, setPageSize] = useState(10);
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState("desc");
-  
+
   // Detailed view toggle
   const [showDetailedView, setShowDetailedView] = useState(false);
-  
+
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterProvider, setFilterProvider] = useState("");
   const [filterBank, setFilterBank] = useState("");
   const [filterInWork, setFilterInWork] = useState(""); // Новый фильтр "В работе"
-  const [filterActor, setFilterActor] = useState("");   // Новый фильтр "Актер"
+  const [filterActor, setFilterActor] = useState(""); // Новый фильтр "Актер"
   const [filterPicachu, setFilterPicachu] = useState("");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
@@ -84,16 +90,16 @@ export default function Cards() {
     initialBalance: 0,
     pouringAmount: 0,
     initialAmount: 0,
-    initialDate: new Date().toISOString().split('T')[0],
-    collectorName: ""
+    initialDate: new Date().toISOString().split("T")[0],
+    collectorName: "",
   });
 
   // Form state for pouring
   const [pouringFormData, setPouringFormData] = useState({
     cardId: 0,
-    pouringDate: new Date().toISOString().split('T')[0],
+    pouringDate: new Date().toISOString().split("T")[0],
     initialAmount: 0,
-    initialDate: new Date().toISOString().split('T')[0],
+    initialDate: new Date().toISOString().split("T")[0],
     finalAmount: null,
     finalDate: null,
     pouringAmount: 0,
@@ -107,10 +113,10 @@ export default function Cards() {
   // Form state for balance
   const [balanceFormData, setBalanceFormData] = useState({
     cardId: 0,
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split("T")[0],
     startBalance: 0,
     endBalance: 0,
-    comment: ""
+    comment: "",
   });
 
   // Конвертировать строку в boolean для фильтра inWork
@@ -123,7 +129,7 @@ export default function Cards() {
   // API Queries
   const filterOptionsQuery = api.cards.getFilterOptions.useQuery();
   const statsQuery = api.cards.getStats.useQuery();
-  
+
   const cardsQuery = api.cards.getAll.useQuery({
     page,
     pageSize,
@@ -140,19 +146,26 @@ export default function Cards() {
   // Card details query for viewing pourings/balances
   const cardDetailsQuery = api.cards.getById.useQuery(
     { id: selectedCard?.id || 0 },
-    { enabled: !!selectedCard && (isViewPouringsModalOpen || isViewBalancesModalOpen || isPouringModalOpen || isBalanceModalOpen) }
+    {
+      enabled:
+        !!selectedCard &&
+        (isViewPouringsModalOpen ||
+          isViewBalancesModalOpen ||
+          isPouringModalOpen ||
+          isBalanceModalOpen),
+    },
   );
-  
+
   // Get card balances
   const cardBalancesQuery = api.cards.getCardBalances.useQuery(
     { cardId: selectedCard?.id || 0 },
-    { enabled: !!selectedCard && isViewBalancesModalOpen }
+    { enabled: !!selectedCard && isViewBalancesModalOpen },
   );
-  
+
   // Get card pourings
   const cardPouringsQuery = api.cards.getCardPourings.useQuery(
     { cardId: selectedCard?.id || 0 },
-    { enabled: !!selectedCard && isViewPouringsModalOpen }
+    { enabled: !!selectedCard && isViewPouringsModalOpen },
   );
 
   // Safe filter options with fallbacks
@@ -231,7 +244,7 @@ export default function Cards() {
       resetBalanceForm();
     },
   });
-  
+
   const updateBalanceMutation = api.cards.updateBalance.useMutation({
     onSuccess: () => {
       cardsQuery.refetch();
@@ -242,7 +255,7 @@ export default function Cards() {
       setIsBalanceModalOpen(false);
     },
   });
-  
+
   const deleteBalanceMutation = api.cards.deleteBalance.useMutation({
     onSuccess: () => {
       cardsQuery.refetch();
@@ -256,16 +269,16 @@ export default function Cards() {
   // Form handlers
   const handleCardFormChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+
     // Обработка чекбоксов
     if (type === "checkbox") {
       setCardFormData({
         ...cardFormData,
-        [name]: checked
+        [name]: checked,
       });
       return;
     }
-    
+
     setCardFormData({
       ...cardFormData,
       [name]: type === "number" ? Number(value) : value,
@@ -274,15 +287,15 @@ export default function Cards() {
 
   const handlePouringFormChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+
     if (type === "checkbox") {
       setPouringFormData({
         ...pouringFormData,
-        [name]: checked
+        [name]: checked,
       });
       return;
     }
-    
+
     setPouringFormData({
       ...pouringFormData,
       [name]: type === "number" ? Number(value) : value,
@@ -291,15 +304,15 @@ export default function Cards() {
 
   const handleBalanceFormChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+
     if (type === "checkbox") {
       setBalanceFormData({
         ...balanceFormData,
-        [name]: checked
+        [name]: checked,
       });
       return;
     }
-    
+
     setBalanceFormData({
       ...balanceFormData,
       [name]: type === "number" ? Number(value) : value,
@@ -315,7 +328,7 @@ export default function Cards() {
     e.preventDefault();
     updateCardMutation.mutate({
       id: selectedCard.id,
-      ...cardFormData
+      ...cardFormData,
     });
   };
 
@@ -370,17 +383,17 @@ export default function Cards() {
       initialBalance: 0,
       pouringAmount: 0,
       initialAmount: 0,
-      initialDate: new Date().toISOString().split('T')[0],
-      collectorName: ""
+      initialDate: new Date().toISOString().split("T")[0],
+      collectorName: "",
     });
   };
 
   const resetPouringForm = () => {
     setPouringFormData({
       cardId: selectedCard?.id || 0,
-      pouringDate: new Date().toISOString().split('T')[0],
+      pouringDate: new Date().toISOString().split("T")[0],
       initialAmount: 0,
-      initialDate: new Date().toISOString().split('T')[0],
+      initialDate: new Date().toISOString().split("T")[0],
       finalAmount: null,
       finalDate: null,
       pouringAmount: 0,
@@ -395,10 +408,10 @@ export default function Cards() {
   const resetBalanceForm = () => {
     setBalanceFormData({
       cardId: selectedCard?.id || 0,
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split("T")[0],
       startBalance: 0,
       endBalance: 0,
-      comment: ""
+      comment: "",
     });
   };
 
@@ -413,24 +426,26 @@ export default function Cards() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString('ru-RU');
+    return new Date(dateString).toLocaleDateString("ru-RU");
   };
 
   const formatDateTime = (dateString) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleString('ru-RU');
+    return new Date(dateString).toLocaleString("ru-RU");
   };
 
   const formatNumber = (number, decimals = 2) => {
     if (number === null || number === undefined) return "—";
-    return number.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
+    return (
+      number.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽"
+    );
   };
 
   const clearFilters = () => {
     setFilterProvider("");
     setFilterBank("");
-    setFilterInWork("");  // Очистка нового фильтра
-    setFilterActor("");   // Очистка нового фильтра
+    setFilterInWork(""); // Очистка нового фильтра
+    setFilterActor(""); // Очистка нового фильтра
     setFilterPicachu("");
     setSearchQuery("");
   };
@@ -452,13 +467,17 @@ export default function Cards() {
       cardPrice: card.cardPrice || 0,
       isPaid: card.isPaid || false,
       inWork: card.inWork || false,
-      actor: card.actor || ""
+      actor: card.actor || "",
     });
     setIsEditModalOpen(true);
   };
 
   const handleDeleteCardClick = (id) => {
-    if (confirm("Вы уверены, что хотите удалить эту карту? Это действие нельзя отменить.")) {
+    if (
+      confirm(
+        "Вы уверены, что хотите удалить эту карту? Это действие нельзя отменить.",
+      )
+    ) {
       deleteCardMutation.mutate({ id });
     }
   };
@@ -478,14 +497,18 @@ export default function Cards() {
     setSelectedPouring(pouring);
     setPouringFormData({
       cardId: pouring.cardId,
-      pouringDate: new Date(pouring.pouringDate).toISOString().split('T')[0],
+      pouringDate: new Date(pouring.pouringDate).toISOString().split("T")[0],
       initialAmount: pouring.initialAmount,
-      initialDate: new Date(pouring.initialDate).toISOString().split('T')[0],
+      initialDate: new Date(pouring.initialDate).toISOString().split("T")[0],
       finalAmount: pouring.finalAmount || null,
-      finalDate: pouring.finalDate ? new Date(pouring.finalDate).toISOString().split('T')[0] : null,
+      finalDate: pouring.finalDate
+        ? new Date(pouring.finalDate).toISOString().split("T")[0]
+        : null,
       pouringAmount: pouring.pouringAmount,
       withdrawalAmount: pouring.withdrawalAmount || null,
-      withdrawalDate: pouring.withdrawalDate ? new Date(pouring.withdrawalDate).toISOString().split('T')[0] : null,
+      withdrawalDate: pouring.withdrawalDate
+        ? new Date(pouring.withdrawalDate).toISOString().split("T")[0]
+        : null,
       collectorName: pouring.collectorName || "",
       status: pouring.status,
       comment: pouring.comment || "",
@@ -494,7 +517,11 @@ export default function Cards() {
   };
 
   const handleDeletePouringClick = (id) => {
-    if (confirm("Вы уверены, что хотите удалить этот пролив? Это действие нельзя отменить.")) {
+    if (
+      confirm(
+        "Вы уверены, что хотите удалить этот пролив? Это действие нельзя отменить.",
+      )
+    ) {
       deletePouringMutation.mutate({ id });
     }
   };
@@ -514,16 +541,20 @@ export default function Cards() {
     setSelectedBalance(balance);
     setBalanceFormData({
       cardId: balance.cardId,
-      date: new Date(balance.date).toISOString().split('T')[0],
+      date: new Date(balance.date).toISOString().split("T")[0],
       startBalance: balance.startBalance,
       endBalance: balance.endBalance,
-      comment: balance.comment || ""
+      comment: balance.comment || "",
     });
     setIsBalanceModalOpen(true);
   };
 
   const handleDeleteBalanceClick = (id) => {
-    if (confirm("Вы уверены, что хотите удалить эту запись баланса? Это действие нельзя отменить.")) {
+    if (
+      confirm(
+        "Вы уверены, что хотите удалить эту запись баланса? Это действие нельзя отменить.",
+      )
+    ) {
       deleteBalanceMutation.mutate({ id });
     }
   };
@@ -532,7 +563,7 @@ export default function Cards() {
   const renderPaymentMethod = (card) => {
     const hasCardNumber = card.cardNumber && card.cardNumber.trim() !== "";
     const hasPhoneNumber = card.phoneNumber && card.phoneNumber.trim() !== "";
-    
+
     if (hasCardNumber && hasPhoneNumber) {
       return (
         <div className="flex flex-col space-y-1">
@@ -560,24 +591,27 @@ export default function Cards() {
   };
 
   return (
-    <div className="w-full mx-auto px-4 py-8">
+    <div className="mx-auto w-full px-4 py-8">
       <Card className="w-full">
-        <CardHeader className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+        <CardHeader className="flex items-center justify-between">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
             <CreditCard className="h-6 w-6" />
             Карты
           </h1>
           <div className="flex items-center gap-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400"
+                size={18}
+              />
               <Input
-                className="pl-10 w-64"
+                className="w-64 pl-10"
                 placeholder="Поиск карт..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Switch
                 checked={showDetailedView}
@@ -585,21 +619,32 @@ export default function Cards() {
               />
               <span className="text-sm">Детализированный просмотр</span>
             </div>
-            
+
             <Button
               variant="flat"
               startContent={<Filter size={18} />}
               onPress={() => setIsFilterMenuOpen(true)}
             >
               Фильтры
-              {(filterProvider || filterBank || filterInWork || filterActor || filterPicachu) && (
+              {(filterProvider ||
+                filterBank ||
+                filterInWork ||
+                filterActor ||
+                filterPicachu) && (
                 <Chip size="sm" className="ml-2">
-                  {[filterProvider, filterBank, filterInWork, filterActor, filterPicachu]
-                    .filter(Boolean).length}
+                  {
+                    [
+                      filterProvider,
+                      filterBank,
+                      filterInWork,
+                      filterActor,
+                      filterPicachu,
+                    ].filter(Boolean).length
+                  }
                 </Chip>
               )}
             </Button>
-            
+
             <Button
               color="primary"
               startContent={<PlusIcon size={18} />}
@@ -607,7 +652,7 @@ export default function Cards() {
             >
               Добавить карту
             </Button>
-            
+
             <Button
               isIconOnly
               variant="light"
@@ -622,12 +667,14 @@ export default function Cards() {
         </CardHeader>
         <CardBody>
           {/* Statistics cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-blue-50 dark:bg-blue-900/20 shadow-sm">
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <Card className="bg-blue-50 shadow-sm dark:bg-blue-900/20">
               <CardBody className="p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая стоимость карт</span>
-                  <DollarSign className="w-4 h-4 text-blue-500" />
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                    Общая стоимость карт
+                  </span>
+                  <DollarSign className="h-4 w-4 text-blue-500" />
                 </div>
                 <div className="flex items-center">
                   <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -637,11 +684,13 @@ export default function Cards() {
               </CardBody>
             </Card>
 
-            <Card className="bg-green-50 dark:bg-green-900/20 shadow-sm">
+            <Card className="bg-green-50 shadow-sm dark:bg-green-900/20">
               <CardBody className="p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая сумма балансов</span>
-                  <CheckCircle className="w-4 h-4 text-green-500" />
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                    Общая сумма балансов
+                  </span>
+                  <CheckCircle className="h-4 w-4 text-green-500" />
                 </div>
                 <div className="flex items-center">
                   <span className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -651,11 +700,13 @@ export default function Cards() {
               </CardBody>
             </Card>
 
-            <Card className="bg-amber-50 dark:bg-amber-900/20 shadow-sm">
+            <Card className="bg-amber-50 shadow-sm dark:bg-amber-900/20">
               <CardBody className="p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Общая сумма пролитого</span>
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                    Общая сумма пролитого
+                  </span>
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
                 </div>
                 <div className="flex items-center">
                   <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
@@ -665,15 +716,20 @@ export default function Cards() {
               </CardBody>
             </Card>
 
-            <Card className="bg-purple-50 dark:bg-purple-900/20 shadow-sm">
+            <Card className="bg-purple-50 shadow-sm dark:bg-purple-900/20">
               <CardBody className="p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Сумма всех выплат</span>
-                  <DollarSign className="w-4 h-4 text-purple-500" />
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                    Сумма всех выплат
+                  </span>
+                  <DollarSign className="h-4 w-4 text-purple-500" />
                 </div>
                 <div className="flex items-center">
                   <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    {formatNumber(statsQuery.data?.totalWithdrawalAmount || 0, 0)}
+                    {formatNumber(
+                      statsQuery.data?.totalWithdrawalAmount || 0,
+                      0,
+                    )}
                   </span>
                 </div>
               </CardBody>
@@ -691,78 +747,108 @@ export default function Cards() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th 
-                        scope="col" 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      <th
+                        scope="col"
+                        className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                         onClick={() => handleSort("id")}
                       >
                         <div className="flex items-center">
                           ID
                           <ArrowUpDown size={14} className="ml-1" />
-                          {sortBy === "id" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          {sortBy === "id" && (
+                            <span className="ml-1">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
                         </div>
                       </th>
-                      <th 
-                        scope="col" 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      <th
+                        scope="col"
+                        className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                         onClick={() => handleSort("bank")}
                       >
                         <div className="flex items-center">
                           Банк
                           <ArrowUpDown size={14} className="ml-1" />
-                          {sortBy === "bank" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          {sortBy === "bank" && (
+                            <span className="ml-1">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         C2C / СБП
                       </th>
                       {showDetailedView && (
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        <th
+                          scope="col"
+                          className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                           onClick={() => handleSort("provider")}
                         >
                           <div className="flex items-center">
                             Поставщик
                             <ArrowUpDown size={14} className="ml-1" />
-                            {sortBy === "provider" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                            {sortBy === "provider" && (
+                              <span className="ml-1">
+                                {sortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
                           </div>
                         </th>
                       )}
-                      <th 
-                        scope="col" 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      <th
+                        scope="col"
+                        className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                         onClick={() => handleSort("cardPrice")}
                       >
                         <div className="flex items-center">
                           Стоимость
                           <ArrowUpDown size={14} className="ml-1" />
-                          {sortBy === "cardPrice" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          {sortBy === "cardPrice" && (
+                            <span className="ml-1">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
                         </div>
                       </th>
-                      <th 
-                        scope="col" 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      <th
+                        scope="col"
+                        className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                         onClick={() => handleSort("isPaid")}
                       >
                         <div className="flex items-center">
                           Оплата
                           <ArrowUpDown size={14} className="ml-1" />
-                          {sortBy === "isPaid" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          {sortBy === "isPaid" && (
+                            <span className="ml-1">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
                         </div>
                       </th>
-                      <th 
-                        scope="col" 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      <th
+                        scope="col"
+                        className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                         onClick={() => handleSort("inWork")}
                       >
                         <div className="flex items-center">
                           В работе
                           <ArrowUpDown size={14} className="ml-1" />
-                          {sortBy === "inWork" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                          {sortBy === "inWork" && (
+                            <span className="ml-1">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         <div className="flex items-center justify-end">
                           Баланс на начало
                           <Tooltip content="Баланс на начало пролива">
@@ -770,7 +856,10 @@ export default function Cards() {
                           </Tooltip>
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         <div className="flex items-center justify-end">
                           Баланс на конец
                           <Tooltip content="Баланс на конец пролива">
@@ -778,7 +867,10 @@ export default function Cards() {
                           </Tooltip>
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         <div className="flex items-center justify-end">
                           Пролито
                           <Tooltip content="Разница балансов">
@@ -786,7 +878,10 @@ export default function Cards() {
                           </Tooltip>
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         <div className="flex items-center justify-end">
                           Сумма выплат
                           <Tooltip content="Общая сумма выплат">
@@ -795,27 +890,38 @@ export default function Cards() {
                         </div>
                       </th>
                       {showDetailedView && (
-                        <th 
-                          scope="col" 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        <th
+                          scope="col"
+                          className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                           onClick={() => handleSort("actor")}
                         >
                           <div className="flex items-center">
                             Актер
                             <ArrowUpDown size={14} className="ml-1" />
-                            {sortBy === "actor" && <span className="ml-1">{sortDirection === "asc" ? "↑" : "↓"}</span>}
+                            {sortBy === "actor" && (
+                              <span className="ml-1">
+                                {sortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
                           </div>
                         </th>
                       )}
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
                         Действия
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {!cardsQuery.data?.cards || cardsQuery.data.cards.length === 0 ? (
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {!cardsQuery.data?.cards ||
+                    cardsQuery.data.cards.length === 0 ? (
                       <tr>
-                        <td colSpan={showDetailedView ? 13 : 11} className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                        <td
+                          colSpan={showDetailedView ? 13 : 11}
+                          className="whitespace-nowrap px-6 py-4 text-center text-sm text-gray-500"
+                        >
                           Нет данных для отображения
                         </td>
                       </tr>
@@ -823,54 +929,78 @@ export default function Cards() {
                       cardsQuery.data.cards.map((card) => {
                         const latestPouring = getLatestPouring(card);
                         const latestBalance = getLatestBalance(card);
-                        
+
                         return (
                           <tr key={card.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.id}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.bank}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">{renderPaymentMethod(card)}</td>
-                            
-                            {showDetailedView && (
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.provider}</td>
-                            )}
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {card.cardPrice ? formatNumber(card.cardPrice, 0) : "—"}
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                              {card.externalId}
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                              <Badge color={card.isPaid ? "success" : "warning"}>
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                              {card.bank}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-sm">
+                              {renderPaymentMethod(card)}
+                            </td>
+
+                            {showDetailedView && (
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                                {card.provider}
+                              </td>
+                            )}
+
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                              {card.cardPrice
+                                ? formatNumber(card.cardPrice, 0)
+                                : "—"}
+                            </td>
+
+                            <td className="whitespace-nowrap px-6 py-4 text-sm">
+                              <Badge
+                                color={card.isPaid ? "success" : "warning"}
+                              >
                                 {card.isPaid ? "Оплачено" : "Не оплачено"}
                               </Badge>
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                              <Badge color={card.inWork ? "primary" : "default"}>
+
+                            <td className="whitespace-nowrap px-6 py-4 text-sm">
+                              <Badge
+                                color={card.inWork ? "primary" : "default"}
+                              >
                                 {card.inWork ? "Да" : "Нет"}
                               </Badge>
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                              {latestPouring ? formatNumber(latestPouring.initialAmount) : "—"}
+
+                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
+                              {latestPouring
+                                ? formatNumber(latestPouring.initialAmount)
+                                : "—"}
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                              {latestPouring && latestPouring.finalAmount ? formatNumber(latestPouring.finalAmount) : "—"}
+
+                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
+                              {latestPouring && latestPouring.finalAmount
+                                ? formatNumber(latestPouring.finalAmount)
+                                : "—"}
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                              {latestPouring ? formatNumber(latestPouring.pouringAmount) : "—"}
+
+                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
+                              {latestPouring
+                                ? formatNumber(latestPouring.pouringAmount)
+                                : "—"}
                             </td>
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                              {latestPouring && latestPouring.withdrawalAmount ? formatNumber(latestPouring.withdrawalAmount) : "—"}
+
+                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
+                              {latestPouring && latestPouring.withdrawalAmount
+                                ? formatNumber(latestPouring.withdrawalAmount)
+                                : "—"}
                             </td>
-                            
+
                             {showDetailedView && (
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{card.actor || "—"}</td>
+                              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                                {card.actor || "—"}
+                              </td>
                             )}
-                            
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+
+                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                               <div className="flex items-center justify-end gap-1">
                                 <Button
                                   isIconOnly
@@ -881,7 +1011,7 @@ export default function Cards() {
                                 >
                                   <Edit size={16} />
                                 </Button>
-                                
+
                                 <Button
                                   isIconOnly
                                   size="sm"
@@ -892,7 +1022,7 @@ export default function Cards() {
                                 >
                                   <DollarSign size={16} />
                                 </Button>
-                                
+
                                 <Button
                                   isIconOnly
                                   size="sm"
@@ -903,7 +1033,7 @@ export default function Cards() {
                                 >
                                   <Eye size={16} />
                                 </Button>
-                                
+
                                 <Button
                                   isIconOnly
                                   size="sm"
@@ -914,7 +1044,7 @@ export default function Cards() {
                                 >
                                   <DollarSign size={16} />
                                 </Button>
-                                
+
                                 <Button
                                   isIconOnly
                                   size="sm"
@@ -925,7 +1055,7 @@ export default function Cards() {
                                 >
                                   <Calendar size={16} />
                                 </Button>
-                                
+
                                 <Button
                                   isIconOnly
                                   size="sm"
@@ -946,7 +1076,7 @@ export default function Cards() {
                 </table>
               </div>
 
-              <div className="flex justify-between items-center mt-4">
+              <div className="mt-4 flex items-center justify-between">
                 <div className="text-sm text-gray-500">
                   Всего: {cardsQuery.data?.totalCount || 0} карт
                 </div>
@@ -962,8 +1092,8 @@ export default function Cards() {
       </Card>
 
       {/* Filter Modal */}
-      <Modal 
-        isOpen={isFilterMenuOpen} 
+      <Modal
+        isOpen={isFilterMenuOpen}
         onClose={() => setIsFilterMenuOpen(false)}
         size="sm"
       >
@@ -972,37 +1102,51 @@ export default function Cards() {
           <ModalBody>
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Банк</label>
+                <label className="mb-1 block text-sm font-medium">Банк</label>
                 <Select
                   value={filterBank}
                   onChange={(e) => setFilterBank(e.target.value)}
                   className="w-full"
                 >
                   <SelectItem value="">Все</SelectItem>
-                  {(Array.isArray(safeFilterOptions.banks) ? safeFilterOptions.banks : []).map(bank => (
-                    <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                  {(Array.isArray(safeFilterOptions.banks)
+                    ? safeFilterOptions.banks
+                    : []
+                  ).map((bank) => (
+                    <SelectItem key={bank} value={bank}>
+                      {bank}
+                    </SelectItem>
                   ))}
                 </Select>
               </div>
-              
+
               {showDetailedView && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Поставщик</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Поставщик
+                  </label>
                   <Select
                     value={filterProvider}
                     onChange={(e) => setFilterProvider(e.target.value)}
                     className="w-full"
                   >
                     <SelectItem value="">Все</SelectItem>
-                    {(Array.isArray(safeFilterOptions.providers) ? safeFilterOptions.providers : []).map(provider => (
-                      <SelectItem key={provider} value={provider}>{provider}</SelectItem>
+                    {(Array.isArray(safeFilterOptions.providers)
+                      ? safeFilterOptions.providers
+                      : []
+                    ).map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {provider}
+                      </SelectItem>
                     ))}
                   </Select>
                 </div>
               )}
-              
+
               <div>
-                <label className="block text-sm font-medium mb-1">В работе</label>
+                <label className="mb-1 block text-sm font-medium">
+                  В работе
+                </label>
                 <Select
                   value={filterInWork}
                   onChange={(e) => setFilterInWork(e.target.value)}
@@ -1013,49 +1157,55 @@ export default function Cards() {
                   <SelectItem value="no">Нет</SelectItem>
                 </Select>
               </div>
-              
+
               {showDetailedView && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Актер</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Актер
+                  </label>
                   <Select
                     value={filterActor}
                     onChange={(e) => setFilterActor(e.target.value)}
                     className="w-full"
                   >
                     <SelectItem value="">Все</SelectItem>
-                    {(Array.isArray(safeFilterOptions.actors) ? safeFilterOptions.actors : []).map(actor => (
-                      <SelectItem key={actor} value={actor}>{actor}</SelectItem>
+                    {(Array.isArray(safeFilterOptions.actors)
+                      ? safeFilterOptions.actors
+                      : []
+                    ).map((actor) => (
+                      <SelectItem key={actor} value={actor}>
+                        {actor}
+                      </SelectItem>
                     ))}
                   </Select>
                 </div>
               )}
-              
+
               <div>
-                <label className="block text-sm font-medium mb-1">Пикачу</label>
+                <label className="mb-1 block text-sm font-medium">Пикачу</label>
                 <Select
                   value={filterPicachu}
                   onChange={(e) => setFilterPicachu(e.target.value)}
                   className="w-full"
                 >
                   <SelectItem value="">Все</SelectItem>
-                  {(Array.isArray(safeFilterOptions.picachus) ? safeFilterOptions.picachus : []).map(picachu => (
-                    <SelectItem key={picachu} value={picachu}>{picachu}</SelectItem>
+                  {(Array.isArray(safeFilterOptions.picachus)
+                    ? safeFilterOptions.picachus
+                    : []
+                  ).map((picachu) => (
+                    <SelectItem key={picachu} value={picachu}>
+                      {picachu}
+                    </SelectItem>
                   ))}
                 </Select>
               </div>
             </div>
           </ModalBody>
           <ModalFooter>
-            <Button
-              variant="flat"
-              onPress={clearFilters}
-            >
+            <Button variant="flat" onPress={clearFilters}>
               Сбросить
             </Button>
-            <Button
-              color="primary"
-              onPress={() => setIsFilterMenuOpen(false)}
-            >
+            <Button color="primary" onPress={() => setIsFilterMenuOpen(false)}>
               Применить
             </Button>
           </ModalFooter>
@@ -1063,8 +1213,8 @@ export default function Cards() {
       </Modal>
 
       {/* Create Card Modal */}
-      <Modal 
-        isOpen={isCreateModalOpen} 
+      <Modal
+        isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         size="2xl"
       >
@@ -1074,9 +1224,11 @@ export default function Cards() {
             <ModalBody>
               <Tabs>
                 <Tab key="card-info" title="Основная информация">
-                  <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="mt-4 grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Внешний ID</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Внешний ID
+                      </label>
                       <Input
                         name="externalId"
                         type="number"
@@ -1086,7 +1238,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Поставщик</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Поставщик
+                      </label>
                       <Input
                         name="provider"
                         value={cardFormData.provider}
@@ -1095,7 +1249,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Номер карты (C2C)</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Номер карты (C2C)
+                      </label>
                       <Input
                         name="cardNumber"
                         value={cardFormData.cardNumber}
@@ -1104,7 +1260,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Банк</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Банк
+                      </label>
                       <Input
                         name="bank"
                         value={cardFormData.bank}
@@ -1113,7 +1271,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Номер телефона (СБП)</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Номер телефона (СБП)
+                      </label>
                       <Input
                         name="phoneNumber"
                         value={cardFormData.phoneNumber}
@@ -1122,7 +1282,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">PIN приложения</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        PIN приложения
+                      </label>
                       <Input
                         name="appPin"
                         type="number"
@@ -1132,7 +1294,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">PIN терминала</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        PIN терминала
+                      </label>
                       <Input
                         name="terminalPin"
                         value={cardFormData.terminalPin}
@@ -1141,19 +1305,29 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Статус</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Статус
+                      </label>
                       <Select
                         name="status"
                         value={cardFormData.status}
                         onChange={handleCardFormChange}
                       >
-                        <SelectItem key="ACTIVE" value="ACTIVE">Активна</SelectItem>
-                        <SelectItem key="WARNING" value="WARNING">Внимание</SelectItem>
-                        <SelectItem key="BLOCKED" value="BLOCKED">Заблокирована</SelectItem>
+                        <SelectItem key="ACTIVE" value="ACTIVE">
+                          Активна
+                        </SelectItem>
+                        <SelectItem key="WARNING" value="WARNING">
+                          Внимание
+                        </SelectItem>
+                        <SelectItem key="BLOCKED" value="BLOCKED">
+                          Заблокирована
+                        </SelectItem>
                       </Select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Пикачу</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Пикачу
+                      </label>
                       <Input
                         name="picachu"
                         value={cardFormData.picachu}
@@ -1161,7 +1335,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Актер</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Актер
+                      </label>
                       <Input
                         name="actor"
                         value={cardFormData.actor}
@@ -1169,7 +1345,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Стоимость карты</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Стоимость карты
+                      </label>
                       <Input
                         name="cardPrice"
                         type="number"
@@ -1189,7 +1367,10 @@ export default function Cards() {
                         />
                       </div>
                       <div className="ml-3 text-sm">
-                        <label htmlFor="isPaid" className="font-medium text-gray-700">
+                        <label
+                          htmlFor="isPaid"
+                          className="font-medium text-gray-700"
+                        >
                           Карта оплачена
                         </label>
                       </div>
@@ -1206,13 +1387,18 @@ export default function Cards() {
                         />
                       </div>
                       <div className="ml-3 text-sm">
-                        <label htmlFor="inWork" className="font-medium text-gray-700">
+                        <label
+                          htmlFor="inWork"
+                          className="font-medium text-gray-700"
+                        >
                           В работе
                         </label>
                       </div>
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium mb-1">Комментарий</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Комментарий
+                      </label>
                       <Input
                         name="comment"
                         value={cardFormData.comment}
@@ -1222,9 +1408,11 @@ export default function Cards() {
                   </div>
                 </Tab>
                 <Tab key="pouring-info" title="Начальный пролив">
-                  <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="mt-4 grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Сумма начального пролива</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Сумма начального пролива
+                      </label>
                       <Input
                         name="pouringAmount"
                         type="number"
@@ -1233,7 +1421,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Начальная сумма</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Начальная сумма
+                      </label>
                       <Input
                         name="initialAmount"
                         type="number"
@@ -1242,7 +1432,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Дата начала</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Дата начала
+                      </label>
                       <Input
                         name="initialDate"
                         type="date"
@@ -1251,7 +1443,9 @@ export default function Cards() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Инкассатор</label>
+                      <label className="mb-1 block text-sm font-medium">
+                        Инкассатор
+                      </label>
                       <Input
                         name="collectorName"
                         value={cardFormData.collectorName}
@@ -1263,10 +1457,17 @@ export default function Cards() {
               </Tabs>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onPress={() => setIsCreateModalOpen(false)}>
+              <Button
+                variant="flat"
+                onPress={() => setIsCreateModalOpen(false)}
+              >
                 Отмена
               </Button>
-              <Button color="primary" type="submit" isLoading={createCardMutation.isLoading}>
+              <Button
+                color="primary"
+                type="submit"
+                isLoading={createCardMutation.isLoading}
+              >
                 Создать
               </Button>
             </ModalFooter>
@@ -1275,8 +1476,8 @@ export default function Cards() {
       </Modal>
 
       {/* Edit Card Modal */}
-      <Modal 
-        isOpen={isEditModalOpen} 
+      <Modal
+        isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         size="2xl"
       >
@@ -1286,7 +1487,9 @@ export default function Cards() {
             <ModalBody>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Внешний ID</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Внешний ID
+                  </label>
                   <Input
                     name="externalId"
                     type="number"
@@ -1296,7 +1499,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Поставщик</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Поставщик
+                  </label>
                   <Input
                     name="provider"
                     value={cardFormData.provider}
@@ -1305,7 +1510,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Номер карты (C2C)</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Номер карты (C2C)
+                  </label>
                   <Input
                     name="cardNumber"
                     value={cardFormData.cardNumber}
@@ -1314,7 +1521,7 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Банк</label>
+                  <label className="mb-1 block text-sm font-medium">Банк</label>
                   <Input
                     name="bank"
                     value={cardFormData.bank}
@@ -1323,7 +1530,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Номер телефона (СБП)</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Номер телефона (СБП)
+                  </label>
                   <Input
                     name="phoneNumber"
                     value={cardFormData.phoneNumber}
@@ -1332,7 +1541,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">PIN приложения</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    PIN приложения
+                  </label>
                   <Input
                     name="appPin"
                     type="number"
@@ -1342,7 +1553,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">PIN терминала</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    PIN терминала
+                  </label>
                   <Input
                     name="terminalPin"
                     value={cardFormData.terminalPin}
@@ -1351,20 +1564,30 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Статус</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Статус
+                  </label>
                   <Select
                     name="status"
                     value={cardFormData.status}
                     onChange={handleCardFormChange}
                     required
                   >
-                    <SelectItem key="ACTIVE" value="ACTIVE">Активна</SelectItem>
-                    <SelectItem key="WARNING" value="WARNING">Внимание</SelectItem>
-                    <SelectItem key="BLOCKED" value="BLOCKED">Заблокирована</SelectItem>
+                    <SelectItem key="ACTIVE" value="ACTIVE">
+                      Активна
+                    </SelectItem>
+                    <SelectItem key="WARNING" value="WARNING">
+                      Внимание
+                    </SelectItem>
+                    <SelectItem key="BLOCKED" value="BLOCKED">
+                      Заблокирована
+                    </SelectItem>
                   </Select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Пикачу</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Пикачу
+                  </label>
                   <Input
                     name="picachu"
                     value={cardFormData.picachu}
@@ -1372,7 +1595,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Актер</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Актер
+                  </label>
                   <Input
                     name="actor"
                     value={cardFormData.actor}
@@ -1380,7 +1605,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Цена карты</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Цена карты
+                  </label>
                   <Input
                     name="cardPrice"
                     type="number"
@@ -1400,7 +1627,10 @@ export default function Cards() {
                     />
                   </div>
                   <div className="ml-3 text-sm">
-                    <label htmlFor="isPaid" className="font-medium text-gray-700">
+                    <label
+                      htmlFor="isPaid"
+                      className="font-medium text-gray-700"
+                    >
                       Карта оплачена
                     </label>
                   </div>
@@ -1417,13 +1647,18 @@ export default function Cards() {
                     />
                   </div>
                   <div className="ml-3 text-sm">
-                    <label htmlFor="inWork" className="font-medium text-gray-700">
+                    <label
+                      htmlFor="inWork"
+                      className="font-medium text-gray-700"
+                    >
                       В работе
                     </label>
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1">Комментарий</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Комментарий
+                  </label>
                   <Input
                     name="comment"
                     value={cardFormData.comment}
@@ -1436,7 +1671,11 @@ export default function Cards() {
               <Button variant="flat" onPress={() => setIsEditModalOpen(false)}>
                 Отмена
               </Button>
-              <Button color="primary" type="submit" isLoading={updateCardMutation.isLoading}>
+              <Button
+                color="primary"
+                type="submit"
+                isLoading={updateCardMutation.isLoading}
+              >
                 Обновить
               </Button>
             </ModalFooter>
@@ -1445,22 +1684,24 @@ export default function Cards() {
       </Modal>
 
       {/* View Pourings Modal */}
-      <Modal 
-        isOpen={isViewPouringsModalOpen} 
+      <Modal
+        isOpen={isViewPouringsModalOpen}
         onClose={() => setIsViewPouringsModalOpen(false)}
         size="4xl"
       >
         <ModalContent>
           <ModalHeader>
-            История проливов для карты #{selectedCard?.id} ({selectedCard?.bank})
+            История проливов для карты #{selectedCard?.id} ({selectedCard?.bank}
+            )
           </ModalHeader>
           <ModalBody>
             {cardPouringsQuery.isLoading ? (
-              <div className="flex justify-center my-6">
+              <div className="my-6 flex justify-center">
                 <Spinner size="lg" />
               </div>
-            ) : !cardPouringsQuery.data || cardPouringsQuery.data.length === 0 ? (
-              <div className="text-center py-6 text-gray-500">
+            ) : !cardPouringsQuery.data ||
+              cardPouringsQuery.data.length === 0 ? (
+              <div className="py-6 text-center text-gray-500">
                 Нет данных о проливах для этой карты
               </div>
             ) : (
@@ -1468,37 +1709,130 @@ export default function Cards() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата пролива</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Начальная сумма</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата начальной суммы</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Конечная сумма</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата конечной суммы</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Пролито</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Выплата</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата выплаты</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Инкассатор</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Дата пролива
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Начальная сумма
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Дата начальной суммы
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Конечная сумма
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Дата конечной суммы
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Пролито
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Выплата
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Дата выплаты
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Инкассатор
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Статус
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Действия
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 bg-white">
                     {cardPouringsQuery.data.map((pouring) => (
                       <tr key={pouring.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(pouring.pouringDate)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(pouring.initialAmount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(pouring.initialDate)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{pouring.finalAmount ? formatNumber(pouring.finalAmount) : "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.finalDate ? formatDate(pouring.finalDate) : "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(pouring.pouringAmount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{pouring.withdrawalAmount ? formatNumber(pouring.withdrawalAmount) : "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.withdrawalDate ? formatDate(pouring.withdrawalDate) : "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pouring.collectorName || "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <Badge color={pouring.status === "ACTIVE" ? "success" : pouring.status === "WARNING" ? "warning" : "danger"}>
-                            {pouring.status === "ACTIVE" ? "Активно" : pouring.status === "WARNING" ? "Внимание" : "Заблокировано"}
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {formatDate(pouring.pouringDate)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {formatNumber(pouring.initialAmount)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {formatDate(pouring.initialDate)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {pouring.finalAmount
+                            ? formatNumber(pouring.finalAmount)
+                            : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {pouring.finalDate
+                            ? formatDate(pouring.finalDate)
+                            : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {formatNumber(pouring.pouringAmount)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {pouring.withdrawalAmount
+                            ? formatNumber(pouring.withdrawalAmount)
+                            : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {pouring.withdrawalDate
+                            ? formatDate(pouring.withdrawalDate)
+                            : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {pouring.collectorName || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm">
+                          <Badge
+                            color={
+                              pouring.status === "ACTIVE"
+                                ? "success"
+                                : pouring.status === "WARNING"
+                                  ? "warning"
+                                  : "danger"
+                            }
+                          >
+                            {pouring.status === "ACTIVE"
+                              ? "Активно"
+                              : pouring.status === "WARNING"
+                                ? "Внимание"
+                                : "Заблокировано"}
                           </Badge>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                           <div className="flex justify-end space-x-2">
                             <Button
                               isIconOnly
@@ -1514,7 +1848,9 @@ export default function Cards() {
                               size="sm"
                               variant="light"
                               color="danger"
-                              onPress={() => handleDeletePouringClick(pouring.id)}
+                              onPress={() =>
+                                handleDeletePouringClick(pouring.id)
+                              }
                               title="Удалить пролив"
                             >
                               <Trash size={16} />
@@ -1529,8 +1865,8 @@ export default function Cards() {
             )}
           </ModalBody>
           <ModalFooter>
-            <Button 
-              color="primary" 
+            <Button
+              color="primary"
               onPress={() => {
                 handleAddPouringClick(selectedCard);
                 setIsViewPouringsModalOpen(false);
@@ -1538,7 +1874,10 @@ export default function Cards() {
             >
               Добавить пролив
             </Button>
-            <Button variant="flat" onPress={() => setIsViewPouringsModalOpen(false)}>
+            <Button
+              variant="flat"
+              onPress={() => setIsViewPouringsModalOpen(false)}
+            >
               Закрыть
             </Button>
           </ModalFooter>
@@ -1546,20 +1885,28 @@ export default function Cards() {
       </Modal>
 
       {/* Add/Edit Pouring Modal */}
-      <Modal 
-        isOpen={isPouringModalOpen} 
+      <Modal
+        isOpen={isPouringModalOpen}
         onClose={() => setIsPouringModalOpen(false)}
         size="2xl"
       >
         <ModalContent>
-          <form onSubmit={selectedPouring ? handleUpdatePouringSubmit : handleCreatePouringSubmit}>
+          <form
+            onSubmit={
+              selectedPouring
+                ? handleUpdatePouringSubmit
+                : handleCreatePouringSubmit
+            }
+          >
             <ModalHeader>
               {selectedPouring ? "Редактировать пролив" : "Добавить пролив"}
             </ModalHeader>
             <ModalBody>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Дата пролива</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Дата пролива
+                  </label>
                   <Input
                     name="pouringDate"
                     type="date"
@@ -1569,7 +1916,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Сумма пролитого</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Сумма пролитого
+                  </label>
                   <Input
                     name="pouringAmount"
                     type="number"
@@ -1579,7 +1928,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Начальная сумма</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Начальная сумма
+                  </label>
                   <Input
                     name="initialAmount"
                     type="number"
@@ -1589,7 +1940,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Дата начальной суммы</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Дата начальной суммы
+                  </label>
                   <Input
                     name="initialDate"
                     type="date"
@@ -1599,7 +1952,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Конечная сумма</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Конечная сумма
+                  </label>
                   <Input
                     name="finalAmount"
                     type="number"
@@ -1608,7 +1963,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Дата конечной суммы</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Дата конечной суммы
+                  </label>
                   <Input
                     name="finalDate"
                     type="date"
@@ -1617,7 +1974,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Сумма снятого</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Сумма снятого
+                  </label>
                   <Input
                     name="withdrawalAmount"
                     type="number"
@@ -1626,7 +1985,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Дата снятия</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Дата снятия
+                  </label>
                   <Input
                     name="withdrawalDate"
                     type="date"
@@ -1635,7 +1996,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Инкассатор</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Инкассатор
+                  </label>
                   <Input
                     name="collectorName"
                     value={pouringFormData.collectorName || ""}
@@ -1643,20 +2006,30 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Статус</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Статус
+                  </label>
                   <Select
                     name="status"
                     value={pouringFormData.status}
                     onChange={handlePouringFormChange}
                     required
                   >
-                    <SelectItem key="ACTIVE" value="ACTIVE">Активна</SelectItem>
-                    <SelectItem key="WARNING" value="WARNING">Внимание</SelectItem>
-                    <SelectItem key="BLOCKED" value="BLOCKED">Заблокирована</SelectItem>
+                    <SelectItem key="ACTIVE" value="ACTIVE">
+                      Активна
+                    </SelectItem>
+                    <SelectItem key="WARNING" value="WARNING">
+                      Внимание
+                    </SelectItem>
+                    <SelectItem key="BLOCKED" value="BLOCKED">
+                      Заблокирована
+                    </SelectItem>
                   </Select>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1">Комментарий</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Комментарий
+                  </label>
                   <Input
                     name="comment"
                     value={pouringFormData.comment || ""}
@@ -1666,13 +2039,20 @@ export default function Cards() {
               </div>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onPress={() => setIsPouringModalOpen(false)}>
+              <Button
+                variant="flat"
+                onPress={() => setIsPouringModalOpen(false)}
+              >
                 Отмена
               </Button>
-              <Button 
-                color="primary" 
-                type="submit" 
-                isLoading={selectedPouring ? updatePouringMutation.isLoading : createPouringMutation.isLoading}
+              <Button
+                color="primary"
+                type="submit"
+                isLoading={
+                  selectedPouring
+                    ? updatePouringMutation.isLoading
+                    : createPouringMutation.isLoading
+                }
               >
                 {selectedPouring ? "Обновить" : "Создать"}
               </Button>
@@ -1682,22 +2062,24 @@ export default function Cards() {
       </Modal>
 
       {/* View Balances Modal */}
-      <Modal 
-        isOpen={isViewBalancesModalOpen} 
+      <Modal
+        isOpen={isViewBalancesModalOpen}
         onClose={() => setIsViewBalancesModalOpen(false)}
         size="3xl"
       >
         <ModalContent>
           <ModalHeader>
-            История балансов для карты #{selectedCard?.id} ({selectedCard?.bank})
+            История балансов для карты #{selectedCard?.id} ({selectedCard?.bank}
+            )
           </ModalHeader>
           <ModalBody>
             {cardBalancesQuery.isLoading ? (
-              <div className="flex justify-center my-6">
+              <div className="my-6 flex justify-center">
                 <Spinner size="lg" />
               </div>
-            ) : !cardBalancesQuery.data || cardBalancesQuery.data.length === 0 ? (
-              <div className="text-center py-6 text-gray-500">
+            ) : !cardBalancesQuery.data ||
+              cardBalancesQuery.data.length === 0 ? (
+              <div className="py-6 text-center text-gray-500">
                 Нет данных о балансах для этой карты
               </div>
             ) : (
@@ -1705,23 +2087,65 @@ export default function Cards() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Начальный баланс</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Конечный баланс</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Разница</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Комментарий</th>
-                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Дата
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Начальный баланс
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Конечный баланс
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Разница
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Комментарий
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                      >
+                        Действия
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 bg-white">
                     {cardBalancesQuery.data.map((balance) => (
                       <tr key={balance.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(balance.date)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.startBalance)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.endBalance)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{formatNumber(balance.endBalance - balance.startBalance)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{balance.comment || "—"}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {formatDate(balance.date)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {formatNumber(balance.startBalance)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {formatNumber(balance.endBalance)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900">
+                          {formatNumber(
+                            balance.endBalance - balance.startBalance,
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {balance.comment || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                           <div className="flex justify-end space-x-2">
                             <Button
                               isIconOnly
@@ -1737,7 +2161,9 @@ export default function Cards() {
                               size="sm"
                               variant="light"
                               color="danger"
-                              onPress={() => handleDeleteBalanceClick(balance.id)}
+                              onPress={() =>
+                                handleDeleteBalanceClick(balance.id)
+                              }
                               title="Удалить баланс"
                             >
                               <Trash size={16} />
@@ -1752,8 +2178,8 @@ export default function Cards() {
             )}
           </ModalBody>
           <ModalFooter>
-            <Button 
-              color="primary" 
+            <Button
+              color="primary"
               onPress={() => {
                 handleAddBalanceClick(selectedCard);
                 setIsViewBalancesModalOpen(false);
@@ -1761,7 +2187,10 @@ export default function Cards() {
             >
               Добавить баланс
             </Button>
-            <Button variant="flat" onPress={() => setIsViewBalancesModalOpen(false)}>
+            <Button
+              variant="flat"
+              onPress={() => setIsViewBalancesModalOpen(false)}
+            >
               Закрыть
             </Button>
           </ModalFooter>
@@ -1769,20 +2198,26 @@ export default function Cards() {
       </Modal>
 
       {/* Add/Edit Balance Modal */}
-      <Modal 
-        isOpen={isBalanceModalOpen} 
+      <Modal
+        isOpen={isBalanceModalOpen}
         onClose={() => setIsBalanceModalOpen(false)}
         size="xl"
       >
         <ModalContent>
-          <form onSubmit={selectedBalance ? handleUpdateBalanceSubmit : handleCreateBalanceSubmit}>
+          <form
+            onSubmit={
+              selectedBalance
+                ? handleUpdateBalanceSubmit
+                : handleCreateBalanceSubmit
+            }
+          >
             <ModalHeader>
               {selectedBalance ? "Редактировать баланс" : "Добавить баланс"}
             </ModalHeader>
             <ModalBody>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Дата</label>
+                  <label className="mb-1 block text-sm font-medium">Дата</label>
                   <Input
                     name="date"
                     type="date"
@@ -1792,7 +2227,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Начальный баланс</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Начальный баланс
+                  </label>
                   <Input
                     name="startBalance"
                     type="number"
@@ -1802,7 +2239,9 @@ export default function Cards() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Конечный баланс</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Конечный баланс
+                  </label>
                   <Input
                     name="endBalance"
                     type="number"
@@ -1812,7 +2251,9 @@ export default function Cards() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1">Комментарий</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Комментарий
+                  </label>
                   <Input
                     name="comment"
                     value={balanceFormData.comment}
@@ -1822,13 +2263,20 @@ export default function Cards() {
               </div>
             </ModalBody>
             <ModalFooter>
-              <Button variant="flat" onPress={() => setIsBalanceModalOpen(false)}>
+              <Button
+                variant="flat"
+                onPress={() => setIsBalanceModalOpen(false)}
+              >
                 Отмена
               </Button>
-              <Button 
-                color="primary" 
-                type="submit" 
-                isLoading={selectedBalance ? updateBalanceMutation.isLoading : createBalanceMutation.isLoading}
+              <Button
+                color="primary"
+                type="submit"
+                isLoading={
+                  selectedBalance
+                    ? updateBalanceMutation.isLoading
+                    : createBalanceMutation.isLoading
+                }
               >
                 {selectedBalance ? "Обновить" : "Создать"}
               </Button>
