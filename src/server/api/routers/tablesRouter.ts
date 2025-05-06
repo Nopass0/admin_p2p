@@ -400,7 +400,7 @@ export const tablesRouter = createTRPCRouter({
       name: z.string().min(1, "Название колонки обязательно"),
       type: columnTypeSchema,
       tableId: z.number().int().positive(),
-      width: z.number().int().optional(),
+      width: z.string().transform(val => val ? Number(val) || 10 : 10),
       isRequired: z.boolean().default(false),
       isFilterable: z.boolean().default(false),
       isSummable: z.boolean().default(false),
@@ -475,7 +475,8 @@ export const tablesRouter = createTRPCRouter({
       id: z.number().int().positive(),
       name: z.string().min(1, "Название колонки обязательно"),
       type: columnTypeSchema,
-      width: z.number().int().optional(),
+      width: z.string().transform(val => val ? Number(val) || 10 : 10),
+
       isRequired: z.boolean(),
       isFilterable: z.boolean(),
       isSummable: z.boolean(),
