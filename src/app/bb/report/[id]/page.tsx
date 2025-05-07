@@ -393,6 +393,7 @@ export default function ReportDetailPage() {
                     Время {renderSortIndicator("idex", "approvedAt")}
                   </TableColumn>
                   <TableColumn>IDEX Cabinet ID</TableColumn>
+                  <TableColumn>IDEX transaction ID</TableColumn>
                   <TableColumn
                     onClick={() => handleSort("idex", "parsedAmount")}
                     style={{ cursor: "pointer" }}
@@ -413,6 +414,9 @@ export default function ReportDetailPage() {
                       </TableCell>
                       <TableCell>
                         {item.cabinet.idexId ? item.cabinet.idexId : "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        {item.externalId}
                       </TableCell>
                       <TableCell>{formatAmount(item.parsedAmount)}</TableCell>
                     </TableRow>
