@@ -28,6 +28,7 @@ import {
 import { toast } from "react-hot-toast";
 import dayjs from "dayjs";
 import { Badge } from "@heroui/badge";
+import { Tab } from "@heroui/react";
 
 // Simplified type placeholders
 type IdexTransaction = any;
@@ -415,9 +416,7 @@ export default function ReportDetailPage() {
                       <TableCell>
                         {item.cabinet.idexId ? item.cabinet.idexId : "N/A"}
                       </TableCell>
-                      <TableCell>
-                        {item.externalId}
-                      </TableCell>
+                      <TableCell>{item.externalId}</TableCell>
                       <TableCell>{formatAmount(item.parsedAmount)}</TableCell>
                     </TableRow>
                   )}
@@ -492,6 +491,7 @@ export default function ReportDetailPage() {
                   >
                     ID {renderSortIndicator("bybit", "id")}
                   </TableColumn>
+                  <TableColumn>orderNo</TableColumn>
                   <TableColumn
                     onClick={() => handleSort("bybit", "email")}
                     style={{ cursor: "pointer" }}
@@ -516,6 +516,7 @@ export default function ReportDetailPage() {
                   {(item) => (
                     <TableRow key={item.id}>
                       <TableCell>{item.id}</TableCell>
+                      <TableCell>{item.orderNo}</TableCell>
                       <TableCell>{item.email}</TableCell>
                       <TableCell>
                         {dayjs(item.dateTime).format("DD.MM.YY HH:mm:ss")}
@@ -743,6 +744,19 @@ export default function ReportDetailPage() {
                   Дата IDEX {renderSortIndicator("matches", "idexDateTime")}
                 </TableColumn>
                 <TableColumn
+                  onClick={() => handleSort("matches", "bybitOrderNo")}
+                  style={{ cursor: "pointer" }}
+                >
+                  Bybit orderNo {renderSortIndicator("matches", "bybitOrderNo")}
+                </TableColumn>
+                <TableColumn
+                  onClick={() => handleSort("matches", "idexExternalId")}
+                  style={{ cursor: "pointer" }}
+                >
+                  IDEX externalId{" "}
+                  {renderSortIndicator("matches", "idexExternalId")}
+                </TableColumn>
+                <TableColumn
                   onClick={() => handleSort("matches", "bybitAmount")}
                   style={{ cursor: "pointer" }}
                 >
@@ -794,12 +808,15 @@ export default function ReportDetailPage() {
                         .subtract(3, "hour")
                         .format("DD.MM.YY HH:mm")}
                     </TableCell>
+                    <TableCell>{match.bybitTransaction?.orderNo}</TableCell>
+                    <TableCell>{match.idexTransaction?.externalId}</TableCell>
                     <TableCell>
                       {formatAmount(match.bybitTransaction?.totalPrice)}
                     </TableCell>
                     <TableCell>
                       {match.idexTransaction?.cabinet?.idexId}
                     </TableCell>
+
                     <TableCell>
                       {formatAmount(match.grossExpense)} USDT
                     </TableCell>
