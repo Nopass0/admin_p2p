@@ -3,6 +3,7 @@ import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import { buildIdexWhere, buildBybitWhere, parseWindows } from "../utils/perCabinetWindows";
 
 dayjs.extend(utc);
 
@@ -456,20 +457,14 @@ export const bbRouter = createTRPCRouter({
         const matches = report.bybitClipMatches ?? [];
 
         /* ── 2.  Кабинеты из конфигурации ──────────────────────────────────── */
+        const { idex: idexWins, bybit: bybitWins } = parseWindows(report.idexCabinets as string);
+        const idexWhere = buildIdexWhere(idexWins);
+        const bybitWhere = buildBybitWhere(bybitWins);
+        
         let parsedCabinetConfigs: any[] | null = null;
-        let idexCabinetIds: number[] = [];
-        let bybitCabinetIds: number[] = [];
-
         if (typeof report.idexCabinets === "string") {
           try {
             parsedCabinetConfigs = JSON.parse(report.idexCabinets);
-            idexCabinetIds = parsedCabinetConfigs
-              .filter((c: any) => c.cabinetType === "idex")
-              .map((c: any) => c.cabinetId);
-
-            bybitCabinetIds = parsedCabinetConfigs
-              .filter((c: any) => c.cabinetType === "bybit" || !c.cabinetType)
-              .map((c: any) => c.cabinetId);
           } catch (e) {
             console.error("bad idexCabinets json", e);
           }
@@ -523,73 +518,25 @@ export const bbRouter = createTRPCRouter({
           matchedBybitInRange,
           matchesWithinRange,
         ] = await Promise.all([
+          ctx.db.idexTransaction.count({ where: idexWhere }),
+          ctx.db.bybitTransactionFromCabinet.count({ where: bybitWhere }),
           ctx.db.idexTransaction.count({
             where: {
-              cabinetId: idexCabinetIds.length
-                ? { in: idexCabinetIds }
-                : undefined,
-              approvedAt: {
-                gte: dayjs(report.timeRangeStart).add(3, "hour").toISOString(),
-                lte: dayjs(report.timeRangeEnd).add(3, "hour").toISOString(),
-              },
-            },
-          }),
-          ctx.db.bybitTransactionFromCabinet.count({
-            where: {
-              cabinetId: bybitCabinetIds.length
-                ? { in: bybitCabinetIds }
-                : undefined,
-              dateTime: {
-                gte: report.timeRangeStart,
-                lte: report.timeRangeEnd,
-              },
-            },
-          }),
-          ctx.db.idexTransaction.count({
-            where: {
+              ...idexWhere,
               id: { in: matchedIdexIds },
-              cabinetId: idexCabinetIds.length
-                ? { in: idexCabinetIds }
-                : undefined,
-              approvedAt: {
-                gte: dayjs(report.timeRangeStart).toISOString(),
-                lte: dayjs(report.timeRangeEnd).toISOString(),
-              },
             },
           }),
           ctx.db.bybitTransactionFromCabinet.count({
             where: {
+              ...bybitWhere,
               id: { in: matchedBybitIds },
-              cabinetId: bybitCabinetIds.length
-                ? { in: bybitCabinetIds }
-                : undefined,
-              dateTime: {
-                gte: report.timeRangeStart,
-                lte: report.timeRangeEnd,
-              },
             },
           }),
           ctx.db.bybitClipMatch.count({
             where: {
               matchBybitReportId: input.id,
-              idexTransaction: {
-                approvedAt: {
-                  gte: dayjs(report.timeRangeStart).toISOString(),
-                  lte: dayjs(report.timeRangeEnd).toISOString(),
-                },
-                cabinetId: idexCabinetIds.length
-                  ? { in: idexCabinetIds }
-                  : undefined,
-              },
-              bybitTransaction: {
-                dateTime: {
-                  gte: report.timeRangeStart,
-                  lte: report.timeRangeEnd,
-                },
-                cabinetId: bybitCabinetIds.length
-                  ? { in: bybitCabinetIds }
-                  : undefined,
-              },
+              idexTransaction: idexWhere,
+              bybitTransaction: bybitWhere,
             },
           }),
         ]);
@@ -723,65 +670,13 @@ export const bbRouter = createTRPCRouter({
           if (!report) return;
 
           // Parse cabinet config → idex / bybit cabinet IDs
-          let idexCabinetIds: number[] = [];
-          let bybitCabinetIds: number[] = [];
-          if (report.idexCabinets && typeof report.idexCabinets === "string") {
-            try {
-              const cfg = JSON.parse(report.idexCabinets as string);
-              idexCabinetIds = cfg
-                .filter((c: any) => c.cabinetType === "idex")
-                .map((c: any) => c.cabinetId);
-              bybitCabinetIds = cfg
-                .filter((c: any) => c.cabinetType === "bybit" || !c.cabinetType)
-                .map((c: any) => c.cabinetId);
-            } catch {
-              /* ignore bad json */
-            }
-          }
+          const wins = parseWindows(report.idexCabinets as string);
 
           // Count total IDEX transactions in the report window
-          const totalIdex = await ctx.db.idexTransaction.count({
-            where: {
-              cabinetId: idexCabinetIds.length
-                ? { in: idexCabinetIds }
-                : undefined,
-              approvedAt: {
-                gte: dayjs(report.timeRangeStart).toISOString(),
-                lte: dayjs(report.timeRangeEnd).toISOString(),
-              },
-            },
-          });
+          const totalIdex = await ctx.db.idexTransaction.count({ where: buildIdexWhere(wins.idex) });
 
-          // Count total Bybit transactions (note the −3 h shift that existed elsewhere)
-          const totalBybit = await ctx.db.bybitTransactionFromCabinet.count({
-            where: {
-              cabinetId: bybitCabinetIds.length
-                ? { in: bybitCabinetIds }
-                : undefined,
-              dateTime: {
-                gte: dayjs(report.timeRangeStart)
-                  .subtract(3, "hour")
-                  .toISOString(),
-                lte: dayjs(report.timeRangeEnd)
-                  .subtract(3, "hour")
-                  .toISOString(),
-              },
-            },
-          });
-
-          // Already‑matched counts *within this report* (cheaper than re‑counting)
-          const matchedForThisReport = matches.filter(
-            (m) => m.matchBybitReportId === reportId,
-          );
-          const matchedIdex = new Set(
-            matchedForThisReport.map((m) => m.idexTransactionId),
-          ).size;
-          const matchedBybit = new Set(
-            matchedForThisReport.map((m) => m.bybitTransactionId),
-          ).size;
-
-          unmatchedIdexTransactions += Math.max(totalIdex - matchedIdex, 0);
-          unmatchedBybitTransactions += Math.max(totalBybit - matchedBybit, 0);
+          // Count total Bybit transactions
+          const totalBybit = await ctx.db.bybitTransactionFromCabinet.count({ where: buildBybitWhere(wins.bybit) });
         }),
       );
 
@@ -860,18 +755,8 @@ export const bbRouter = createTRPCRouter({
       if (!report) throw new Error(`Отчёт #${reportId} не найден`);
 
       /** 2. Парсим idexCabinets */
-      const idexCabinetIds: number[] = (() => {
-        if (!report.idexCabinets || typeof report.idexCabinets !== "string")
-          return [];
-        try {
-          return JSON.parse(report.idexCabinets)
-            .filter((c: any) => c.cabinetType === "idex")
-            .map((c: any) => c.cabinetId);
-        } catch (e) {
-          console.error("Failed to parse idexCabinets", e);
-          return [];
-        }
-      })();
+      const { idex: idexWins } = parseWindows(report.idexCabinets as string);
+      const idexWhere = buildIdexWhere(idexWins);
 
       /** 3. Все сопоставленные в этом отчёте */
       const matchedRows = await ctx.db.bybitClipMatch.findMany({
@@ -881,23 +766,11 @@ export const bbRouter = createTRPCRouter({
       const matchedIdexIds = matchedRows.map((m) => m.idexTransactionId);
 
       /** 4. К-во всех IDEX транзакций в диапазоне */
-      const totalIdexTransactions = await ctx.db.idexTransaction.count({
-        where: {
-          cabinetId: idexCabinetIds.length ? { in: idexCabinetIds } : undefined,
-          approvedAt: {
-            gte: dayjs(report.timeRangeStart).toISOString(),
-            lte: dayjs(report.timeRangeEnd).toISOString(),
-          },
-        },
-      });
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({ where: idexWhere });
 
       /** 5. where для НЕсопоставлённых (в таблицах) */
       const where: Prisma.IdexTransactionWhereInput = {
-        approvedAt: {
-          gte: dayjs(report.timeRangeStart).toISOString(),
-          lte: dayjs(report.timeRangeEnd).toISOString(),
-        },
-        cabinetId: idexCabinetIds.length ? { in: idexCabinetIds } : undefined,
+        ...idexWhere,
         id: matchedIdexIds.length ? { notIn: matchedIdexIds } : undefined,
       };
 
@@ -986,18 +859,8 @@ export const bbRouter = createTRPCRouter({
       if (!report) throw new Error(`Отчёт #${reportId} не найден`);
 
       /** 2. Кабинеты Bybit */
-      const bybitCabinetIds: number[] = (() => {
-        if (!report.idexCabinets || typeof report.idexCabinets !== "string")
-          return [];
-        try {
-          return JSON.parse(report.idexCabinets)
-            .filter((c: any) => c.cabinetType === "bybit" || !c.cabinetType)
-            .map((c: any) => c.cabinetId);
-        } catch (e) {
-          console.error("Failed to parse bybitCabinets", e);
-          return [];
-        }
-      })();
+      const { bybit: bybitWins } = parseWindows(report.idexCabinets as string);
+      const bybitWhere = buildBybitWhere(bybitWins);
 
       /** 3. Сопоставленные */
       const matchedRows = await ctx.db.bybitClipMatch.findMany({
@@ -1006,33 +869,16 @@ export const bbRouter = createTRPCRouter({
       });
       const matchedBybitIds = matchedRows.map((r) => r.bybitTransactionId);
 
-      /** 4. Диапазон с учётом сдвига –3 ч */
-      const rangeStart = dayjs(report.timeRangeStart)
-        .subtract(3, "hour")
-        .toISOString();
-      const rangeEnd = dayjs(report.timeRangeEnd)
-        .subtract(3, "hour")
-        .toISOString();
+      /** 4. Общее кол-во транзакций Bybit в диапазоне */
+      const totalBybitTransactions = await ctx.db.bybitTransactionFromCabinet.count({ where: bybitWhere });
 
-      /** 5. Общее кол-во транзакций Bybit в диапазоне */
-      const totalBybitTransactions =
-        await ctx.db.bybitTransactionFromCabinet.count({
-          where: {
-            cabinetId: bybitCabinetIds.length
-              ? { in: bybitCabinetIds }
-              : undefined,
-            dateTime: { gte: rangeStart, lte: rangeEnd },
-          },
-        });
-
-      /** 6. where для не сопоставлённых */
+      /** 5. where для не сопоставлённых */
       const where: Prisma.BybitTransactionFromCabinetWhereInput = {
+        ...bybitWhere,
         id: matchedBybitIds.length ? { notIn: matchedBybitIds } : undefined,
-        dateTime: { gte: rangeStart, lte: rangeEnd },
-        cabinetId: bybitCabinetIds.length ? { in: bybitCabinetIds } : undefined,
       };
 
-      /** 7. Поиск */
+      /** 6. Поиск */
       if (search?.trim()) {
         const term = search.trim();
         const num = Number(term);
@@ -1050,7 +896,7 @@ export const bbRouter = createTRPCRouter({
         ].filter(Boolean) as any;
       }
 
-      /** 8. Пагинация */
+      /** 7. Пагинация */
       const totalUnmatched = await ctx.db.bybitTransactionFromCabinet.count({
         where,
       });
@@ -1310,17 +1156,9 @@ export const bbRouter = createTRPCRouter({
         console.log(`Конфигурации кабинетов: ${cabinetConfigs.length}`);
 
         // Получаем списки кабинетов по типам
-        const idexCabinetIds = cabinetConfigs
-          .filter((config) => config.cabinetType === "idex")
-          .map((config) => config.cabinetId);
-
-        const bybitCabinetIds = cabinetConfigs
-          .filter(
-            (config) => config.cabinetType === "bybit" || !config.cabinetType,
-          )
-          .map((config) => config.cabinetId);
-
-        if (idexCabinetIds.length === 0 || bybitCabinetIds.length === 0) {
+        const { idex: idexWins, bybit: bybitWins } = parseWindows(report.idexCabinets as string);
+        
+        if (idexWins.length === 0 || bybitWins.length === 0) {
           return {
             success: false,
             message: "Не указаны кабинеты обоих типов для сопоставления",
@@ -1331,11 +1169,7 @@ export const bbRouter = createTRPCRouter({
         // Получаем IDEX транзакции, которые еще не сопоставлены в этом отчете
         const idexTransactions = await ctx.db.idexTransaction.findMany({
           where: {
-            cabinetId: { in: idexCabinetIds },
-            approvedAt: {
-              gte: dayjs(report.timeRangeStart).toISOString(),
-              lte: dayjs(report.timeRangeEnd).toISOString(),
-            },
+            ...buildIdexWhere(idexWins),
             // Не должны уже иметь сопоставление в этом отчете
             NOT: {
               BybitClipMatch: {
@@ -1351,15 +1185,7 @@ export const bbRouter = createTRPCRouter({
         const bybitTransactions =
           await ctx.db.bybitTransactionFromCabinet.findMany({
             where: {
-              cabinetId: { in: bybitCabinetIds },
-              dateTime: {
-                gte: dayjs(report.timeRangeStart)
-                  .subtract(3, "hour")
-                  .toISOString(),
-                lte: dayjs(report.timeRangeEnd)
-                  .subtract(3, "hour")
-                  .toISOString(),
-              },
+              ...buildBybitWhere(bybitWins),
               // Не должны уже иметь сопоставление в этом отчете
               NOT: {
                 BybitClipMatch: {
