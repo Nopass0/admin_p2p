@@ -749,6 +749,7 @@ export default function ReportDetailPage() {
                 >
                   Bybit orderNo {renderSortIndicator("matches", "bybitOrderNo")}
                 </TableColumn>
+                <TableColumn>Bybit Email</TableColumn>
                 <TableColumn
                   onClick={() => handleSort("matches", "idexExternalId")}
                   style={{ cursor: "pointer" }}
@@ -809,6 +810,9 @@ export default function ReportDetailPage() {
                         .format("DD.MM.YY HH:mm")}
                     </TableCell>
                     <TableCell>{match.bybitTransaction?.orderNo}</TableCell>
+                    <TableCell>
+                      {match.bybitTransaction?.cabinet?.bybitEmail}
+                    </TableCell>
                     <TableCell>{match.idexTransaction?.externalId}</TableCell>
                     <TableCell>
                       {formatAmount(match.bybitTransaction?.totalPrice)}

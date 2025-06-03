@@ -3,7 +3,11 @@ import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { buildIdexWhere, buildBybitWhere, parseWindows } from "../utils/perCabinetWindows";
+import {
+  buildIdexWhere,
+  buildBybitWhere,
+  parseWindows,
+} from "../utils/perCabinetWindows";
 
 dayjs.extend(utc);
 
@@ -51,11 +55,9 @@ const BybitCabinetInput = z.object({
 
 // Гибкий тип для принятия дат в разных форматах
 const flexibleDateSchema = z.union([
-  z
-    .string()
-    .refine((date) => dayjs(date).isValid(), {
-      message: "Неверный формат даты",
-    }),
+  z.string().refine((date) => dayjs(date).isValid(), {
+    message: "Неверный формат даты",
+  }),
   z.date(),
   z.object({ date: z.date() }).transform((val) => val.date), // Для поддержки объектов с датой/временем
 ]);
@@ -457,10 +459,12 @@ export const bbRouter = createTRPCRouter({
         const matches = report.bybitClipMatches ?? [];
 
         /* ── 2.  Кабинеты из конфигурации ──────────────────────────────────── */
-        const { idex: idexWins, bybit: bybitWins } = parseWindows(report.idexCabinets as string);
+        const { idex: idexWins, bybit: bybitWins } = parseWindows(
+          report.idexCabinets as string,
+        );
         const idexWhere = buildIdexWhere(idexWins);
         const bybitWhere = buildBybitWhere(bybitWins);
-        
+
         let parsedCabinetConfigs: any[] | null = null;
         if (typeof report.idexCabinets === "string") {
           try {
@@ -673,10 +677,14 @@ export const bbRouter = createTRPCRouter({
           const wins = parseWindows(report.idexCabinets as string);
 
           // Count total IDEX transactions in the report window
-          const totalIdex = await ctx.db.idexTransaction.count({ where: buildIdexWhere(wins.idex) });
+          const totalIdex = await ctx.db.idexTransaction.count({
+            where: buildIdexWhere(wins.idex),
+          });
 
           // Count total Bybit transactions
-          const totalBybit = await ctx.db.bybitTransactionFromCabinet.count({ where: buildBybitWhere(wins.bybit) });
+          const totalBybit = await ctx.db.bybitTransactionFromCabinet.count({
+            where: buildBybitWhere(wins.bybit),
+          });
         }),
       );
 
@@ -766,7 +774,9 @@ export const bbRouter = createTRPCRouter({
       const matchedIdexIds = matchedRows.map((m) => m.idexTransactionId);
 
       /** 4. К-во всех IDEX транзакций в диапазоне */
-      const totalIdexTransactions = await ctx.db.idexTransaction.count({ where: idexWhere });
+      const totalIdexTransactions = await ctx.db.idexTransaction.count({
+        where: idexWhere,
+      });
 
       /** 5. where для НЕсопоставлённых (в таблицах) */
       const where: Prisma.IdexTransactionWhereInput = {
@@ -870,7 +880,8 @@ export const bbRouter = createTRPCRouter({
       const matchedBybitIds = matchedRows.map((r) => r.bybitTransactionId);
 
       /** 4. Общее кол-во транзакций Bybit в диапазоне */
-      const totalBybitTransactions = await ctx.db.bybitTransactionFromCabinet.count({ where: bybitWhere });
+      const totalBybitTransactions =
+        await ctx.db.bybitTransactionFromCabinet.count({ where: bybitWhere });
 
       /** 5. where для не сопоставлённых */
       const where: Prisma.BybitTransactionFromCabinetWhereInput = {
@@ -1010,7 +1021,9 @@ export const bbRouter = createTRPCRouter({
       const matches = await ctx.db.bybitClipMatch.findMany({
         where: matchWhere,
         include: {
-          bybitTransaction: true,
+          bybitTransaction: {
+            include: { cabinet: { select: { bybitEmail: true } } },
+          },
           idexTransaction: {
             include: { cabinet: true },
           },
@@ -1156,8 +1169,10 @@ export const bbRouter = createTRPCRouter({
         console.log(`Конфигурации кабинетов: ${cabinetConfigs.length}`);
 
         // Получаем списки кабинетов по типам
-        const { idex: idexWins, bybit: bybitWins } = parseWindows(report.idexCabinets as string);
-        
+        const { idex: idexWins, bybit: bybitWins } = parseWindows(
+          report.idexCabinets as string,
+        );
+
         if (idexWins.length === 0 || bybitWins.length === 0) {
           return {
             success: false,
